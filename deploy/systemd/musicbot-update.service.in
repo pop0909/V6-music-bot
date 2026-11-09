@@ -1,0 +1,14 @@
+# Music Bot V5 — 每日更新 yt-dlp，版本有變才重啟 bot（由 musicbot-update.timer 觸發）
+[Unit]
+Description=Music Bot V5 - update yt-dlp (restart bot only if the version changed)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-@APP_DIR@/.env
+Environment=MUSICBOT_DIR=@APP_DIR@ MUSICBOT_PYTHON=@PYTHON@ MUSICBOT_USER=@RUN_USER@ MUSICBOT_SERVICE=musicbot.service
+ExecStart=@APP_DIR@/deploy/update-ytdlp.sh --restart-if-changed
+# 有人在聽歌時最多延後 6 小時才重啟
+TimeoutStartSec=7h
+SyslogIdentifier=musicbot-update

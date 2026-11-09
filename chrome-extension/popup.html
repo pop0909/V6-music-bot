@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8">
+<style>
+body { width: 300px; margin: 0; padding: 12px; font: 13px/1.5 system-ui, "Microsoft JhengHei", sans-serif; background: #1e1b2e; color: #eee; }
+h1 { font-size: 14px; margin: 0 0 8px; color: #a29bfe; }
+.np { font-weight: 600; word-break: break-word; } .muted { color: #999; }
+.row { display: flex; gap: 6px; margin-top: 10px; }
+button { flex: 1; padding: 7px; border: 0; border-radius: 8px; background: #6c5ce7; color: #fff; cursor: pointer; font: inherit; }
+button.ghost { background: transparent; border: 1px solid #6c5ce7; color: #a29bfe; }
+button:disabled { opacity: .45; cursor: default; }
+#msg { margin-top: 8px; min-height: 1em; } .err { color: #ff7675; } .ok { color: #55efc4; }
+a { color: #a29bfe; }
+</style></head>
+<body>
+<h1>🎵 音樂機器人</h1>
+<div id="np" class="np muted">讀取中…</div>
+<div id="meta" class="muted"></div>
+<div class="row"><button id="add" disabled>加入目前分頁</button><button id="next" class="ghost" disabled>下一首播</button></div>
+<div id="msg"></div>
+<div class="row muted" style="justify-content:space-between"><a href="https://musbot.kdns.fr/" target="_blank">開啟網頁面板</a><a href="#" id="opt">設定金鑰</a></div>
+<script src="api.js"></script>
+<script src="popup.js"></script>
+</body></html>

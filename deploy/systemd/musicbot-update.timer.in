@@ -1,0 +1,12 @@
+# Music Bot V5 — 每天凌晨 5 點左右更新 yt-dlp
+[Unit]
+Description=Daily yt-dlp update for Music Bot V5
+
+[Timer]
+OnCalendar=*-*-* 05:00:00
+RandomizedDelaySec=20min
+# 關機錯過時間的話，開機後補跑
+Persistent=true
+
+[Install]
+WantedBy=timers.target

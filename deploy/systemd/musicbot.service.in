@@ -1,0 +1,36 @@
+# Music Bot V5 — 由 deploy/install.sh 產生（@APP_DIR@）
+[Unit]
+Description=Music Bot V5 (Discord music bot + web panel)
+After=network-online.target
+Wants=network-online.target
+# 10 分鐘內失敗超過 10 次就放棄（避免設定錯誤時無限重啟）；恢復：systemctl reset-failed musicbot
+StartLimitIntervalSec=600
+StartLimitBurst=10
+# 放棄重啟時私訊擁有者
+OnFailure=musicbot-failure.service
+
+[Service]
+Type=simple
+User=@RUN_USER@
+Group=@RUN_GROUP@
+WorkingDirectory=@APP_DIR@
+EnvironmentFile=-@APP_DIR@/.env
+Environment=PYTHONUNBUFFERED=1 PYTHONIOENCODING=utf-8 LANG=C.UTF-8
+# 面板只聽本機，由 Cloudflare Tunnel 對外（.env 可覆寫）
+Environment=WEB_HOST=127.0.0.1
+Environment=MUSICBOT_DIR=@APP_DIR@ MUSICBOT_PYTHON=@PYTHON@
+# 啟動前更新 yt-dlp；前面的 "-" 代表失敗（例如離線）也照樣啟動 bot
+ExecStartPre=-@APP_DIR@/deploy/update-ytdlp.sh
+ExecStart=@PYTHON@ @APP_DIR@/main.py
+Restart=on-failure
+RestartSec=30
+TimeoutStartSec=300
+TimeoutStopSec=20
+KillMode=mixed
+SyslogIdentifier=musicbot
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

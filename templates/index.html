@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MusicBot</title>
+    <meta name="theme-color" content="#07060b">
+    <script>
+    /* 主題：在 CSS 之前先決定，避免載入時閃一下 */
+    (function () { var t = null; try { t = localStorage.getItem('theme'); } catch (e) {}
+      if (t !== 'light' && t !== 'dark') t = (window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+      document.documentElement.dataset.theme = t;
+      if (t === 'light') document.querySelector('meta[name="theme-color"]').content = '#f7f6fb'; })();
+    </script>
+    <link rel="icon" href="data:,">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=20261023cy6">
+</head>
+<body>
+    <!-- 頂欄後方的遮罩：跟背景一模一樣（同一組漸層、同樣以視窗定位），只蓋住頂欄那一條；捲動後內容不會從頂欄四周透出來 -->
+    <div class="hdr-mask" aria-hidden="true"></div>
+    <div class="app-container">
+
+        <!-- ================== 頂欄 ================== -->
+        <header class="app-header">
+            <div class="logo">
+                <span class="logo-mark"><i class="fas fa-music"></i></span>
+                <span class="logo-text">Music<span>Bot</span></span>
+            </div>
+
+            <div class="search-row">
+                <i class="fas fa-magnifying-glass search-icon" aria-hidden="true"></i>
+                <input type="text" class="search-input" id="searchInput" placeholder="搜尋歌曲，或貼上 YouTube／Spotify 網址、歌單…" />
+                <button class="btn-search" id="btnSearch" title="搜尋" aria-label="搜尋"><i class="fas fa-arrow-right"></i></button>
+            </div>
+
+            <div class="header-right">
+                <div class="sel-wrap"><i class="fas fa-server"></i>
+                <select id="guildSelect" class="sel sel-guild">
+                    <option value="">選擇伺服器</option>
+                </select></div>
+                <div class="sel-wrap"><i class="fas fa-headset"></i>
+                <select id="voiceChannelSelect" class="sel sel-voice" disabled>
+                    <option value="">選擇語音頻道</option>
+                </select></div>
+                <button class="hdr-btn hdr-btn-keep has-tip tip-below" id="btnTheme" type="button" data-tip="切換主題" aria-label="切換主題"><i class="fas fa-circle-half-stroke"></i></button>
+                <button class="hdr-btn hdr-btn-keep has-tip tip-below" id="btnStatus" type="button" data-tip="機器人狀態" aria-label="機器人狀態" aria-haspopup="dialog" aria-expanded="false" aria-controls="statusPop"><i class="fas fa-gauge-high"></i></button>
+                <a class="hdr-btn has-tip tip-below" id="btnMembers" href="/members" target="_blank" rel="noopener" data-tip="成員管理" aria-label="成員管理（擴充功能成員）"><i class="fas fa-users"></i></a>
+                <button class="hdr-btn has-tip tip-below" id="btnShortcuts" type="button" data-tip="鍵盤快捷鍵（按 ? 也能開）" aria-label="鍵盤快捷鍵" aria-haspopup="dialog" aria-expanded="false" aria-controls="kbdHelp"><i class="fas fa-keyboard"></i></button>
+                <div class="live-pill" id="statusPill">
+                    <span class="status-indicator" id="statusDot"></span>
+                    <span id="statusText">就緒</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- ================== 主體 ================== -->
+        <div class="app-main-wrapper">
+            <div class="guild-overlay" id="guildOverlay">
+                <div class="overlay-icon"><i class="fas fa-server"></i></div>
+                <h2>請先選擇伺服器</h2>
+                <p>從上方選單選擇一個 Discord 伺服器開始使用</p>
+            </div>
+
+            <main class="main-content home" id="mainContent">
+                <div class="restore-bar" id="restoreBar" hidden>
+                    <i class="fas fa-moon" aria-hidden="true"></i>
+                    <span class="rb-text"></span>
+                    <button class="btn-sm gold" type="button" data-act="resume"><i class="fas fa-play"></i> 繼續播放</button>
+                    <button class="btn-sm" type="button" data-act="queue">只放回佇列</button>
+                </div>
+                <!-- 搜尋結果（頂欄搜尋框的結果顯示在主畫面最上方） -->
+                <div class="search-results" id="searchResults"></div>
+
+                <!-- 再聽一次：依播放紀錄（YouTube Music 式卡片列） -->
+                <section class="shelf" id="shelfAgain">
+                    <div class="shelf-head">
+                        <div class="shelf-heading">
+                            <span class="shelf-kicker">依你的播放紀錄</span>
+                            <h2 class="shelf-title">再聽一次</h2>
+                        </div>
+                        <div class="shelf-nav">
+                            <button class="shelf-arrow" id="shelfPrev" title="上一頁" aria-label="上一頁"><i class="fas fa-chevron-left"></i></button>
+                            <button class="shelf-arrow" id="shelfNext" title="下一頁" aria-label="下一頁"><i class="fas fa-chevron-right"></i></button>
+                        </div>
+                    </div>
+                    <div class="shelf-row" id="shelfRow"></div>
+                </section>
+
+                <div class="home-panels">
+                    <!-- 主畫面清單：本地歌單 / 最愛歌曲（寬螢幕左右並排，窄螢幕同一面板切換分頁）。
+                         播放佇列與播放紀錄只在展開的播放畫面（點底部播放列開啟） -->
+                    <section class="lists-col card-panel glass" id="homePanel">
+                        <div class="tabs-head">
+                            <div class="tabs" id="homeTabs">
+                                <button class="tab-btn active" data-tab="playlist"><i class="fas fa-book-open"></i><span>本地歌單</span></button>
+                                <button class="tab-btn" data-tab="favorites"><i class="fas fa-heart"></i><span>最愛歌曲</span></button>
+                                <button class="tab-btn" data-tab="mylists"><i class="fas fa-user"></i><span>我的歌單</span></button>
+                            </div>
+                        </div>
+
+                    <!-- 本地歌單 -->
+                    <div class="tab-content active" id="tabPlaylist">
+                        <div class="tab-toolbar">
+                            <span class="tab-count" id="playlistCount">0 首</span>
+                            <div class="toolbar-actions">
+                                <button class="btn-sm" id="btnPlaylistPlayAll"><i class="fas fa-play"></i> 全部播放</button>
+                                <button class="btn-sm gold" id="btnPlaylistAdd"><i class="fas fa-plus"></i> 新增</button>
+                            </div>
+                        </div>
+                        <div class="list-container playlist-list" id="playlistList"></div>
+                    </div>
+
+                    <!-- 最愛歌曲 -->
+                    <div class="tab-content" id="tabFavorites">
+                        <div class="tab-toolbar">
+                            <span class="tab-count" id="favCount">0 首</span>
+                            <div class="toolbar-actions">
+                                <button class="btn-sm" id="btnFavPlayAll"><i class="fas fa-play"></i> 全部播放</button>
+                                <button class="btn-sm gold" id="btnFavAddCurrent"><i class="fas fa-heart"></i> 加入目前</button>
+                            </div>
+                        </div>
+                        <div class="list-container fav-list" id="favList"></div>
+                    </div>
+
+                    <!-- 我的歌單（個人；用自己的金鑰，跟本地歌單 / 最愛分開） -->
+                    <div class="tab-content" id="tabMylists">
+                        <div class="tab-toolbar">
+                            <span class="tab-count" id="mlCount">—</span>
+                            <div class="toolbar-actions" id="mlActions" hidden>
+                                <button class="btn-sm" id="btnMlImport"><i class="fab fa-youtube"></i> 匯入</button>
+                                <button class="btn-sm gold" id="btnMlNew"><i class="fas fa-plus"></i> 新增</button>
+                                <button class="btn-sm" id="btnMlLogout" title="清除這個瀏覽器存的金鑰"><i class="fas fa-sign-out-alt"></i></button>
+                            </div>
+                        </div>
+                        <div class="ml-login" id="mlLogin" hidden>
+                            <p>貼上你的金鑰（跟 Chrome 擴充功能用的同一把）就能管理自己的歌單。</p>
+                            <div class="ml-row"><input type="password" id="mlToken" placeholder="金鑰" autocomplete="off"><button class="btn-sm gold" id="btnMlLogin">登入</button></div>
+                        </div>
+                        <div class="list-container ml-list" id="mlList"></div>
+                    </div>
+                    </section>
+
+                    <!-- 寬螢幕（>= 1280px）右側面板：最愛歌曲 -->
+                    <section class="side-col card-panel glass" id="sidePanel" hidden>
+                        <div class="tabs-head">
+                            <div class="tabs" id="sideTabs"></div>
+                        </div>
+                    </section>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- ================== 展開的播放畫面（點底部播放列開啟） ================== -->
+    
+    <div class="np-view" id="npView" aria-hidden="true" role="dialog" aria-label="正在播放">
+        <div class="np-view-inner">
+            <section class="np-stage np-card" id="npStage">
+                <div class="np-stage-top">
+                    <div class="np-kicker"><span class="kicker-dot"></span>NOW PLAYING</div>
+                    <button class="np-close" id="btnCollapse" title="收合 (Esc)" aria-label="收合"><i class="fas fa-chevron-down"></i></button>
+                </div>
+                <div class="np-cover-wrap">
+                    <div class="album-art" id="albumArt">
+                        <i class="fas fa-headphones"></i>
+                    </div>
+                    <div class="equalizer" id="equalizer" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+                </div>
+                <div class="np-meta">
+                    <h1 class="song-title" id="songTitle">尚未播放</h1>
+                    <div class="song-url" id="songUrl"></div>
+                    <div class="progress-bar np-progress" id="npProgressBar" title="點擊或拖曳以跳轉"><div class="progress-fill" id="npProgressFill"></div></div>
+                    <div class="np-time" id="npTime">0:00 / 0:00</div>
+                </div>
+                <!-- 手機版：底部播放列放不下的控制鍵會被搬到這裡 -->
+                <div class="np-extra" id="npExtra"></div>
+            </section>
+            <!-- 展開畫面自己的清單（常駐，不和主畫面搬來搬去；開啟時才更新有變動的清單） -->
+            <section class="np-side card-panel glass" id="npPanel">
+                <div class="tabs-head">
+                    <div class="tabs" id="npTabs">
+                        <button class="tab-btn active" data-np="queue"><i class="fas fa-list-ul"></i><span>播放佇列</span></button>
+                        <button class="tab-btn" data-np="history"><i class="fas fa-clock-rotate-left"></i><span>播放紀錄</span></button>
+                    </div>
+                    <span class="badge queue-badge-pos" id="npQueueBadge">佇列 0</span>
+                </div>
+                <div class="tab-content active" id="npTabQueue">
+                    <div class="tab-toolbar">
+                        <span class="tab-count" id="npQueueCount">0 首</span>
+                        <div class="toolbar-actions">
+                            <button class="btn-sm" id="npBtnQueueClear"><i class="fas fa-trash"></i> 清空</button>
+                        </div>
+                    </div>
+                    <div class="list-container queue-list" id="npQueueList"></div>
+                </div>
+                <div class="tab-content" id="npTabHistory">
+                    <div class="tab-toolbar">
+                        <div class="seg" id="npHistoryMode">
+                            <button class="seg-btn active" data-mode="recent"><i class="fas fa-clock-rotate-left"></i> 最近</button>
+                            <button class="seg-btn" data-mode="top"><i class="fas fa-trophy"></i> 排行</button>
+                        </div>
+                        <div class="toolbar-actions">
+                            <div class="seg seg-sm" id="npHistoryRange" hidden>
+                                <button class="seg-btn" data-range="7d">7 天</button>
+                                <button class="seg-btn" data-range="30d">30 天</button>
+                                <button class="seg-btn active" data-range="all">全部</button>
+                            </div>
+                            <button class="btn-sm" id="npBtnHistoryRefresh" title="重新整理"><i class="fas fa-rotate"></i></button>
+                        </div>
+                    </div>
+                    <div class="list-container history-list" id="npHistoryList"></div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- ================== 底部播放列（所有畫面尺寸都常駐） ================== -->
+    <footer class="player-bar" id="playerBar">
+        <div class="progress-bar" id="progressBar" title="點擊或拖曳以跳轉"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="pb-left">
+            <button class="ctrl-btn ctrl-play has-tip" id="btnPlay" data-tip="播放 (Space)" aria-label="播放">
+                <i class="fas fa-play" id="playIcon"></i>
+            </button>
+            <button class="ctrl-btn has-tip" id="btnSkip" data-tip="下一首 (N)" aria-label="下一首"><i class="fas fa-forward-step"></i></button>
+            <span class="pb-time"><span id="currentTime">0:00</span> / <span id="totalTime">0:00</span></span>
+        </div>
+        <div class="pb-center">
+            <div class="pb-art" id="barArt"><i class="fas fa-music"></i></div>
+            <div class="pb-info">
+                <div class="pb-title" id="barTitle">尚未播放</div>
+                <div class="pb-sub" id="barSub">點擊展開播放畫面</div>
+            </div>
+            <button class="ctrl-btn pb-fav has-tip" id="btnBarFav" data-tip="加入最愛" aria-label="加入最愛"><i class="fas fa-heart"></i></button>
+        </div>
+        <div class="pb-right">
+            <div class="pb-extras" id="barExtras">
+                <!-- 分組：[音量] | [循環 隨機] | [自動推薦 音量平衡 睡眠] | [停止]；data-tip = 即時提示（CSS，觸控長按也會顯示） -->
+                <div class="volume-row has-tip" data-tip="音量（↑ ↓ 調整・M 靜音）">
+                    <i class="fas fa-volume-low vol-icon" aria-hidden="true"></i>
+                    <input type="range" class="volume-slider" id="volumeSlider" min="0" max="200" value="100" aria-label="音量">
+                    <span class="volume-value" id="volumeValue">100%</span>
+                </div>
+                <span class="pb-sep" aria-hidden="true"></span>
+                <button class="ctrl-btn has-tip" id="btnLoop" data-tip="循環：關（點一下切換 單曲 / 全部）" aria-label="循環：關" aria-pressed="false">
+                    <i class="fas fa-repeat" aria-hidden="true"></i><span class="loop-indicator ctrl-badge" id="loopIndicator"></span><span class="ctrl-label">循環</span>
+                </button>
+                <button class="ctrl-btn has-tip" id="btnShuffle" data-tip="隨機播放：關" aria-label="隨機播放" aria-pressed="false"><i class="fas fa-shuffle" aria-hidden="true"></i><span class="ctrl-label">隨機</span></button>
+                <span class="pb-sep" aria-hidden="true"></span>
+                <label class="toggle-row pb-toggle has-tip" for="autoplayToggle" data-tip="自動推薦接歌：關（佇列播完自動接相關歌曲）">
+                    <span class="toggle-icon" aria-hidden="true"><i class="fas fa-radio"></i></span>
+                    <span class="toggle-text"><span class="toggle-title">自動推薦</span><span class="toggle-sub" id="autoplayHint">佇列播完自動接歌</span></span>
+                    <span class="ctrl-label" aria-hidden="true">推薦</span>
+                    <input type="checkbox" id="autoplayToggle" class="switch" role="switch" aria-label="自動推薦接歌">
+                </label>
+                <label class="toggle-row pb-toggle has-tip" for="normalizeToggle" data-tip="音量平衡：關（讓每首歌音量差不多，下一首生效）">
+                    <span class="toggle-icon" aria-hidden="true"><i class="fas fa-wave-square"></i></span>
+                    <span class="toggle-text"><span class="toggle-title">音量平衡</span><span class="toggle-sub">下一首生效</span></span>
+                    <span class="ctrl-label" aria-hidden="true">平衡</span>
+                    <input type="checkbox" id="normalizeToggle" class="switch" role="switch" aria-label="音量平衡">
+                </label>
+                <button class="ctrl-btn has-tip" id="btnSleep" data-tip="睡眠計時：關（點一下切換 30 分 / 60 分 / 播完這首）" aria-label="睡眠計時：關" aria-pressed="false"><i class="fas fa-moon" aria-hidden="true"></i><span class="loop-indicator ctrl-badge" id="sleepIndicator"></span><span class="ctrl-label">睡眠</span></button>
+                <span class="pb-sep" aria-hidden="true"></span>
+                <button class="ctrl-btn has-tip" id="btnStop" data-tip="停止（清空佇列，留在語音頻道）" aria-label="停止"><i class="fas fa-stop" aria-hidden="true"></i></button>
+                <span class="pb-sep pb-sep-end" aria-hidden="true"></span>
+            </div>
+            <button class="ctrl-btn pb-expand has-tip" id="btnExpand" data-tip="展開播放畫面 (F)" aria-label="展開播放畫面" aria-expanded="false"><i class="fas fa-chevron-up"></i></button>
+        </div>
+    </footer>
+
+    <!-- 鍵盤快捷鍵說明（按 ? 或頂欄鍵盤圖示開啟） -->
+    <div class="kbd-help status-pop" id="statusPop" role="dialog" aria-label="機器人狀態" hidden>
+        <div class="kbd-head"><span>機器人狀態</span><button class="kbd-close" id="statusClose" type="button" aria-label="關閉"><i class="fas fa-xmark"></i></button></div>
+        <dl class="kbd-list st-list">
+            <dt>Discord</dt><dd data-k="ready">…</dd>
+            <dt>主連線延遲</dt><dd data-k="latency">…</dd>
+            <dt>語音延遲</dt><dd data-k="vlatency">…</dd>
+            <dt>已執行</dt><dd data-k="uptime">…</dd>
+            <dt>CPU</dt><dd data-k="cpu">…</dd>
+            <dt>記憶體</dt><dd data-k="mem">…</dd>
+            <dt>連線</dt><dd data-k="guilds">…</dd>
+            <dt>yt-dlp</dt><dd data-k="ytdlp">…</dd>
+            <dt>音質</dt><dd data-k="bitrate">…</dd>
+            <dt>ffmpeg</dt><dd data-k="ffmpeg">…</dd>
+        </dl>
+        <button class="btn-sm update-btn" id="btnUpdate" type="button"><i class="fas fa-arrows-rotate"></i> 更新 yt-dlp 並重啟</button>
+        <p class="update-msg" id="updateMsg"></p>
+        <a class="members-link" href="/members" target="_blank" rel="noopener"><i class="fas fa-users"></i> 成員管理</a>
+    </div>
+    <div class="kbd-help" id="kbdHelp" role="dialog" aria-label="鍵盤快捷鍵" hidden>
+        <div class="kbd-head"><span>鍵盤快捷鍵</span><button class="kbd-close" id="kbdHelpClose" type="button" aria-label="關閉"><i class="fas fa-xmark"></i></button></div>
+        <dl class="kbd-list">
+            <dt><kbd>Space</kbd></dt><dd>播放 / 暫停</dd>
+            <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>倒退 / 快轉 10 秒</dd>
+            <dt><kbd>Shift</kbd>+<kbd>→</kbd> 或 <kbd>N</kbd></dt><dd>下一首</dd>
+            <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>音量 +5% / −5%</dd>
+            <dt><kbd>M</kbd></dt><dd>靜音 / 取消靜音</dd>
+            <dt><kbd>F</kbd> 或 <kbd>E</kbd></dt><dd>展開 / 收合播放畫面</dd>
+            <dt><kbd>Esc</kbd></dt><dd>收合播放畫面 / 關閉說明</dd>
+            <dt><kbd>?</kbd></dt><dd>顯示 / 隱藏這個說明</dd>
+        </dl>
+        <p class="kbd-note">在輸入框打字時不會觸發。進度條可點擊或拖曳跳轉。</p>
+    </div>
+
+    <!-- 視覺化等化器（固定右下角小裝飾） -->
+    <audio id="audioPlayer" preload="none"></audio>
+
+    <!-- 編輯 Modal -->
+    <div class="modal-overlay" id="editModal">
+        <div class="modal glass">
+            <div class="modal-header">
+                <h3 id="modalTitle">編輯歌曲</h3>
+                <button class="modal-close" id="modalClose" aria-label="關閉"><i class="fas fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>YouTube 網址</label>
+                    <input type="text" class="form-input" id="editUrl" placeholder="https://www.youtube.com/watch?v=...">
+                </div>
+                <div class="form-group">
+                    <label>歌曲標題</label>
+                    <input type="text" class="form-input" id="editTitle" placeholder="輸入歌曲名稱">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-sm" id="modalCancel">取消</button>
+                <button class="btn-sm gold" id="modalConfirm">儲存</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js?v=20261023cy6"></script>
+</body>
+</html>

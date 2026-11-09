@@ -1,0 +1,24 @@
+__pycache__/
+*.pyc
+.env
+venv/
+bot_output.txt
+favorites/
+nohup.out
+logs/
+
+# 播放紀錄資料庫、YouTube cookies（絕對不要提交）
+data/
+*.db
+*.db-wal
+*.db-shm
+cookies*.txt
+*cookies*.txt
+
+# personal / build artifacts
+list.txt
+*.zip
+.venv/
+
+chrome-extension/token.txt
+

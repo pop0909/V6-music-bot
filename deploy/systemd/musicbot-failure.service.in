@@ -1,0 +1,10 @@
+# musicbot 連續當機、systemd 放棄重啟時，私訊擁有者（由 deploy/install.sh 產生）
+[Unit]
+Description=Music Bot failure notifier
+
+[Service]
+Type=oneshot
+User=@RUN_USER@
+Group=@RUN_GROUP@
+WorkingDirectory=@APP_DIR@
+ExecStart=@PYTHON@ @APP_DIR@/deploy/notify_failure.py musicbot

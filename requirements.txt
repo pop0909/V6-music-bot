@@ -1,0 +1,18 @@
+# Music Bot V5 — 依賴清單
+# 安裝：pip install -r requirements.txt
+
+# Discord 機器人（[voice] 含語音所需的 PyNaCl）
+discord.py[voice]>=2.6,<3.0
+
+# YouTube 解析 — 必須保持最新，YouTube 一改版舊版就會解析失敗（403）
+# 部署後請搭配 deploy/update-ytdlp.sh + systemd timer 每日自動更新
+yt-dlp>=2026.8
+
+# 網頁控制面板
+flask>=3.1,<4.0
+
+# 讀取 .env 設定
+python-dotenv>=1.0
+
+# 網頁面板狀態頁（CPU / 記憶體）
+psutil>=5.9

@@ -1,0 +1,26 @@
+.musbot-wrap { display: inline-flex; gap: 6px; margin: 6px 0 0; vertical-align: middle; }
+.musbot-wrap.music { margin: 0 0 0 10px; }
+.musbot-btn { font: 500 13px/1 system-ui, "Microsoft JhengHei", sans-serif; padding: 7px 12px; border-radius: 16px;
+  border: 0; cursor: pointer; background: #6c5ce7; color: #fff; }
+.musbot-btn.ghost { background: transparent; color: #a29bfe; border: 1px solid #6c5ce7; }
+.musbot-btn:hover { filter: brightness(1.12); }
+.musbot-btn:disabled { opacity: .5; cursor: wait; }
+.musbot-toast { position: fixed; z-index: 2147483647; right: 20px; bottom: 20px; padding: 10px 14px; border-radius: 10px;
+  font: 14px/1.4 system-ui, "Microsoft JhengHei", sans-serif; color: #fff; box-shadow: 0 4px 16px rgba(0,0,0,.35);
+  opacity: 0; transform: translateY(8px); transition: .25s; max-width: 360px; }
+.musbot-toast.show { opacity: 1; transform: none; }
+.musbot-toast.ok { background: #6c5ce7; } .musbot-toast.err { background: #d63031; }
+
+.musbot-wrap.floating{position:fixed;right:16px;bottom:80px;z-index:2147483646;display:flex;gap:6px;
+  background:rgba(20,20,30,.85);padding:6px;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.4)}
+.musbot-wrap { position: relative; }
+.musbot-wrap.floating { position: fixed; }
+.musbot-picker { position: absolute; left: 0; top: calc(100% + 6px); z-index: 2147483646; min-width: 200px; max-width: 280px;
+  max-height: 260px; overflow-y: auto; background: #1e1b2e; color: #fff; border-radius: 10px; padding: 4px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.45); font: 13px/1.4 system-ui, "Microsoft JhengHei", sans-serif; }
+.musbot-picker.up { top: auto; bottom: calc(100% + 6px); right: 0; left: auto; }
+.musbot-pick-item { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: inherit;
+  padding: 7px 10px; border-radius: 7px; cursor: pointer; font: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.musbot-pick-item:hover { background: #6c5ce7; }
+.musbot-pick-item.new { color: #a29bfe; border-top: 1px solid #333; border-radius: 0 0 7px 7px; }
+.musbot-pick-empty { padding: 7px 10px; color: #999; }
