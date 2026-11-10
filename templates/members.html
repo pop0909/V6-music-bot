@@ -2,29 +2,47 @@
 <html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex"><title>成員管理 · 音樂機器人</title>
 <script>(function(){var t=null;try{t=localStorage.getItem("theme");}catch(e){}if(t!=="light"&&t!=="dark")t=(window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)?"light":"dark";document.documentElement.dataset.theme=t;})();</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <style>
-:root { color-scheme: dark; --bg:#07060b; --card:#100e17; --line:#26223a; --line2:#1d1a2b; --in:#2c2842; --text:#f2f0ff; --sub:#a29fc0; --accent:#ff2e97; --accent2:#00e5ff; --on:#111; --ok:#4ade80; --err:#ff7675; --danger:#be123c; --pill:#166534; }
-html[data-theme="light"] { color-scheme: light; --bg:#f7f6fb; --card:#ffffff; --line:rgba(22,19,42,.14); --line2:rgba(22,19,42,.08); --in:rgba(22,19,42,.2); --text:#16132a; --sub:#55516e; --accent:#d6006f; --accent2:#007891; --on:#fff; --ok:#15803d; --err:#be123c; --danger:#be123c; --pill:#15803d; }
+:root { color-scheme: dark; --bg:#07060b; --card:#100e17; --line:#26223a; --line2:#1d1a2b; --in:#6e6a8c; --text:#f2f0ff; --sub:#a29fc0; --accent:#ff2e97; --accent2:#00e5ff; --on:#111; --ok:#4ade80; --err:#ff7675; --danger:#be123c; --pill:#166534; }
+html[data-theme="light"] { color-scheme: light; --bg:#f7f6fb; --card:#ffffff; --line:rgba(22,19,42,.14); --line2:rgba(22,19,42,.08); --in:#7a7690; --text:#16132a; --sub:#55516e; --accent:#d6006f; --accent2:#007891; --on:#fff; --ok:#15803d; --err:#be123c; --danger:#be123c; --pill:#15803d; }
 body { margin: 0; font: 14px/1.6 system-ui, "Microsoft JhengHei", sans-serif; background: var(--bg); color: var(--text); }
-main { max-width: 760px; margin: 32px auto; padding: 0 16px; }
-h1 { font-size: 20px; color: var(--accent); margin: 0 0 4px; } .muted { color: var(--sub); } a { color: var(--accent); }
+main { max-width: 1100px; margin: 32px auto; padding: 0 16px; }
+h1 { font-size: 20px; color: var(--accent); margin: 0 0 4px; display: flex; align-items: center; gap: 8px; } .muted { color: var(--sub); } a { color: var(--accent); }
+h1 i { font-size: 18px; }
 .muted a { display: inline-block; padding: 8px 4px; margin-left: 4px; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-top: 14px; }
 input { background: var(--bg); color: var(--text); border: 1px solid var(--in); border-radius: 8px; padding: 7px 9px; font: inherit; min-height: 36px; box-sizing: border-box; }
 button { border: 0; border-radius: 8px; padding: 7px 12px; background: var(--accent); color: var(--on); cursor: pointer; font: inherit; min-height: 34px; }
 button.ghost { background: transparent; border: 1px solid var(--line); color: var(--accent2); } button.danger { background: var(--danger); color: #fff; }
 button:disabled { opacity: .5; cursor: default; }
-.tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; } .tbl-wrap table { min-width: 680px; }
-@media (max-width: 600px) { .acts { flex-wrap: wrap; } }
-table { width: 100%; border-collapse: collapse; } th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--line2); vertical-align: middle; }
+button:focus-visible, input:focus-visible, a:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; } .tbl-wrap table { width: 100%; min-width: 0; }
+table { width: 100%; border-collapse: collapse; } th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--line2); vertical-align: middle; white-space: nowrap; }
 th { color: var(--sub); font-weight: 500; font-size: 12px; } td .acts { display: flex; gap: 5px; flex-wrap: wrap; }
+td:first-child, th:first-child { overflow-wrap: normal; word-break: keep-all; }
 .off { opacity: .5; } .pill { font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--pill); color: #fff; } .off .pill { background: #555; }
 #newtok { display: none; border-color: var(--accent); } #newtok code { display: block; word-break: break-all; background: var(--bg); padding: 8px; border-radius: 8px; margin: 6px 0; user-select: all; }
 #msg { min-height: 1.4em; margin-top: 8px; } .err { color: var(--err); } .ok { color: var(--ok); }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+@media (max-width: 760px) {
+    .tbl-wrap { overflow: visible; }
+    .tbl-wrap table, .tbl-wrap thead, .tbl-wrap tbody { display: block; width: 100%; min-width: 0; }
+    .tbl-wrap thead { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+    .tbl-wrap tr { display: block; border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin: 0 0 12px; background: var(--bg); }
+    .tbl-wrap tr:last-child { margin-bottom: 0; }
+    .tbl-wrap td { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; border: 0; padding: 6px 0; white-space: normal; word-break: keep-all; overflow-wrap: anywhere; }
+    .tbl-wrap td::before { content: attr(data-label); color: var(--sub); font-size: 12px; font-weight: 500; flex: 0 0 5.5em; }
+    .tbl-wrap td.acts-cell { display: block; padding-top: 10px; }
+    .tbl-wrap td.acts-cell::before { display: none; }
+    .acts { flex-wrap: wrap; gap: 8px; }
+    .acts button { min-height: 36px; }
+}
 </style></head>
 <body><main>
-<h1>👥 成員管理</h1>
+<h1><i class="fas fa-users" aria-hidden="true"></i> 成員管理</h1>
 <div class="muted">給朋友各自一把 Chrome 擴充功能金鑰；停用或刪除後那把金鑰立刻失效。<a href="/">← 回控制面板</a></div>
 
 <div class="card" id="login">
@@ -41,7 +59,7 @@ th { color: var(--sub); font-weight: 500; font-size: 12px; } td .acts { display:
     <b id="newtokTitle"></b>
     <div class="muted">這把金鑰只會顯示這一次，請現在複製並私訊給對方（貼到擴充功能「選項」）。</div>
     <code id="newtokVal"></code>
-    <div class="row"><button id="copyBtn">📋 複製金鑰</button><button class="ghost" id="hideBtn">我已複製，關閉</button></div>
+    <div class="row"><button id="copyBtn"><i class="fas fa-copy" aria-hidden="true"></i> 複製金鑰</button><button class="ghost" id="hideBtn">我已複製，關閉</button></div>
   </div>
   <div class="card">
     <div class="tbl-wrap"><table><thead><tr><th>名字</th><th>狀態</th><th>點歌</th><th>Discord</th><th>最後使用</th><th>建立</th><th></th></tr></thead><tbody id="rows"></tbody></table></div>
@@ -58,6 +76,11 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = (t) => t ? new Date(t * 1000).toLocaleString('zh-TW', { hour12: false }) : '—';
 function say(text, ok) { $('msg').textContent = text || ''; $('msg').className = ok ? 'ok' : 'err'; }
+function copyLabel(copied) {
+  $('copyBtn').innerHTML = copied
+    ? '<i class="fas fa-check" aria-hidden="true"></i> 已複製'
+    : '<i class="fas fa-copy" aria-hidden="true"></i> 複製金鑰';
+}
 
 async function api(method, path, body) {
   const r = await fetch('/api/ext/' + path, { method, headers: { 'Content-Type': 'application/json', 'X-Ext-Token': localStorage.getItem(KEY) || '' },
@@ -82,9 +105,9 @@ async function load() {
   for (const m of j.members) {
     const tr = document.createElement('tr');
     if (!m.enabled) tr.className = 'off';
-    tr.innerHTML = `<td>${esc(m.name)}</td><td><span class="pill">${m.enabled ? '啟用' : '停用'}</span></td><td>${m.add_count || 0}</td><td>${m.discord_id ? esc(m.discord_id) : '—'}</td>
-      <td>${fmt(m.last_used)}</td><td>${fmt(m.created)}</td>
-      <td><div class="acts"><button class="ghost" data-a="rename">改名</button><button class="ghost" data-a="${m.enabled ? 'disable' : 'enable'}">${m.enabled ? '停用' : '啟用'}</button>
+    tr.innerHTML = `<td data-label="名字">${esc(m.name)}</td><td data-label="狀態"><span class="pill">${m.enabled ? '啟用' : '停用'}</span></td><td data-label="點歌">${m.add_count || 0}</td><td data-label="Discord">${m.discord_id ? esc(m.discord_id) : '—'}</td>
+      <td data-label="最後使用">${fmt(m.last_used)}</td><td data-label="建立">${fmt(m.created)}</td>
+      <td class="acts-cell" data-label="操作"><div class="acts"><button class="ghost" data-a="rename">改名</button><button class="ghost" data-a="${m.enabled ? 'disable' : 'enable'}">${m.enabled ? '停用' : '啟用'}</button>
       <button class="ghost" data-a="discord">連結 Discord</button><button class="ghost" data-a="reset">重設金鑰</button><button class="danger" data-a="delete">刪除</button></div></td>`;
     tr.querySelectorAll('button').forEach((b) => b.onclick = () => act(m, b.dataset.a));
     tb.appendChild(tr);
@@ -133,9 +156,9 @@ $('createBtn').onclick = async () => {
 };
 $('newName').onkeydown = (e) => { if (e.key === 'Enter') $('createBtn').click(); };
 $('copyBtn').onclick = async () => {
-  try { await navigator.clipboard.writeText($('newtokVal').textContent); $('copyBtn').textContent = '✅ 已複製'; }
-  catch (_) { getSelection().selectAllChildren($('newtokVal')); document.execCommand('copy'); $('copyBtn').textContent = '✅ 已複製'; }
-  setTimeout(() => $('copyBtn').textContent = '📋 複製金鑰', 2000);
+  try { await navigator.clipboard.writeText($('newtokVal').textContent); copyLabel(true); }
+  catch (_) { getSelection().selectAllChildren($('newtokVal')); document.execCommand('copy'); copyLabel(true); }
+  setTimeout(() => copyLabel(false), 2000);
 };
 $('hideBtn').onclick = () => { $('newtokVal').textContent = ''; $('newtok').style.display = 'none'; };
 $('logout').onclick = () => { localStorage.removeItem(KEY); show(false); say('已登出', true); };
