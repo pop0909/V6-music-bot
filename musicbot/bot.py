@@ -57,6 +57,8 @@ async def on_ready():
         log.warning(f"[語音續播] {e!r}")
     from . import alerts
     alerts.startup_notice()
+    from . import ytdl
+    ytdl.warn_cookie_quality()
     from . import backup
     backup.start(client)
 

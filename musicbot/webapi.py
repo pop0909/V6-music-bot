@@ -313,6 +313,8 @@ def api_queue_add():
     no_play = data.get("no_play", False)
     if not url:
         return jsonify({"status": "error", "message": "請提供網址"}), 400
+    if not valid_song_url(url):
+        return jsonify({"status": "error", "message": "網址格式不正確（需要 http/https 連結）"}), 400
     result = run_async(web_add_to_queue(gid, url, title, auto_play=not no_play, duration=data.get("duration")))
     if not result:
         return jsonify({"status": "error", "message": "加入失敗"})
@@ -630,6 +632,8 @@ def api_resolve_url():
     url = data.get("url", "").strip()
     if not url:
         return jsonify({"status": "error", "message": "請提供網址"}), 400
+    if not valid_song_url(url):
+        return jsonify({"status": "error", "message": "網址格式不正確（需要 http/https 連結）"}), 400
     try:
         with yt_dlp.YoutubeDL(ytdl.build_opts({
             "format": "bestaudio/best",

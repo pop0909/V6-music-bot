@@ -23,6 +23,9 @@ BOT_MSG = ("ERROR: [youtube] AAAAAAAAAAA: Sign in to confirm you\u2019re not a b
 
 # ======================= yt-dlp cookies / 機器人驗證 =======================
 class YtdlOptsTest(unittest.TestCase):
+    def tearDown(self):
+        ytdl.reset_cookie_runtime()
+
     def test_no_env_keeps_base(self):
         with mock.patch.dict(os.environ, {"YTDLP_COOKIES": "", "YTDLP_COOKIES_FROM_BROWSER": "", "YTDLP_PLAYER_CLIENT": ""}):
             base = {"quiet": True}
@@ -36,7 +39,8 @@ class YtdlOptsTest(unittest.TestCase):
         try:
             with mock.patch.dict(os.environ, {"YTDLP_COOKIES": f.name, "YTDLP_COOKIES_FROM_BROWSER": "firefox"}):
                 out = ytdl.build_opts({"quiet": True})
-            self.assertEqual(out["cookiefile"], f.name)
+            self.assertNotEqual(out["cookiefile"], f.name)    # 執行時複本，不是主檔
+            self.assertTrue(os.path.isfile(out["cookiefile"]))
             self.assertNotIn("cookiesfrombrowser", out)    # 檔案優先
         finally:
             os.unlink(f.name)

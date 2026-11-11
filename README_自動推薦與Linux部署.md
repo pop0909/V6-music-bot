@@ -96,7 +96,11 @@ sudo ./deploy/uninstall.sh                 # 加 --purge-venv 連 venv 一起刪
    ```
    YTDLP_COOKIES=/root/v6/cookies.txt
    ```
-7. 重啟：`systemctl restart musicbot`
+7. 重啟：`systemctl restart musicbot`（若只是覆寫主檔、程式已在跑，下一次解析就會改用新檔，不必重啟）。
+
+匯出的檔案應含 `LOGIN_INFO` 或 `SID`（或 `__Secure-1PSID`／`SAPISID`），才像已登入的工作階段。啟動時與狀態面板會在主檔缺少這些名稱時發出警告。
+
+yt-dlp 結束時會把 cookiejar 寫回它使用的檔案。為避免把 YouTube 輪替後較弱的 cookies 覆寫掉你匯出的主檔，機器人會先複製到暫存檔再交給 yt-dlp，**永遠不寫回主檔**。你只要覆寫 `YTDLP_COOKIES` 指定的那個檔即可（mtime 變了會自動再複製）。
 
 本機（Windows）執行也可以改用直接讀瀏覽器：`YTDLP_COOKIES_FROM_BROWSER=firefox`（或 `chrome`、`edge`、`firefox:設定檔名稱`）。
 Chrome / Edge 執行中時 cookies 資料庫可能被鎖住或加密而讀不到，Firefox 最穩定；伺服器請用 `YTDLP_COOKIES` 檔案。
@@ -126,6 +130,6 @@ Chrome / Edge 執行中時 cookies 資料庫可能被鎖住或加密而讀不到
 
 ## Discord 指令
 
-只保留 10 個常用指令：`/play`、`/import`、`/skip`、`/stop`（清空佇列、留在語音）、`/leave`、`/queue`、`/volume`、`/web`、`/join`、`/panel`。
+只保留 10 個常用指令：`/play`、`/import`、`/skip`、`/stop`（清空佇列、留在語音）、`/leave`、`/queue`、`/volume`、`/web`、`/join`、`/panel`。另外還有 `/mylist` 指令群組（`show`／`play`／`add`／`import`）管理個人歌單。
 暫停 / 繼續、跳轉、移除 / 排序佇列、最愛、歌單、循環、自動推薦、音量平衡、播放紀錄 / 排行、休眠後恢復，都在網頁面板（`/web`）或 Discord 控制面板按鈕（`/panel`）。
 指令在每次啟動時自動同步到伺服器，並清掉 Discord 上殘留的全域指令，不會重複出現。

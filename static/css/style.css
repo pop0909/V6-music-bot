@@ -67,6 +67,31 @@ button:focus-visible, input:focus-visible, select:focus-visible, a.hdr-btn:focus
 /* 背景：純色（賽博霓虹配色，平面無光暈） */
 body { background: var(--bg); }
 
+
+/* 隨意筆劃：靜態單筆線條裝飾（無填色、無持續動畫；不影響對比與焦點） */
+.stroke-bg {
+    position: fixed; inset: 0; z-index: 0;
+    pointer-events: none; overflow: hidden;
+}
+.stroke-bg svg { width: 100%; height: 100%; display: block; }
+.stroke-bg .s-pink { stroke: var(--accent); opacity: .13; }
+.stroke-bg .s-cyan { stroke: var(--accent-2); opacity: .11; }
+html[data-theme="light"] .stroke-bg .s-pink { opacity: .15; }
+html[data-theme="light"] .stroke-bg .s-cyan { opacity: .13; }
+.stroke-ico { display: block; overflow: visible; }
+.stroke-ico path { fill: none; }
+.stroke-ico .s-pink { stroke: var(--accent); }
+.stroke-ico .s-cyan { stroke: var(--accent-2); }
+.logo-mark .stroke-ico { width: 18px; height: 18px; }
+.logo-mark .stroke-ico .s-pink,
+.logo-mark .stroke-ico .s-cyan { stroke: var(--on-accent); }
+.album-art .stroke-ico { width: 46%; height: 46%; max-width: 140px; }
+.pb-art .stroke-ico { width: 26px; height: 26px; }
+@media (prefers-reduced-motion: reduce) {
+    .stroke-bg, .stroke-ico { animation: none !important; }
+}
+
+
 /* ================== 共用玻璃卡片 ================== */
 .glass {
     background: var(--glass);

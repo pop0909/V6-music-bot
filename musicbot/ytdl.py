@@ -5,8 +5,17 @@
 - YTDLP_COOKIES_FROM_BROWSER=chrome      直接讀本機瀏覽器 cookies（本機執行用；可寫 firefox:設定檔名稱）
 - YTDLP_PLAYER_CLIENT=default,mweb       （進階）指定 YouTube player client 的嘗試順序，不設定 = yt-dlp 預設
 所有 yt-dlp 呼叫（播放解析、預先解析、搜尋、網址解析、自動推薦 Mix）都經過 build_opts()。
+
+cookiefile 注意：yt-dlp 會在結束時把 cookiejar 寫回 cookiefile（YoutubeDL.save_cookies）。
+若直接指向主檔，YouTube 輪替／弱化後的 cookies 會覆寫原本的 LOGIN_INFO / SID。
+因此 build_opts() 只把「主檔的複本」（暫存執行檔）交給 yt-dlp，永遠不寫回主檔。
+主檔更新（mtime / 大小變了）時會自動再複製一份，不必重啟。
 """
+import atexit
 import os
+import shutil
+import tempfile
+import threading
 import time
 
 from .config import log
@@ -33,16 +42,159 @@ def _env(name):
     return (os.getenv(name) or "").strip()
 
 
-def cookie_opts():
-    """依 .env 回傳要加進 yt-dlp 選項的 cookies 設定（每次呼叫重新讀，改 .env 重啟即可）"""
-    opts = {}
-    path = _env("YTDLP_COOKIES")
+# 已登入 YouTube／Google 工作階段常見的 cookie 名稱。只有 __Secure-3PSID 不夠。
+_SESSION_COOKIE_NAMES = frozenset({"LOGIN_INFO", "SID", "SAPISID", "__Secure-1PSID"})
+
+_cookie_lock = threading.Lock()
+# master / src_mtime / src_size / path（runtime 複本）/ session_ok
+_runtime = {"master": None, "src_mtime": None, "src_size": None, "path": None, "session_ok": None}
+
+COOKIE_QUALITY_HINT = (
+    "cookies 主檔沒有 LOGIN_INFO 或 SID（看起來不像已登入的 YouTube 工作階段，"
+    "或曾被 yt-dlp 覆寫成較弱的內容）。請用已登入的拋棄式 Google 帳號重新匯出 "
+    "Netscape 格式的 cookies.txt 覆寫主檔。機器人只讀取主檔，不會把 yt-dlp 寫回的內容存回去。"
+)
+
+
+def cookie_names(path):
+    """讀 Netscape cookies 檔的名稱（不回傳、不記錄值）。"""
+    names = set()
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if not line or line[0] == "#":
+                    continue
+                parts = line.rstrip("\n").split("\t")
+                if len(parts) >= 6 and parts[5]:
+                    names.add(parts[5])
+    except OSError:
+        pass
+    return names
+
+
+def has_session_cookies(path):
+    """主檔是否含 LOGIN_INFO / SID / SAPISID / __Secure-1PSID。"""
+    return bool(cookie_names(path) & _SESSION_COOKIE_NAMES)
+
+
+def _unlink_runtime(path):
     if path:
-        path = os.path.expanduser(path)
-        if os.path.isfile(path):
-            opts["cookiefile"] = path
-        else:
-            _warn_once("cookies_missing", f"[yt-dlp] 找不到 YTDLP_COOKIES 指定的檔案：{path}（略過 cookies）")
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+def reset_cookie_runtime():
+    """測試用：清掉執行時複本。"""
+    with _cookie_lock:
+        _unlink_runtime(_runtime["path"])
+        _runtime.update(master=None, src_mtime=None, src_size=None, path=None, session_ok=None)
+        _warned.discard("cookies_quality")
+        _warned.discard("cookies_quality_ok")
+        _warned.discard("cookies_missing")
+        _warned.discard("cookies_copy_fail")
+
+
+def _copy_to_runtime(src, dest=None):
+    """把主檔複製到權限 0600 的暫存檔；dest 有值就覆寫該檔（先寫 tmp 再 replace）。"""
+    if dest:
+        tmp = dest + ".tmp"
+        shutil.copyfile(src, tmp)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, dest)
+        try:
+            os.chmod(dest, 0o600)
+        except OSError:
+            pass
+        return dest
+    fd, path = tempfile.mkstemp(prefix="musicbot-cookies-", suffix=".txt")
+    os.close(fd)
+    try:
+        os.chmod(path, 0o600)
+        shutil.copyfile(src, path)
+        os.chmod(path, 0o600)
+    except Exception:
+        _unlink_runtime(path)
+        raise
+    return path
+
+
+def _note_quality(ok):
+    if ok:
+        _warned.discard("cookies_quality")
+        _warn_once("cookies_quality_ok", "[yt-dlp] 已載入含登入工作階段的 cookies 主檔（LOGIN_INFO / SID）。")
+    else:
+        _warned.discard("cookies_quality_ok")
+        _warn_once("cookies_quality", "[yt-dlp] " + COOKIE_QUALITY_HINT)
+
+
+def _ensure_runtime():
+    """回傳要交給 yt-dlp 的執行時複本路徑；主檔不存在則 None。永不把 cookiefile 指到主檔。"""
+    raw = _env("YTDLP_COOKIES")
+    if not raw:
+        return None
+    master = os.path.abspath(os.path.expanduser(raw))
+    if not os.path.isfile(master):
+        _warn_once("cookies_missing", f"[yt-dlp] 找不到 YTDLP_COOKIES 指定的檔案：{master}（略過 cookies）")
+        return None
+    try:
+        st = os.stat(master)
+    except OSError as e:
+        _warn_once("cookies_missing", f"[yt-dlp] 無法讀取 YTDLP_COOKIES 指定的檔案：{master}（{e!r}）")
+        return None
+    with _cookie_lock:
+        same = (
+            _runtime["path"]
+            and _runtime["master"] == master
+            and _runtime["src_mtime"] == st.st_mtime
+            and _runtime["src_size"] == st.st_size
+            and os.path.isfile(_runtime["path"])
+        )
+        if same:
+            return _runtime["path"]
+        try:
+            dest = _copy_to_runtime(master, _runtime["path"] if _runtime["path"] and _runtime["master"] == master else None)
+        except OSError as e:
+            _warn_once("cookies_copy_fail", f"[yt-dlp] 無法複製 cookies 主檔到執行時暫存檔：{e!r}（略過 cookies，以免覆寫主檔）")
+            return None
+        if _runtime["path"] and _runtime["path"] != dest:
+            _unlink_runtime(_runtime["path"])
+        ok = has_session_cookies(master)
+        _runtime.update(master=master, src_mtime=st.st_mtime, src_size=st.st_size, path=dest, session_ok=ok)
+        _note_quality(ok)
+        return dest
+
+
+def warn_cookie_quality():
+    """啟動時呼叫：還沒播歌也先檢查主檔並寫 log。"""
+    _ensure_runtime()
+
+
+def cookie_status():
+    """給面板用的摘要。不回傳路徑或 cookie 值。"""
+    raw = _env("YTDLP_COOKIES")
+    if not raw:
+        return {"configured": False, "session_ok": False, "warning": None}
+    path = os.path.abspath(os.path.expanduser(raw))
+    if not os.path.isfile(path):
+        return {"configured": False, "session_ok": False, "warning": None}
+    _ensure_runtime()
+    ok = bool(_runtime.get("session_ok"))
+    return {
+        "configured": True,
+        "session_ok": ok,
+        "warning": None if ok else COOKIE_QUALITY_HINT,
+    }
+
+
+def cookie_opts():
+    """依 .env 回傳要加進 yt-dlp 選項的 cookies 設定（每次呼叫重新讀主檔是否更新）。
+    cookiefile 指向執行時複本，不是主檔。"""
+    opts = {}
+    runtime = _ensure_runtime()
+    if runtime:
+        opts["cookiefile"] = runtime
     browser = _env("YTDLP_COOKIES_FROM_BROWSER")
     if browser and "cookiefile" not in opts:
         name, _, profile = browser.partition(":")
@@ -104,3 +256,5 @@ def _warn_once(key, msg):
     if key not in _warned:
         _warned.add(key)
         log.warning(msg)
+
+atexit.register(reset_cookie_runtime)

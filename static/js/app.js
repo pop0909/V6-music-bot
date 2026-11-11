@@ -666,6 +666,13 @@ function thumbCandidates(url, fallback, big) {
     return list;
 }
 // 依序嘗試候選網址（失敗換下一個），全部失敗才呼叫 onFail
+
+function strokePlaceholder(kind) {
+    const id = kind === 'phones' ? 'tplStrokePhones' : 'tplStrokeNote';
+    const tpl = document.getElementById(id);
+    return tpl ? tpl.innerHTML : '';
+}
+
 function loadThumb(img, candidates, onFail) {
     let i = 0;
     const next = () => {
@@ -772,21 +779,18 @@ function updateSongInfo(title, url, thumbnail) {
         }
         img.alt = title || '';
         img.style.display = '';
-        const fallbackIcon = el.albumArt.querySelector('i');
-        if (fallbackIcon) fallbackIcon.remove();
+        el.albumArt.querySelectorAll('i, .stroke-ico').forEach(n => n.remove());
         if (img.dataset.for !== coverList[0]) {
             img.dataset.for = coverList[0];
             loadThumb(img, coverList, () => {
                 img.style.display = 'none';
-                if (!el.albumArt.querySelector('i')) {
-                    const icon = document.createElement('i');
-                    icon.className = 'fas fa-headphones';
-                    el.albumArt.appendChild(icon);
+                if (!el.albumArt.querySelector('.stroke-ico, i')) {
+                    el.albumArt.insertAdjacentHTML('beforeend', strokePlaceholder('phones'));
                 }
             });
         }
     } else {
-        el.albumArt.innerHTML = '<i class="fas fa-headphones"></i>';
+        el.albumArt.innerHTML = strokePlaceholder('phones');
     }
     updateNowPlayingBackdrop(thumbnail);
     updateBarSong(title, thumbnail, url);
@@ -809,9 +813,9 @@ function updateBarSong(title, thumbnail, url) {
         img.alt = '';
         img.decoding = 'async';
         el.barArt.appendChild(img);
-        loadThumb(img, list, () => { el.barArt.innerHTML = '<i class="fas fa-music"></i>'; });
+        loadThumb(img, list, () => { el.barArt.innerHTML = strokePlaceholder('note'); });
     } else {
-        el.barArt.innerHTML = '<i class="fas fa-music"></i>';
+        el.barArt.innerHTML = strokePlaceholder('note');
     }
 }
 
@@ -3090,6 +3094,15 @@ setShuffleUI(!!state.shuffleMode);
         set('guilds', `${r.guilds} 個伺服器 · ${r.voice} 個語音${r.playing ? `（${r.playing} 個播放中）` : ''}`);
         set('bitrate', state.bitrate ? `Opus ${state.bitrate} kbps` : '未在語音中');
         set('ytdlp', r.ytdlp || '—');
+        const ck = r.cookies || {};
+        if (!ck.configured) set('cookies', '未設定', 'st-warn');
+        else if (ck.session_ok) set('cookies', '已設定（含登入工作階段）', 'st-ok');
+        else set('cookies', '已設定（缺 LOGIN_INFO / SID）', 'st-warn');
+        const cw = $('cookieWarn');
+        if (cw) {
+            cw.textContent = (ck.configured && !ck.session_ok) ? (ck.warning || '') : '';
+            cw.className = 'update-msg cookie-warn' + (ck.configured && !ck.session_ok ? ' st-warn' : '');
+        }
         set('ffmpeg', r.ffmpeg && r.ffmpeg.ok ? ('有' + (r.ffmpeg.version ? `（${r.ffmpeg.version}）` : '')) : '找不到！', r.ffmpeg && r.ffmpeg.ok ? '' : 'st-bad');
         const u = r.update || {};
         if (upBtn) {

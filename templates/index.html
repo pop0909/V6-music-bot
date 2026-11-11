@@ -12,14 +12,32 @@
       document.documentElement.dataset.theme = t;
       if (t === 'light') document.querySelector('meta[name="theme-color"]').content = '#f7f6fb'; })();
     </script>
-    <link rel="icon" href="data:,">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none'%3E%3Cpath d='M14.1 25.6c.4-7.2-.2-14.1 1.1-21.2 2.8 1 6.6 2.4 9.4 4.8-1.6 1.4-3.8 2.6-6.2 3.3' stroke='%23ff2e97' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M13.8 24.8c-3.6 2.2-7.2-.4-5.4-3.5 1.5-2.4 5.2-1.6 6.6.8' stroke='%2300e5ff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700&display=swap">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <link rel="stylesheet" href="/static/css/style.css?v=20261023cy6">
+    <link rel="stylesheet" href="/static/css/style.css?v=20261112stroke">
 </head>
 <body>
+    <div class="stroke-bg" aria-hidden="true"><svg viewBox="0 0 1400 900" fill="none" preserveAspectRatio="xMidYMid slice">
+<path class="s-pink" d="M120 80c40-30 90-10 110 40 18 46-10 88-50 96" stroke-width="1.6" stroke-linecap="round"/>
+<path class="s-cyan" d="M280 160c8-90 4-160 18-230 40 18 90 40 120 70-22 18-55 32-88 40" stroke-width="1.5" stroke-linecap="round"/>
+<path class="s-pink" d="M250 210c-40 24-82-8-62-42 18-30 62-18 76 14" stroke-width="1.5" stroke-linecap="round"/>
+<path class="s-cyan" d="M980 90c70 12 130 70 122 150-6 62-70 90-120 70" stroke-width="1.6" stroke-linecap="round"/>
+<path class="s-pink" d="M1180 240c-20-80 30-130 90-140 40 36 70 80 66 130" stroke-width="1.4" stroke-linecap="round"/>
+<path class="s-cyan" d="M80 520c90-40 170 10 190 80 16 58-40 110-100 100" stroke-width="1.5" stroke-linecap="round"/>
+<path class="s-pink" d="M420 700c12-110 6-200 22-280 48 14 110 36 150 78-30 22-80 40-124 48" stroke-width="1.6" stroke-linecap="round"/>
+<path class="s-cyan" d="M400 760c-48 28-96-10-72-48 22-36 74-20 90 18" stroke-width="1.5" stroke-linecap="round"/>
+<path class="s-pink" d="M1080 620c-6 90 18 170-14 240 52 10 110 4 150-30-18-30-60-48-104-52" stroke-width="1.5" stroke-linecap="round"/>
+<path class="s-cyan" d="M1260 500c40 60 20 140-30 170-70 20-110-40-90-90 18-42 70-50 100-30" stroke-width="1.4" stroke-linecap="round"/>
+<path class="s-pink" d="M640 80c80 8 60 70 20 90-50 24-80-20-54-50 18-22 50-18 64 4" stroke-width="1.5" stroke-linecap="round"/>
+<path class="s-cyan" d="M820 780c70-30 40-110-10-120-48-8-70 40-40 70 18 20 50 18 70 4" stroke-width="1.4" stroke-linecap="round"/>
+<path class="s-pink" d="M60 300c30-80 120-70 140-10 16 48-30 70-70 58" stroke-width="1.3" stroke-linecap="round"/>
+<path class="s-cyan" d="M1320 360c-80-20-70 70-20 90 46 18 80-24 62-58" stroke-width="1.3" stroke-linecap="round"/>
+</svg></div>
+    <template id="tplStrokeNote"><svg class="stroke-ico stroke-note" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path class="s-cyan" d="M14.1 25.6c.4-7.2-.2-14.1 1.1-21.2 2.8 1 6.6 2.4 9.4 4.8-1.6 1.4-3.8 2.6-6.2 3.3" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path class="s-pink" d="M13.8 24.8c-3.6 2.2-7.2-.4-5.4-3.5 1.5-2.4 5.2-1.6 6.6.8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></template>
+    <template id="tplStrokePhones"><svg class="stroke-ico stroke-phones" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path class="s-cyan" d="M8.2 17.8c.6-6.4 4.2-11.2 8.1-11.6 4.2-.4 7.6 4.3 8.6 11.2" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path class="s-pink" d="M8.4 16.6c-2.4.6-3.6 3.2-2.6 5.4 1 2.2 3.6 3 5.1 1.6" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path class="s-pink" d="M23.8 16.8c2.3.4 3.6 3.1 2.5 5.3-1.1 2.3-3.8 2.9-5.2 1.4" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></template>
     <!-- 頂欄後方的遮罩：跟背景一模一樣（同一組漸層、同樣以視窗定位），只蓋住頂欄那一條；捲動後內容不會從頂欄四周透出來 -->
     <div class="hdr-mask" aria-hidden="true"></div>
     <div class="app-container">
@@ -27,7 +45,7 @@
         <!-- ================== 頂欄 ================== -->
         <header class="app-header">
             <div class="logo">
-                <span class="logo-mark"><i class="fas fa-music"></i></span>
+                <span class="logo-mark"><svg class="stroke-ico stroke-note" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path class="s-cyan" d="M14.1 25.6c.4-7.2-.2-14.1 1.1-21.2 2.8 1 6.6 2.4 9.4 4.8-1.6 1.4-3.8 2.6-6.2 3.3" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path class="s-pink" d="M13.8 24.8c-3.6 2.2-7.2-.4-5.4-3.5 1.5-2.4 5.2-1.6 6.6.8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
                 <span class="logo-text">Music<span>Bot</span></span>
             </div>
 
@@ -166,7 +184,7 @@
                 </div>
                 <div class="np-cover-wrap">
                     <div class="album-art" id="albumArt">
-                        <i class="fas fa-headphones"></i>
+                        <svg class="stroke-ico stroke-phones" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path class="s-cyan" d="M8.2 17.8c.6-6.4 4.2-11.2 8.1-11.6 4.2-.4 7.6 4.3 8.6 11.2" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path class="s-pink" d="M8.4 16.6c-2.4.6-3.6 3.2-2.6 5.4 1 2.2 3.6 3 5.1 1.6" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path class="s-pink" d="M23.8 16.8c2.3.4 3.6 3.1 2.5 5.3-1.1 2.3-3.8 2.9-5.2 1.4" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
                     </div>
                     <div class="equalizer" id="equalizer" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
                 </div>
@@ -229,7 +247,7 @@
             <span class="pb-time"><span id="currentTime">0:00</span> / <span id="totalTime">0:00</span></span>
         </div>
         <div class="pb-center">
-            <div class="pb-art" id="barArt"><i class="fas fa-music"></i></div>
+            <div class="pb-art" id="barArt"><svg class="stroke-ico stroke-note" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path class="s-cyan" d="M14.1 25.6c.4-7.2-.2-14.1 1.1-21.2 2.8 1 6.6 2.4 9.4 4.8-1.6 1.4-3.8 2.6-6.2 3.3" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path class="s-pink" d="M13.8 24.8c-3.6 2.2-7.2-.4-5.4-3.5 1.5-2.4 5.2-1.6 6.6.8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
             <div class="pb-info">
                 <div class="pb-title" id="barTitle">尚未播放</div>
                 <div class="pb-sub" id="barSub">點擊展開播放畫面</div>
@@ -283,11 +301,13 @@
             <dt>記憶體</dt><dd data-k="mem">…</dd>
             <dt>連線</dt><dd data-k="guilds">…</dd>
             <dt>yt-dlp</dt><dd data-k="ytdlp">…</dd>
+            <dt>Cookies</dt><dd data-k="cookies">…</dd>
             <dt>音質</dt><dd data-k="bitrate">…</dd>
             <dt>ffmpeg</dt><dd data-k="ffmpeg">…</dd>
         </dl>
         <button class="btn-sm update-btn" id="btnUpdate" type="button"><i class="fas fa-arrows-rotate"></i> 更新 yt-dlp 並重啟</button>
         <p class="update-msg" id="updateMsg"></p>
+        <p class="update-msg cookie-warn" id="cookieWarn"></p>
         <a class="members-link" href="/members" target="_blank" rel="noopener"><i class="fas fa-users"></i> 成員管理</a>
     </div>
     <div class="kbd-help" id="kbdHelp" role="dialog" aria-label="鍵盤快捷鍵" hidden>

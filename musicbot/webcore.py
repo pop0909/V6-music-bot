@@ -1,6 +1,7 @@
 """Web 控制輔助函數 + Flask API + SSE"""
 from .config import DEFAULT_VOLUME
 import asyncio
+import inspect
 import time
 import math
 
@@ -41,7 +42,12 @@ def _vc_json(vc):
 
 def run_async(coro):
     """從任何執行緒安全地排程 Discord 協程"""
+    def _close():
+        if inspect.iscoroutine(coro):
+            coro.close()
     if not client.loop or client.loop.is_closed():
+        _close()
+        log.warning("run_async: Discord 事件迴圈尚未就緒，已取消操作")
         return None
     try:
         future = asyncio.run_coroutine_threadsafe(coro, client.loop)

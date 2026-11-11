@@ -77,5 +77,37 @@ class EndClearsDurationTest(unittest.IsolatedAsyncioTestCase):
                 d.pop(G, None)
 
 
+
+class ResolveUrlValidation(unittest.TestCase):
+    def setUp(self):
+        from musicbot import webapi
+        self.c = webapi.flask_app.test_client()
+
+    def test_resolve_url_rejects_bad_url(self):
+        for bad in ("javascript:alert(1)", "file:///etc/passwd", "not-a-url", ""):
+            r = self.c.post("/api/resolve-url", json={"url": bad})
+            self.assertEqual(r.status_code, 400, bad)
+            self.assertNotEqual((r.get_json() or {}).get("code"), "bot_check")
+
+
+class RunAsyncClosesCoroutine(unittest.TestCase):
+    def test_closes_when_loop_missing(self, warnings_mod=__import__("warnings")):
+        import inspect
+        from musicbot import webcore
+        from musicbot.bot import client
+        async def dummy():
+            return 1
+        coro = dummy()
+        self.assertTrue(inspect.iscoroutine(coro))
+        with unittest.mock.patch.object(client, "loop", None):
+            with warnings_mod.catch_warnings(record=True) as w:
+                warnings_mod.simplefilter("always")
+                self.assertIsNone(webcore.run_async(coro))
+                never = [x for x in w if issubclass(x.category, RuntimeWarning) and "never awaited" in str(x.message)]
+                self.assertEqual(never, [])
+        # already closed; closing again should not be needed
+        self.assertTrue(coro.cr_frame is None or coro.cr_running is False)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -422,8 +422,7 @@ async def _play_next_locked(guild_id, channel=None):
                 source.cleanup()
             except Exception:
                 pass
-        traceback.print_exc()
-        log.error(f"Queue Error: {e}")
+        log.exception("Queue Error: %s: %s", type(e).__name__, e)
         try:
             from . import alerts
             alerts.note_error(e, f"播放 {title}")

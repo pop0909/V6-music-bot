@@ -77,6 +77,14 @@ def voice_latency_ms(gid=None):
     return None
 
 
+def _cookies_status():
+    try:
+        from . import ytdl
+        return ytdl.cookie_status()
+    except Exception:
+        return {"configured": False, "session_ok": False, "warning": None}
+
+
 def status(gid=None):
     from .bot import client
     lat = client.latency if client.is_ready() else None
@@ -94,6 +102,7 @@ def status(gid=None):
         "systemd": bool(os.getenv("INVOCATION_ID")),
         "update": {"running": _update["running"], "result": _update["result"],
                    "cooldown": max(0, int(UPDATE_COOLDOWN - (time.time() - _update["last"])))},
+        "cookies": _cookies_status(),
     }
     if psutil:
         vm = psutil.virtual_memory()
