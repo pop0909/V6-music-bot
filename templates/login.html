@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none'%3E%3Cpath d='M14.1 25.6c.4-7.2-.2-14.1 1.1-21.2 2.8 1 6.6 2.4 9.4 4.8-1.6 1.4-3.8 2.6-6.2 3.3' stroke='%23ff2e97' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M13.8 24.8c-3.6 2.2-7.2-.4-5.4-3.5 1.5-2.4 5.2-1.6 6.6.8' stroke='%2300e5ff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"><title>登入 · 音樂機器人</title>
+<script>(function(){var t=null;try{t=localStorage.getItem("theme");}catch(e){}if(t!=="light"&&t!=="dark")t=(window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)?"light":"dark";document.documentElement.dataset.theme=t;})();</script>
+<style>
+:root { color-scheme: dark; --bg:#07060b; --card:#100e17; --line:#26223a; --in:#6e6a8c; --text:#f2f0ff; --sub:#a29fc0; --accent:#ff2e97; --accent2:#00e5ff; --on:#111; --err:#ff7675; }
+html[data-theme="light"] { color-scheme: light; --bg:#f7f6fb; --card:#ffffff; --line:rgba(22,19,42,.14); --in:#7a7690; --text:#16132a; --sub:#55516e; --accent:#d6006f; --accent2:#007891; --on:#fff; --err:#be123c; }
+.stroke-bg { position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden; }
+.stroke-bg svg { width:100%; height:100%; display:block; }
+.stroke-bg .s-pink { stroke: var(--accent); opacity:.14; }
+.stroke-bg .s-cyan { stroke: var(--accent2); opacity:.12; }
+html[data-theme="light"] .stroke-bg .s-pink, html[data-theme="light"] .stroke-bg .s-cyan { opacity:.16; }
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; font: 15px/1.6 system-ui, "Microsoft JhengHei", sans-serif; background: var(--bg); color: var(--text); }
+main { position: relative; z-index: 1; min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+.card { width: 100%; max-width: 400px; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 28px 24px 24px; }
+.brand { display: flex; align-items: center; gap: 10px; margin: 0 0 18px; }
+.brand svg { width: 40px; height: 40px; flex: none; }
+.brand svg .s-pink { stroke: var(--accent); } .brand svg .s-cyan { stroke: var(--accent2); }
+.brand-text { font-size: 22px; font-weight: 800; letter-spacing: -.01em; }
+.brand-text span { color: var(--accent); }
+h1 { font-size: 17px; margin: 0 0 4px; }
+p.sub { margin: 0 0 18px; color: var(--sub); font-size: 13.5px; }
+label { display: block; font-size: 13px; color: var(--sub); margin-bottom: 6px; }
+input { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--in); border-radius: 10px; padding: 10px 12px; font: inherit; font-size: 16px; min-height: 44px; }
+input:disabled { opacity: .55; }
+button { width: 100%; margin-top: 14px; border: 0; border-radius: 10px; padding: 10px 14px; background: var(--accent); color: var(--on); font: inherit; font-weight: 700; min-height: 44px; cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.err { min-height: 1.5em; margin: 10px 0 0; color: var(--err); font-size: 13.5px; }
+.hint { margin: 16px 0 0; padding-top: 14px; border-top: 1px solid var(--line); color: var(--sub); font-size: 12.5px; }
+</style></head>
+<body><div class="stroke-bg" aria-hidden="true"><svg viewBox="0 0 1400 900" fill="none" preserveAspectRatio="xMidYMid slice">
+<path class="s-pink" d="M120 80c40-30 90-10 110 40 18 46-10 88-50 96" stroke-width="1.6" stroke-linecap="round"/>
+<path class="s-cyan" d="M280 160c8-90 4-160 18-230 40 18 90 40 120 70-22 18-55 32-88 40" stroke-width="1.5" stroke-linecap="round"/>
+<path class="s-pink" d="M250 210c-40 24-82-8-62-42 18-30 62-18 76 14" stroke-width="1.5" stroke-linecap="round"/>
+<path class="s-cyan" d="M980 90c70 12 130 70 122 150-6 62-70 90-120 70" stroke-width="1.6" stroke-linecap="round"/>
+<path class="s-pink" d="M1180 240c-20-80 30-130 90-140 40 36 70 80 66 130" stroke-width="1.4" stroke-linecap="round"/>
+<path class="s-cyan" d="M80 520c90-40 170 10 190 80 16 58-40 110-100 100" stroke-width="1.5" stroke-linecap="round"/>
+<path class="s-pink" d="M420 700c12-110 6-200 22-280 48 14 110 36 150 78-30 22-80 40-124 48" stroke-width="1.6" stroke-linecap="round"/>
+<path class="s-cyan" d="M400 760c-48 28-96-10-72-48 22-36 74-20 90 18" stroke-width="1.5" stroke-linecap="round"/>
+<path class="s-pink" d="M1080 620c-6 90 18 170-14 240 52 10 110 4 150-30-18-30-60-48-104-52" stroke-width="1.5" stroke-linecap="round"/>
+<path class="s-cyan" d="M1260 500c40 60 20 140-30 170-70 20-110-40-90-90 18-42 70-50 100-30" stroke-width="1.4" stroke-linecap="round"/>
+<path class="s-pink" d="M640 80c80 8 60 70 20 90-50 24-80-20-54-50 18-22 50-18 64 4" stroke-width="1.5" stroke-linecap="round"/>
+<path class="s-cyan" d="M820 780c70-30 40-110-10-120-48-8-70 40-40 70 18 20 50 18 70 4" stroke-width="1.4" stroke-linecap="round"/>
+<path class="s-pink" d="M60 300c30-80 120-70 140-10 16 48-30 70-70 58" stroke-width="1.3" stroke-linecap="round"/>
+<path class="s-cyan" d="M1320 360c-80-20-70 70-20 90 46 18 80-24 62-58" stroke-width="1.3" stroke-linecap="round"/>
+</svg></div><main>
+<form class="card" method="post" action="/login" autocomplete="off">
+  <div class="brand"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path class="s-cyan" d="M14.1 25.6c.4-7.2-.2-14.1 1.1-21.2 2.8 1 6.6 2.4 9.4 4.8-1.6 1.4-3.8 2.6-6.2 3.3" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path class="s-pink" d="M13.8 24.8c-3.6 2.2-7.2-.4-5.4-3.5 1.5-2.4 5.2-1.6 6.6.8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span class="brand-text">Music<span>Bot</span></span></div>
+  <h1>輸入金鑰才能使用</h1>
+  <p class="sub">用你的個人金鑰登入（跟 Chrome 擴充功能用的同一把），這個瀏覽器會記住 30 天。</p>
+  <input type="hidden" name="next" value="{{ next }}">
+  <label for="key">金鑰</label>
+  <input id="key" name="key" type="password" required autofocus spellcheck="false" autocapitalize="off" placeholder="貼上你的金鑰"{% if locked %} disabled{% endif %}>
+  <p class="err" id="err" role="alert">{{ error or '' }}</p>
+  <button type="submit"{% if locked %} disabled{% endif %}>進入</button>
+  <p class="hint">沒有金鑰？請向機器人的擁有者索取。</p>
+</form>
+</main>
+</body></html>

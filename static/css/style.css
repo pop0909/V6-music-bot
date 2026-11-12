@@ -1811,12 +1811,15 @@ html.bot-asleep .fx-particles, html.bot-asleep .album-art::before, html.bot-asle
 a.hdr-btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 @media (max-width: 760px) { a.hdr-btn:not(.hdr-btn-keep) { display: none; } }
 
+/* 登入身分 / 登出：頂欄一顆按鈕（手機也留著），狀態框底部再一列 */
+.logout-form { display: contents; }
+.who-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding-top: 10px;
+  border-top: 1px solid var(--pop-border); font-size: 13px; }
+.who-name { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.who-name i { color: var(--accent-2); font-size: 12px; }
+.who-row .btn-sm { flex: none; }
+
 /* ===== 我的歌單（個人歌單）：無動畫、輕量 ===== */
-.ml-login { padding: 14px; color: var(--text-muted); }
-.ml-login p { margin: 0 0 10px; font-size: 13px; }
-.ml-row { display: flex; gap: 8px; }
-.ml-row input { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,.15);
-  background: rgba(0,0,0,.25); color: inherit; font-size: 16px; }
 .ml-item .list-item { animation: none; cursor: pointer; }
 .ml-chev { font-size: 11px; transition: transform .15s; }
 .ml-item.open .ml-chev { transform: rotate(90deg); }
@@ -1907,7 +1910,6 @@ a.hdr-btn { display: inline-flex; align-items: center; justify-content: center; 
 /* 下拉選單：已選列上的標籤用文字色，對比夠 */
 .cdd-tag { color: var(--text); border-color: var(--accent); }
 /* 個人歌單輸入框：淺色模式邊框原本是白色 */
-.ml-row input { border-color: var(--pop-border); background: var(--glass); color: var(--text); }
 /* 休眠狀態原本是舊的靛藍色 */
 .status-indicator.sleeping { background: var(--accent-2); }
 .restore-bar > i { color: var(--accent-2); }

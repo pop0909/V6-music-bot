@@ -254,6 +254,14 @@ function apiNoteFail(key) {
     if (f.n >= 3) f.until = Date.now() + Math.min(30000, 1000 * 2 ** (f.n - 3));
     apiFail.set(key, f);
 }
+// 沒登入 / 金鑰被停用 → 回登入頁（登入後回到原本的頁面）
+let _goingLogin = false;
+function goLogin() {
+    if (_goingLogin) return;
+    _goingLogin = true;
+    const here = location.pathname + location.search;
+    location.href = '/login' + (here && here !== '/' ? '?next=' + encodeURIComponent(here) : '');
+}
 async function api(method, path, body = null) {
     const key = apiKey(method, path);
     const f = apiFail.get(key);
@@ -264,6 +272,7 @@ async function api(method, path, body = null) {
         const opts = { method, headers: { 'Content-Type': 'application/json' } };
         if (body) opts.body = JSON.stringify(body);
         const res = await fetch(path, opts);
+        if (res.status === 401) { goLogin(); return { status: 'error', message: '請先登入', auth: true }; }
         if (res.status >= 500 || res.status === 429) apiNoteFail(key);
         else if (f) apiFail.delete(key);
         return await res.json();
@@ -1239,11 +1248,15 @@ function connectProgressStream(guildId) {
         }
     };
     
+    // 伺服器通知登入已失效（金鑰被停用 / 刪除 / 重設）→ 回登入頁
+    sseSource.addEventListener('auth', () => { if (sseSource) sseSource.close(); sseSource = null; goLogin(); });
+
     sseSource.onerror = () => {
         // 前 2 次交給 EventSource 內建自動重連；連續失敗就自己關掉、指數退避（2s → 4s → … 最多 30s）再連，
         // 伺服器掛掉時不會每 3 秒狂打。guild 切換時仍會主動重新 connectProgressStream
         sseFails++;
         if (sseFails >= 2) updateStatusDot('offline');
+        if (sseFails === 2) fetch('/api/me', { cache: 'no-store' }).then(r => { if (r.status === 401) goLogin(); }).catch(() => {});
         if (sseFails < 3) { console.warn('SSE 連線中斷，等待自動重連...'); return; }
         const src = sseSource;
         if (src) src.close();
@@ -3160,31 +3173,26 @@ setShuffleUI(!!state.shuffleMode);
 
 
 // ==================== 我的歌單（個人歌單，用自己的金鑰；與本地歌單 / 最愛完全分開） ====================
-// 金鑰存在這個瀏覽器的 localStorage；API 走 /api/ext/lists（伺服器依金鑰判斷是誰，只能看 / 改自己的）
+// 依登入身分（cookie）；API 走 /api/ext/lists（伺服器依身分判斷是誰，只能看 / 改自己的）
 const ML = (() => {
-    const KEY = 'musbot-my-token';
+    // 舊版把金鑰存在 localStorage；改成登入後不再需要，順手清掉
+    try { localStorage.removeItem('musbot-my-token'); localStorage.removeItem('musbot-owner-token'); } catch (_) {}
     const open = new Set();          // 展開中的歌單 id
     const songsCache = new Map();    // id → songs
     let lists = [], busy = false, loaded = false;
-    // 沒設定過（null）才借用成員頁的擁有者金鑰；按過登出 = 存空字串，不會又自動登入回去
-    const tok = () => { const v = localStorage.getItem(KEY); return v !== null ? v : (localStorage.getItem('musbot-owner-token') || ''); };
     let rev = null, revTimer = 0, inflight = null;
 
     async function call(method, path, body) {
         try {
             const r = await fetch('/api/ext/lists' + path, { method, cache: 'no-store',
-                headers: { 'Content-Type': 'application/json', 'X-Ext-Token': tok() },
+                headers: { 'Content-Type': 'application/json' },
                 body: body ? JSON.stringify(body) : undefined });
             let j = {}; try { j = await r.json(); } catch (_) {}
-            if (r.status === 401) { localStorage.setItem(KEY, ''); loaded = false; lists = []; songsCache.clear(); open.clear(); showLogin(true); showToast(j.message || '金鑰錯誤或已停用', 'error'); return { status: 'error', message: j.message, auth: true }; }
+            if (r.status === 401) { goLogin(); return { status: 'error', message: j.message, auth: true }; }
             if (!r.ok && j.status !== 'error') j.status = 'error';
             if (!j.message && !r.ok) j.message = '錯誤 ' + r.status;
             return j;
         } catch (e) { return { status: 'error', message: '連線失敗' }; }
-    }
-    function showLogin(on) {
-        $('mlLogin').hidden = !on; $('mlActions').hidden = on;
-        if (on) { $('mlList').innerHTML = ''; $('mlCount').textContent = '未登入'; }
     }
     // 同時只跑一個 refresh；期間又被要求 → 結束後再補一次（連續變更只會多抓一次）
     let again = false;
@@ -3195,15 +3203,14 @@ const ML = (() => {
     }
     async function doRefresh() {
         const j = await call('GET', '');
-        if (j.status !== 'ok') { if (j.message && !j.auth && tok()) showToast(j.message, 'error'); return; }
+        if (j.status !== 'ok') { if (j.message && !j.auth) showToast(j.message, 'error'); return; }
         lists = j.lists || []; loaded = true;
         for (const id of [...songsCache.keys()]) if (!lists.some(p => p.id === id)) songsCache.delete(id);  // 展開中的歌單：draw() 先畫快取再重抓，不閃
         $('mlCount').textContent = `${j.you || ''} · ${lists.length}/${j.max_lists} 份`;
         draw();
     }
     function render() {
-        if (!tok()) { showLogin(true); return; }
-        showLogin(false);
+        $('mlActions').hidden = false;
         if (!loaded) { $('mlList').innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-pulse"></i></div>'; }
         refresh();
     }
@@ -3367,13 +3374,6 @@ const ML = (() => {
             if (p.job && p.job.total) $('mlCount').textContent = `匯入中 ${p.job.done}/${p.job.total}`;
         }
     }
-    $('btnMlLogin').addEventListener('click', async () => {
-        const v = $('mlToken').value.trim(); if (!v) return;
-        localStorage.setItem(KEY, v); $('mlToken').value = '';
-        render();
-    });
-    $('mlToken').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btnMlLogin').click(); });
-    $('btnMlLogout').addEventListener('click', () => { localStorage.setItem(KEY, ''); lists = []; loaded = false; songsCache.clear(); open.clear(); showLogin(true); });
     $('btnMlNew').addEventListener('click', create);
     $('btnMlImport').addEventListener('click', importList);
     // SSE 版本號變了：分頁開著且已登入才重抓（沒開的分頁切過去時 render() 本來就會抓）
@@ -3381,7 +3381,7 @@ const ML = (() => {
         if (rev === null) { rev = v; return; }
         if (v === rev) return;
         rev = v;
-        if (!tok() || !loaded || !isTabShown('mylists')) return;   // 沒開的分頁：切過去時 render() 會重抓
+        if (!loaded || !isTabShown('mylists')) return;   // 沒開的分頁：切過去時 render() 會重抓
         clearTimeout(revTimer);
         revTimer = setTimeout(refresh, 120);
     }

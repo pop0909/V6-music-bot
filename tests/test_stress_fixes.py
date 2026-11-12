@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from musicbot import webapi, webcore, state, player, extmembers  # noqa: E402
 from musicbot.utils import valid_song_url, safe_title  # noqa: E402
+webapi.flask_app.config["LOGIN_DISABLED"] = True   # 這裡測 API 本身；登入另外在 test_webauth.py 測
 
 G = 8686
 

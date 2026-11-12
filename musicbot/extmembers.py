@@ -68,6 +68,15 @@ def list_members():
         return [public(m) for m in _load()]
 
 
+def member_record(mid):
+    """成員 id → 原始資料（含 token_hash）的複本；找不到 → None（網頁登入每個請求核對用）"""
+    with _lock:
+        for m in _load():
+            if m.get("id") == mid:
+                return dict(m)
+    return None
+
+
 def authenticate(tok):
     """金鑰 → 身分 dict（擁有者或啟用中的成員）；無效 → None"""
     tok = (tok or "").strip()

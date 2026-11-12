@@ -65,17 +65,12 @@ td:first-child, th:first-child { overflow-wrap: normal; word-break: keep-all; }
 <path class="s-cyan" d="M1320 360c-80-20-70 70-20 90 46 18 80-24 62-58" stroke-width="1.3" stroke-linecap="round"/>
 </svg></div><main>
 <h1><i class="fas fa-users" aria-hidden="true"></i> 成員管理</h1>
-<div class="muted">給朋友各自一把 Chrome 擴充功能金鑰；停用或刪除後那把金鑰立刻失效。<a href="/">← 回控制面板</a></div>
+<div class="muted">給朋友各自一把金鑰（登入這個面板和 Chrome 擴充功能都用它）；停用、刪除或重設後立刻失效，對方也會被登出。<a href="/">← 回控制面板</a></div>
 
-<div class="card" id="login">
-  <div>請輸入擁有者金鑰（伺服器 <code>.env</code> 的 <code>EXT_TOKEN</code>，電腦上 <code>V6\chrome-extension\token.txt</code>）。只會存在這個瀏覽器。</div>
-  <div class="row" style="margin-top:8px"><input id="owner" type="password" placeholder="擁有者金鑰" style="flex:1" autocomplete="off"><button id="loginBtn">進入</button></div>
-</div>
-
-<div id="app" hidden>
+<div id="app">
   <div class="card">
     <div class="row"><input id="newName" placeholder="朋友的名字（會顯示在點歌紀錄）" maxlength="32" style="flex:1"><button id="createBtn">新增成員</button>
-      <button class="ghost" id="logout" title="清除這個瀏覽器存的擁有者金鑰">登出</button></div>
+      <form method="post" action="/logout" style="display:contents"><button class="ghost" id="logout" type="submit" title="登出這個瀏覽器">登出</button></form></div>
   </div>
   <div class="card" id="newtok">
     <b id="newtokTitle"></b>
@@ -93,7 +88,8 @@ td:first-child, th:first-child { overflow-wrap: normal; word-break: keep-all; }
 <div id="msg"></div>
 </main>
 <script>
-const KEY = 'musbot-owner-token';
+// 舊版把擁有者金鑰存在 localStorage；改成登入後不再需要，順手清掉
+try { localStorage.removeItem('musbot-owner-token'); } catch (_) {}
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = (t) => t ? new Date(t * 1000).toLocaleString('zh-TW', { hour12: false }) : '—';
@@ -105,15 +101,13 @@ function copyLabel(copied) {
 }
 
 async function api(method, path, body) {
-  const r = await fetch('/api/ext/' + path, { method, headers: { 'Content-Type': 'application/json', 'X-Ext-Token': localStorage.getItem(KEY) || '' },
+  const r = await fetch('/api/ext/' + path, { method, cache: 'no-store', headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined });
   let j = {}; try { j = await r.json(); } catch (_) {}
-  if (r.status === 401 || r.status === 403) { localStorage.removeItem(KEY); show(false); }
+  if (r.status === 401) { location.href = '/login?next=' + encodeURIComponent('/members'); throw new Error('請先登入'); }
   if (!r.ok) throw new Error(j.message || ('錯誤 ' + r.status));
   return j;
 }
-
-function show(authed) { $('login').hidden = authed; $('app').hidden = !authed; }
 
 function showToken(title, tok) {
   $('newtokTitle').textContent = title; $('newtokVal').textContent = tok; $('newtok').style.display = 'block';
@@ -166,11 +160,6 @@ async function act(m, a) {
   } catch (e) { say(e.message); }
 }
 
-$('loginBtn').onclick = async () => {
-  localStorage.setItem(KEY, $('owner').value.trim()); $('owner').value = '';
-  try { await load(); show(true); say(''); } catch (e) { say(e.message); }
-};
-$('owner').onkeydown = (e) => { if (e.key === 'Enter') $('loginBtn').click(); };
 $('createBtn').onclick = async () => {
   const name = $('newName').value.trim(); if (!name) { say('請輸入名字'); return; }
   try { const j = await api('POST', 'members', { name }); $('newName').value = ''; showToken(`「${j.member.name}」的金鑰`, j.token); say('已新增', true); await load(); }
@@ -183,7 +172,6 @@ $('copyBtn').onclick = async () => {
   setTimeout(() => copyLabel(false), 2000);
 };
 $('hideBtn').onclick = () => { $('newtokVal').textContent = ''; $('newtok').style.display = 'none'; };
-$('logout').onclick = () => { localStorage.removeItem(KEY); show(false); say('已登出', true); };
-if (localStorage.getItem(KEY)) load().then(() => show(true)).catch((e) => say(e.message)); else show(false);
+load().catch((e) => say(e.message));
 </script>
 </body></html>

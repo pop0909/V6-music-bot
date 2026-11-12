@@ -5,7 +5,7 @@ import random
 import time
 
 import yt_dlp
-from flask import Flask, render_template, request, jsonify, Response, stream_with_context
+from flask import Flask, render_template, request, jsonify, Response, stream_with_context, redirect, g
 
 from .bot import client
 from .config import log
@@ -29,6 +29,7 @@ from .webcore import (
     get_guild_list, get_guild_status, get_full_app_state, web_set_normalize, web_import_songs,
 )
 from . import importer
+from . import webauth, extmembers
 
 # 模組化後 Flask 位於套件內，需明確指向專案根目錄的 templates/ 與 static/
 _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -56,11 +57,97 @@ def _check_host():
     return Response("Forbidden", status=403, mimetype="text/plain")
 
 
+# ================== 登入（每個人用自己的擴充功能金鑰） ==================
+# 不用登入：登入頁、登出、靜態檔；/api/ext/* 交給 extapi（X-Ext-Token 金鑰，或網頁登入的 cookie）
+_PUBLIC_PATHS = {"/login", "/logout", "/favicon.ico"}
+
+
+def _auth_fail(path):
+    if path.startswith("/api/") or request.method not in ("GET", "HEAD"):
+        return jsonify({"error": "auth_required", "message": "請先登入"}), 401
+    from urllib.parse import quote
+    nxt = request.full_path.rstrip("?") if request.query_string else path
+    return redirect("/login" + ("" if nxt == "/" else "?next=" + quote(nxt, safe="/")))
+
+
+@flask_app.before_request
+def _require_login():
+    path = request.path
+    if flask_app.config.get("LOGIN_DISABLED"):      # 只有測試程式會設（舊測試直接打 API）
+        g.panel_user = dict(extmembers.OWNER)
+        return None
+    if path in _PUBLIC_PATHS or path.startswith("/static/") or path.startswith("/api/ext/"):
+        return None
+    ident = webauth.current_user()
+    if not ident:
+        return _auth_fail(path)
+    g.panel_user = ident
+    if request.method not in ("GET", "HEAD", "OPTIONS") and not webauth.same_origin(request):
+        return jsonify({"error": "forbidden", "message": "來源不符"}), 403
+    if webauth.is_owner_only(path) and not ident.get("owner"):
+        if path.startswith("/api/"):
+            return jsonify({"status": "error", "error": "forbidden", "message": "只有擁有者可以使用"}), 403
+        return Response("只有擁有者可以使用這個頁面", status=403, mimetype="text/plain; charset=utf-8")
+    return None
+
+
+@flask_app.route("/login", methods=["GET", "POST"])
+def login():
+    ip = webauth.client_ip(request)
+    nxt = webauth.safe_next(request.values.get("next"))
+    if request.method == "GET":
+        if webauth.current_user():
+            return redirect(nxt)
+        wait = webauth.locked_for(ip)
+        return render_template("login.html", next=nxt, error=_lock_msg(wait) if wait else None, locked=bool(wait))
+    if not extmembers.owner_token():
+        return render_template("login.html", next=nxt, error="伺服器還沒設定 EXT_TOKEN，暫時無法登入", locked=True), 503
+    wait = webauth.locked_for(ip)
+    if wait:
+        return render_template("login.html", next=nxt, error=_lock_msg(wait), locked=True), 429
+    if not webauth.same_origin(request):
+        return render_template("login.html", next=nxt, error="來源不符，請重新整理再試", locked=False), 403
+    ident = extmembers.authenticate(request.form.get("key"))
+    value = webauth.make_cookie_value(ident) if ident else None
+    if not value:
+        left, lock = webauth.record_fail(ip)
+        log.info(f"[登入] 金鑰錯誤（{ip}，剩 {left} 次）")
+        if lock:
+            return render_template("login.html", next=nxt, error=_lock_msg(lock), locked=True), 429
+        return render_template("login.html", next=nxt, error=f"金鑰錯誤或已停用，還可以再試 {left} 次", locked=False), 401
+    webauth.clear_fails(ip)
+    extmembers.record_use(ident)
+    log.info(f"[登入] {ident.get('name')} 登入面板（{ip}）")
+    resp = redirect(nxt)
+    webauth.set_login_cookie(resp, request, value)
+    return resp
+
+
+def _lock_msg(secs):
+    return f"輸錯太多次，請 {max(1, (secs + 59) // 60)} 分鐘後再試"
+
+
+@flask_app.route("/logout", methods=["POST"])
+def logout():
+    resp = redirect("/login")
+    webauth.clear_login_cookie(resp, request)
+    return resp
+
+
+@flask_app.route("/api/me")
+def api_me():
+    u = g.panel_user
+    return jsonify({"status": "ok", "name": u.get("name"), "owner": bool(u.get("owner"))})
+
+
 @flask_app.before_request
 def _wake_on_action():
     """網頁上任何操作（POST）都會把該伺服器從休眠叫醒"""
     if request.method != "POST" or not request.path.startswith("/api/"):
         return None
+    if not g.get("panel_user") and not (request.path.startswith("/api/ext/") and (
+            extmembers.authenticate(request.headers.get("X-Ext-Token")) or webauth.current_user())):
+        return None     # 沒登入 / 金鑰錯誤的請求不叫醒
     try:
         from . import idlesleep
         data = request.get_json(silent=True) or {}
@@ -111,7 +198,7 @@ def api_error_handler(e):
 
 @flask_app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", me=g.panel_user)
 
 @flask_app.route("/api/guilds")
 def api_guilds():
@@ -760,6 +847,8 @@ def api_progress_stream():
     取代前端所有輪詢 API，單一通道驅動所有 UI 更新
     """
     gid = request.args.get("guild_id", 0, type=int)
+    check_auth = not flask_app.config.get("LOGIN_DISABLED")
+    cookie = request.cookies.get(webauth.COOKIE)
     # stream_with_context：讓 generator 內仍能存取 request context。
     # 沒有它，generator 一進入就脫離 request context，任何 request 存取都會炸。
     def generate():
@@ -769,6 +858,11 @@ def api_progress_stream():
         last_sent = time.monotonic()
         ver = change_version()
         while True:
+            # 長連線也要隨時核對登入：金鑰被停用 / 刪除 / 重設 → 通知前端回登入頁並結束
+            # （停用成員是 POST → notify_change 會立刻喚醒這裡，所以幾乎是即時的）
+            if check_auth and not webauth.ident_from_cookie(cookie):
+                yield "event: auth\ndata: logout\n\n"
+                break
             try:
                 data = get_full_app_state(gid)
                 payload = f"data: {json.dumps(data)}\n\n"

@@ -7,6 +7,7 @@ from playwright.async_api import async_playwright
 
 BASE = os.getenv("SMOKE_BASE", "http://127.0.0.1:5055")
 OUT = sys.argv[1] if len(sys.argv) > 1 else "smoke_out"
+OWNER = os.getenv("SMOKE_OWNER_TOKEN", "OWNER-TOKEN-TEST")
 os.makedirs(OUT, exist_ok=True)
 PROBLEMS = []
 
@@ -105,7 +106,12 @@ async def scenario(br, theme, w):
     ctx = await br.new_context(viewport={"width": w, "height": 900 if w > 600 else 844}, is_mobile=w < 600, has_touch=w < 600, color_scheme=theme)
     await ctx.add_init_script(f"try{{localStorage.setItem('theme','{theme}')}}catch(e){{}}")
     pg = await ctx.new_page(); R = Run(pg, theme, w)
-    await pg.goto(BASE + "/"); await pg.wait_for_timeout(1200)
+    # 先登入（模擬器的擁有者金鑰）；登入頁本身也跑一次稽核
+    await pg.goto(BASE + "/"); await pg.wait_for_timeout(400)
+    if "/login" not in pg.url: R.bad("沒登入卻沒被導到登入頁")
+    await R.audit("00_login")
+    await pg.fill("#key", OWNER); await pg.click("button[type=submit]"); await pg.wait_for_timeout(1200)
+    if "/login" in pg.url: R.bad("擁有者金鑰登入失敗")
     if await R.J("() => document.documentElement.dataset.theme") != theme:
         await R.J(f"() => document.documentElement.dataset.theme='{theme}'")
     await R.audit("01_no_guild")

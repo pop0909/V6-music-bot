@@ -33,7 +33,13 @@ def _ext_auth():
         return None
     if not extmembers.owner_token():
         return jsonify({"status": "error", "message": "伺服器未設定 EXT_TOKEN，擴充功能 API 已停用"}), 503
-    ident = extmembers.authenticate(request.headers.get("X-Ext-Token"))
+    if "X-Ext-Token" in request.headers:        # Chrome 擴充功能：金鑰標頭（跟以前一樣）
+        ident = extmembers.authenticate(request.headers.get("X-Ext-Token"))
+    else:                                       # 網頁面板：登入的 cookie（每次請求重新核對金鑰是否還有效）
+        from . import webauth
+        ident = webauth.current_user()
+        if ident and request.method not in ("GET", "HEAD") and not webauth.same_origin(request):
+            return jsonify({"status": "error", "message": "來源不符"}), 403
     if not ident:
         return jsonify({"status": "error", "message": "金鑰錯誤或已停用（請向擁有者索取新金鑰）"}), 401
     g.ext_user = ident
@@ -176,6 +182,7 @@ def ext_add():
 # ==================== 成員管理（只有擁有者金鑰可用；網頁 /members） ====================
 @flask_app.route("/members")
 def members_page():
+    # 登入檢查與「只有擁有者」在 webapi._require_login 處理
     return render_template("members.html")
 
 

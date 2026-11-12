@@ -9,6 +9,7 @@ os.environ.setdefault("DISCORD_TOKEN", "test-dummy")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from musicbot import state, webcore, webapi, extapi, idlesleep, importer  # noqa: E402
+webapi.flask_app.config["LOGIN_DISABLED"] = True   # 這裡測 API 本身；登入另外在 test_webauth.py 測
 
 G = 5757
 U = "https://www.youtube.com/watch?v=%011d"

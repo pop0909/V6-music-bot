@@ -17,7 +17,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700&display=swap">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <link rel="stylesheet" href="/static/css/style.css?v=20261112stroke">
+    <link rel="stylesheet" href="/static/css/style.css?v=20261112login">
 </head>
 <body>
     <div class="stroke-bg" aria-hidden="true"><svg viewBox="0 0 1400 900" fill="none" preserveAspectRatio="xMidYMid slice">
@@ -66,8 +66,9 @@
                 </select></div>
                 <button class="hdr-btn hdr-btn-keep has-tip tip-below" id="btnTheme" type="button" data-tip="切換主題" aria-label="切換主題"><i class="fas fa-circle-half-stroke"></i></button>
                 <button class="hdr-btn hdr-btn-keep has-tip tip-below" id="btnStatus" type="button" data-tip="機器人狀態" aria-label="機器人狀態" aria-haspopup="dialog" aria-expanded="false" aria-controls="statusPop"><i class="fas fa-gauge-high"></i></button>
-                <a class="hdr-btn has-tip tip-below" id="btnMembers" href="/members" target="_blank" rel="noopener" data-tip="成員管理" aria-label="成員管理（擴充功能成員）"><i class="fas fa-users"></i></a>
+                {% if me.owner %}<a class="hdr-btn has-tip tip-below" id="btnMembers" href="/members" target="_blank" rel="noopener" data-tip="成員管理" aria-label="成員管理（擴充功能成員）"><i class="fas fa-users"></i></a>{% endif %}
                 <button class="hdr-btn has-tip tip-below" id="btnShortcuts" type="button" data-tip="鍵盤快捷鍵（按 ? 也能開）" aria-label="鍵盤快捷鍵" aria-haspopup="dialog" aria-expanded="false" aria-controls="kbdHelp"><i class="fas fa-keyboard"></i></button>
+                <form class="logout-form" method="post" action="/logout"><button class="hdr-btn has-tip tip-below" id="btnLogout" type="submit" data-tip="登出（{{ me.name }}）" aria-label="登出（目前身分：{{ me.name }}）"><i class="fas fa-right-from-bracket"></i></button></form>
                 <div class="live-pill" id="statusPill">
                     <span class="status-indicator" id="statusDot"></span>
                     <span id="statusText">就緒</span>
@@ -144,19 +145,14 @@
                         <div class="list-container fav-list" id="favList"></div>
                     </div>
 
-                    <!-- 我的歌單（個人；用自己的金鑰，跟本地歌單 / 最愛分開） -->
+                    <!-- 我的歌單（個人；依登入身分，跟本地歌單 / 最愛分開） -->
                     <div class="tab-content" id="tabMylists">
                         <div class="tab-toolbar">
                             <span class="tab-count" id="mlCount">—</span>
                             <div class="toolbar-actions" id="mlActions" hidden>
                                 <button class="btn-sm" id="btnMlImport"><i class="fab fa-youtube"></i> 匯入</button>
                                 <button class="btn-sm gold" id="btnMlNew"><i class="fas fa-plus"></i> 新增</button>
-                                <button class="btn-sm" id="btnMlLogout" title="清除這個瀏覽器存的金鑰"><i class="fas fa-sign-out-alt"></i></button>
                             </div>
-                        </div>
-                        <div class="ml-login" id="mlLogin" hidden>
-                            <p>貼上你的金鑰（跟 Chrome 擴充功能用的同一把）就能管理自己的歌單。</p>
-                            <div class="ml-row"><input type="password" id="mlToken" placeholder="金鑰" autocomplete="off"><button class="btn-sm gold" id="btnMlLogin">登入</button></div>
                         </div>
                         <div class="list-container ml-list" id="mlList"></div>
                     </div>
@@ -305,10 +301,11 @@
             <dt>音質</dt><dd data-k="bitrate">…</dd>
             <dt>ffmpeg</dt><dd data-k="ffmpeg">…</dd>
         </dl>
-        <button class="btn-sm update-btn" id="btnUpdate" type="button"><i class="fas fa-arrows-rotate"></i> 更新 yt-dlp 並重啟</button>
-        <p class="update-msg" id="updateMsg"></p>
+        {% if me.owner %}<button class="btn-sm update-btn" id="btnUpdate" type="button"><i class="fas fa-arrows-rotate"></i> 更新 yt-dlp 並重啟</button>
+        <p class="update-msg" id="updateMsg"></p>{% endif %}
         <p class="update-msg cookie-warn" id="cookieWarn"></p>
-        <a class="members-link" href="/members" target="_blank" rel="noopener"><i class="fas fa-users"></i> 成員管理</a>
+        {% if me.owner %}<a class="members-link" href="/members" target="_blank" rel="noopener"><i class="fas fa-users"></i> 成員管理</a>{% endif %}
+        <form class="who-row" method="post" action="/logout"><span class="who-name"><i class="fas fa-key" aria-hidden="true"></i> {{ me.name }}</span><button class="btn-sm" type="submit"><i class="fas fa-right-from-bracket"></i> 登出</button></form>
     </div>
     <div class="kbd-help" id="kbdHelp" role="dialog" aria-label="鍵盤快捷鍵" hidden>
         <div class="kbd-head"><span>鍵盤快捷鍵</span><button class="kbd-close" id="kbdHelpClose" type="button" aria-label="關閉"><i class="fas fa-xmark"></i></button></div>
@@ -352,6 +349,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=20261023cy6"></script>
+    <script src="/static/js/app.js?v=20261112login"></script>
 </body>
 </html>

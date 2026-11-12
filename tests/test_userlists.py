@@ -13,6 +13,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
 
 from musicbot import userlists, userlistapi, extmembers, webapi, importer, state  # noqa: E402
+webapi.flask_app.config["LOGIN_DISABLED"] = True   # 這裡測 API 本身；登入另外在 test_webauth.py 測
 
 U = "https://www.youtube.com/watch?v=%011d"
 OWN = "o" * 40
@@ -210,7 +211,7 @@ class Frontend(unittest.TestCase):
         html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
         self.assertIn('data-tab="mylists"', html)
         self.assertIn('id="tabMylists"', html)
-        self.assertIn("app.js?v=20261023cy6", html)
+        self.assertIn("app.js?v=20261112login", html)
         js = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
         self.assertIn("'/api/ext/lists'", js)
 
@@ -378,8 +379,10 @@ class Chaos(Base):
 
     def test_frontend_logout_sticks_and_long_names(self):
         js = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
-        self.assertIn("localStorage.setItem(KEY, '')", js)
-        self.assertNotIn("localStorage.getItem(KEY) || localStorage.getItem('musbot-owner-token')", js)
+        # 登入改成 cookie：我的歌單不再送 X-Ext-Token、不再把金鑰存在 localStorage（舊的會被清掉）
+        self.assertIn("localStorage.removeItem('musbot-my-token')", js)
+        self.assertNotIn("'X-Ext-Token': tok()", js)
+        self.assertNotIn("localStorage.setItem(KEY", js)
         self.assertIn('class="ml-name"', js)
 
 

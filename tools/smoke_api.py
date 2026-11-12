@@ -11,12 +11,14 @@ SKIP = {"/api/progress-stream", "/api/update-ytdlp", "/api/restart", "/api/syste
 BODIES = [None, b"not json", b"[]", b"null", b"123", json.dumps({"url": None, "guild_id": "abc", "title": 5, "name": ["x"], "volume": "lol", "index": -1, "seconds": 1e309 if False else 1e12, "songs": "x", "id": {}}).encode(),
           json.dumps({"url": "https://www.youtube.com/watch?v=AAAAAAAAAAA", "guild_id": 111, "title": "t" * 5000, "name": "名" * 300, "volume": 999, "index": 99999}).encode()]
 problems = []
+COOKIE = [None]
 
 
-def call(method, path, body, token):
+def call(method, path, body, token, cookie=True):
     h = {"Host": "localhost:5000"}
     if body is not None: h["Content-Type"] = "application/json"
     if token: h["X-Ext-Token"] = token
+    elif cookie and COOKIE[0]: h["Cookie"] = COOKIE[0]
     req = urllib.request.Request(BASE + path, data=body, method=method, headers=h)
     try:
         with urllib.request.urlopen(req, timeout=20) as r:
@@ -32,8 +34,34 @@ def fill(rule):
     return None if "<" in p else p
 
 
+def login():
+    """用擁有者金鑰登入面板，拿到 session cookie（之後的面板 API 都帶著它）"""
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **k): return None
+    req = urllib.request.Request(BASE + "/login", data=urllib.parse.urlencode({"key": OWNER}).encode(), method="POST",
+                                 headers={"Host": "localhost:5000", "Content-Type": "application/x-www-form-urlencoded"})
+    try:
+        urllib.request.build_opener(NoRedirect).open(req, timeout=20)
+    except urllib.error.HTTPError as e:
+        sc = e.headers.get("Set-Cookie") or ""
+        if e.code == 302 and sc:
+            COOKIE[0] = sc.split(";", 1)[0]
+            return
+        problems.append(f"登入失敗 {e.code}")
+
+
+import urllib.parse  # noqa: E402
 rules = [r for r in webapi.flask_app.url_map.iter_rules() if r.rule.startswith("/api")]
 n = 0
+# 沒登入：每個 /api 路由都要 401（擴充功能路由沒金鑰也是 401）
+for r in rules:
+    path = fill(r)
+    if not path or path in SKIP or any(path.startswith(s) for s in SKIP): continue
+    for m in sorted(r.methods - {"HEAD", "OPTIONS"}):
+        code, ct, data = call(m, path, b"{}" if m != "GET" else None, None, cookie=False); n += 1
+        if code != 401:
+            problems.append(f"未登入 {m} {path} → {code}（應該 401）")
+login()
 for r in rules:
     path = fill(r)
     if not path or path in SKIP or any(path.startswith(s) for s in SKIP): continue
