@@ -165,7 +165,12 @@ async def scenario(br, theme, w):
             if seg: await seg.click(); await pg.wait_for_timeout(800); await R.audit("11_np_history_rank")
         await pg.keyboard.press("Escape"); await pg.wait_for_timeout(500)
         if await R.J("() => document.body.classList.contains('np-open') || document.documentElement.classList.contains('np-open')"): R.bad("Esc 沒收合播放畫面")
-    # 播放控制回歸
+    # 播放控制回歸：先確定有歌在播（模擬器的歌很短，前面的步驟跑完時可能已經播完了）
+    await R.J("""() => fetch('/api/queue/add', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({guild_id: state.guildId, url: 'https://www.youtube.com/watch?v=SMOKEPLAY01', title: '播放測試'})})""")
+    for _ in range(30):
+        if await R.J("() => !!(state.isPlaying || state.isPaused)"): break
+        await pg.wait_for_timeout(100)
     before = await R.J("() => state.isPaused")
     play = await pg.query_selector("#btnPlayPause, .ctrl-play")
     if play and await play.is_visible():
@@ -199,13 +204,12 @@ async def scenario(br, theme, w):
         await pg.wait_for_timeout(800)
         if reqs["n"] == n0: R.bad("音量滑桿沒送出請求")
     await R.J("() => closeNpView()"); await pg.wait_for_timeout(600)
-    # 個人歌單：登入 → 新增 → 出現在清單
+    # 個人歌單：依登入身分（不用再貼金鑰）→ 新增 → 出現在清單
     tab = pg.locator('.tab-btn[data-tab="mylists"]:visible').first
     if await tab.count() and await tab.evaluate("e => getComputedStyle(e).pointerEvents") != "none":
         await tab.click(); await pg.wait_for_timeout(400)
-        if await pg.locator("#mlToken:visible").count():
-            await pg.fill("#mlToken", os.getenv("SMOKE_OWNER_TOKEN", "OWNER-TOKEN-TEST")); await pg.click("#btnMlLogin"); await pg.wait_for_timeout(1200)
-        if await pg.locator("#mlLogin:visible").count(): R.bad("個人歌單登入失敗")
+        if await pg.locator("#mlToken").count(): R.bad("我的歌單還在要求貼金鑰（應該直接用登入身分）")
+        if not await pg.locator("#btnMlNew:visible").count(): R.bad("我的歌單沒有顯示「新增」（登入身分沒帶過去）")
         name = f"煙霧{theme}{w}"
         pg.once("dialog", lambda d: asyncio.ensure_future(d.accept(name)))
         await pg.click("#btnMlNew"); await pg.wait_for_timeout(1500)
@@ -216,9 +220,7 @@ async def scenario(br, theme, w):
             await more.click(); await pg.wait_for_timeout(200)
             await pg.keyboard.press("Escape"); await pg.wait_for_timeout(150)
             if await R.J("() => !!document.querySelector('#mlList .menu-open')"): R.bad("⋯ 選單 Esc 沒關")
-        pg.once("dialog", lambda d: asyncio.ensure_future(d.accept()))
-        await pg.click("#btnMlLogout"); await pg.wait_for_timeout(500)
-        if await pg.locator("#btnMlNew:visible").count(): R.bad("登出後仍看得到「新增」按鈕")
+        await pg.keyboard.press("Escape")
     # 彈出框（桌面）
     if w > 600:
         await R.esc_and_outside("#btnStatus", "#statusPop", "狀態框")
@@ -286,6 +288,17 @@ async def scenario(br, theme, w):
     await R.audit("16_offline")
     await ctx.set_offline(False); await pg.wait_for_timeout(9000)
     if await R.J("() => document.getElementById('statusText').textContent") == "離線": R.bad("網路恢復後仍顯示「離線」")
+    # 登出：桌面用頂欄按鈕，手機用狀態框裡的「登出」；之後回到登入頁、再開面板也會被擋
+    await pg.reload(); await pg.wait_for_timeout(1200)
+    if await pg.locator("#btnLogout:visible").count():
+        await pg.click("#btnLogout")
+    else:
+        await pg.click("#btnStatus"); await pg.wait_for_timeout(300)
+        await pg.click("#statusPop .who-row button[type=submit]")
+    await pg.wait_for_timeout(1000)
+    if "/login" not in pg.url: R.bad(f"按登出後沒有回到登入頁（{pg.url}）")
+    await pg.goto(BASE + "/"); await pg.wait_for_timeout(500)
+    if "/login" not in pg.url: R.bad("登出後再開面板沒被擋")
     await ctx.close()
 
 

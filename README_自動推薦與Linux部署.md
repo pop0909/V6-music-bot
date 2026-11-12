@@ -133,3 +133,15 @@ Chrome / Edge 執行中時 cookies 資料庫可能被鎖住或加密而讀不到
 只保留 10 個常用指令：`/play`、`/import`、`/skip`、`/stop`（清空佇列、留在語音）、`/leave`、`/queue`、`/volume`、`/web`、`/join`、`/panel`。另外還有 `/mylist` 指令群組（`show`／`play`／`add`／`import`）管理個人歌單。
 暫停 / 繼續、跳轉、移除 / 排序佇列、最愛、歌單、循環、自動推薦、音量平衡、播放紀錄 / 排行、休眠後恢復，都在網頁面板（`/web`）或 Discord 控制面板按鈕（`/panel`）。
 指令在每次啟動時自動同步到伺服器，並清掉 Discord 上殘留的全域指令，不會重複出現。
+
+## 測試（改完程式先跑這個）
+
+```bash
+python tools/check.py           # 單元測試 + 模擬器 API 煙霧測試 + 面板 UI 煙霧測試（約 4 分鐘）
+python tools/check.py --no-ui   # 不跑 UI（快）
+python -m unittest discover -s tests   # 只跑單元測試（UI 測試預設略過；RUN_UI_SMOKE=1 才跑）
+```
+
+- UI 煙霧測試用 Playwright（深色/淺色 × 1440/390 寬，會先登入）；沒裝會自動略過：
+  `pip install playwright && python -m playwright install chromium`（伺服器記憶體小，不要裝在伺服器上）。
+- 模擬器（`tools/sim.py`）的資料放在暫存資料夾，不會動到專案的 `data/`、`list.txt`、`favorites/`；截圖在 `smoke_out/`。

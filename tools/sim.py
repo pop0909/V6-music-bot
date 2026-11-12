@@ -2,10 +2,30 @@
 import asyncio, os, sys, threading, time, types, random
 from unittest import mock
 os.environ.update(DISCORD_TOKEN="x", EXT_TOKEN="OWNER-TOKEN-TEST", WEB_PORT="5055", IDLE_SLEEP_MINUTES="60")
+# 資料一律放暫存資料夾（不碰專案的 data/、list.txt、favorites/）；SIM_DATA=資料夾 可指定、SIM_DATA=repo 用專案本身
+import tempfile
+SIM_DATA = os.getenv("SIM_DATA") or tempfile.mkdtemp(prefix="v6sim-")
+if SIM_DATA != "repo":
+    os.makedirs(os.path.join(SIM_DATA, "favorites"), exist_ok=True)
+    os.environ["HISTORY_DB"] = os.path.join(SIM_DATA, "history.db")
+    _lst = os.path.join(SIM_DATA, "list.txt")
+    if not os.path.exists(_lst):
+        with open(_lst, "w", encoding="utf-8") as _f:
+            _f.write("".join(f"https://www.youtube.com/watch?v=SIMSONG{i:04d} 模擬歌曲 {i}\n" for i in range(1, 9)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # 專案根目錄
 import discord
 from musicbot import bot, state, player, webcore, prefetch, autoplay, audio, webapi, extapi, idlesleep  # noqa
 from musicbot.bot import client
+if SIM_DATA != "repo":
+    from musicbot import storage as _st0, extmembers as _em, userlists as _ul, alerts as _al, webauth as _wa
+    _st0.LIST_FILE = os.path.join(SIM_DATA, "list.txt")
+    _st0.FAVORITES_DIR = os.path.join(SIM_DATA, "favorites")
+    _em.FILE = os.path.join(SIM_DATA, "ext_members.json")
+    _ul.FILE = os.path.join(SIM_DATA, "user_playlists.json")
+    idlesleep.SESSION_FILE = os.path.join(SIM_DATA, "voice_session.json")
+    _al.EXIT_FILE = os.path.join(SIM_DATA, "last_exit.json")
+    _wa.SECRET_FILE = os.path.join(SIM_DATA, "panel_secret")
+    print(f"sim data: {SIM_DATA}", flush=True)
 
 SONG_LEN = float(os.getenv("SIM_SONG_LEN", "4"))
 G = 111
@@ -182,4 +202,4 @@ def _sim_channel():
 
 if __name__ == "__main__":
     print("sim ready", flush=True)
-    webapi.flask_app.run(host="127.0.0.1", port=5055, threaded=True, debug=False, use_reloader=False)
+    webapi.flask_app.run(host="127.0.0.1", port=int(os.getenv("SIM_PORT", "5055")), threaded=True, debug=False, use_reloader=False)
