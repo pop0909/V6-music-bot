@@ -1,4 +1,4 @@
-"""網頁面板登入：用每個人自己的擴充功能金鑰（extmembers）登入，記住 30 天。
+"""網頁面板登入：用每個人自己的擴充功能金鑰（extmembers）登入，只要輸入一次（長期記住，每次使用自動續期）。
 
 - Cookie 只存「身分 id + 金鑰指紋」並簽章（itsdangerous），不存金鑰本身；httponly、SameSite=Lax、HTTPS 時加 Secure。
 - 每個請求都重新核對：成員被停用 / 刪除 / 重設金鑰、或 .env 的 EXT_TOKEN 換掉 → 立刻失效（等於被登出）。
@@ -19,7 +19,9 @@ from .config import log
 from . import extmembers
 
 COOKIE = "v6_session"
-MAX_AGE = 30 * 86400            # 記住 30 天
+MAX_AGE = 400 * 86400           # cookie 有效期：瀏覽器上限約 400 天（Chrome 會把更長的截成 400 天）
+RENEW_AFTER = 86400             # 有在用就續期：cookie 簽發超過 1 天，下次請求時重新發一張（又是 400 天）
+# 伺服器端不設過期：只看簽章 + 每個請求核對金鑰是否仍有效（停用 / 刪除 / 重設 / 換 EXT_TOKEN → 立刻登出）
 MAX_FAILS = 5                   # 連續輸錯幾次就鎖
 LOCK_SECS = 10 * 60             # 鎖多久
 FAIL_WINDOW = 10 * 60           # 輸錯次數在這段時間內累計（之後歸零）
@@ -94,17 +96,30 @@ def make_cookie_value(ident):
 
 
 def ident_from_cookie(value):
-    """cookie 值 → 身分 dict；過期 / 偽造 / 金鑰已失效 → None"""
+    """cookie 值 → 身分 dict；偽造 / 金鑰已失效 → None"""
+    return parse_cookie(value)[0]
+
+
+def parse_cookie(value):
+    """cookie 值 → (身分 dict 或 None, 簽發時間 epoch 或 None)"""
     if not value or len(value) > 512:
-        return None
+        return None, None
     try:
-        data = _serializer().loads(value, max_age=MAX_AGE)
-    except BadSignature:            # SignatureExpired 也是 BadSignature 的子類別
-        return None
+        data, ts = _serializer().loads(value, return_timestamp=True)
+    except BadSignature:
+        return None, None
     except Exception:
-        return None
+        return None, None
     if not isinstance(data, dict):
-        return None
+        return None, None
+    return _ident_for(data), ts.timestamp()
+
+
+def needs_renew(issued_ts):
+    return issued_ts is None or time.time() - issued_ts >= RENEW_AFTER
+
+
+def _ident_for(data):
     uk, fp = data.get("u"), data.get("f")
     if not isinstance(uk, str) or not isinstance(fp, str):
         return None

@@ -128,7 +128,7 @@ class LoginFlow(Base):
         self.assertIn("HttpOnly", sc)
         self.assertIn("Secure", sc)
         self.assertIn("SameSite=Lax", sc)
-        self.assertIn("Max-Age=2592000", sc)
+        self.assertIn("Max-Age=34560000", sc)                # 400 天（瀏覽器上限）
         self.assertNotIn(OWN, sc)                       # cookie 不含金鑰本身
         self.assertEqual(self.get("/").status_code, 200)
         me = self.get("/api/me").get_json()
@@ -170,11 +170,41 @@ class LoginFlow(Base):
         r = self.c.post("/login", data={"key": OWN}, headers={"Host": HOST, "Origin": "https://evil.com"})
         self.assertEqual(r.status_code, 403)
 
-    def test_expired_session(self):
+    def test_session_never_expires_server_side(self):
+        # 只要輸入一次：伺服器不設過期，幾年後拿舊 cookie 來也照樣有效（只要金鑰沒被停用 / 重設）
         self.login(OWN)
         real = time.time
-        with mock.patch("time.time", lambda: real() + webauth.MAX_AGE + 60):
-            self.assertEqual(self.get("/api/me").status_code, 401)
+        with mock.patch("time.time", lambda: real() + 10 * 365 * 86400):
+            self.assertEqual(self.get("/api/me").status_code, 200)
+
+    def test_sliding_renewal(self):
+        self.login(OWN)
+        r = self.get("/api/me")                       # 剛登入：不重發
+        self.assertNotIn("Set-Cookie", r.headers)
+        old = self.c.get_cookie(webauth.COOKIE, domain=HOST).value
+        real = time.time
+        with mock.patch("time.time", lambda: real() + webauth.RENEW_AFTER + 60):
+            r = self.get("/")
+            self.assertEqual(r.status_code, 200)
+            sc = r.headers.get("Set-Cookie", "")
+            self.assertIn(webauth.COOKIE + "=", sc)
+            self.assertIn("Max-Age=34560000", sc)
+            self.assertIn("HttpOnly", sc)
+            new = self.c.get_cookie(webauth.COOKIE, domain=HOST).value
+            self.assertNotEqual(old, new)
+            _, ts = webauth.parse_cookie(new)
+            self.assertGreater(ts, real() + webauth.RENEW_AFTER - 5)
+            self.assertNotIn("Set-Cookie", self.get("/api/me").headers)   # 新的那張不用再續
+
+    def test_revoked_cookie_not_renewed(self):
+        m, tok = self.friend()
+        self.login(tok)
+        extmembers.set_enabled(m["id"], False)
+        real = time.time
+        with mock.patch("time.time", lambda: real() + webauth.RENEW_AFTER + 60):
+            r = self.get("/api/me")
+        self.assertEqual(r.status_code, 401)
+        self.assertNotIn(webauth.COOKIE + "=ey", r.headers.get("Set-Cookie", ""))
 
     def test_no_ext_token_configured(self):
         with mock.patch.dict(os.environ, {"EXT_TOKEN": ""}):
@@ -380,6 +410,8 @@ class Frontend(unittest.TestCase):
         self.assertIn('action="/login"', html)
         self.assertIn('type="password"', html)
         self.assertIn("stroke-bg", html)                  # 隨意筆劃主題
+        self.assertNotIn("30 天", html)
+        self.assertIn("只要輸入一次", html)
         js = self.read("static", "js", "app.js")
         self.assertIn("function goLogin()", js)
         self.assertIn("res.status === 401", js)

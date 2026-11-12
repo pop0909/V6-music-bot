@@ -78,10 +78,12 @@ def _require_login():
         return None
     if path in _PUBLIC_PATHS or path.startswith("/static/") or path.startswith("/api/ext/"):
         return None
-    ident = webauth.current_user()
+    ident, issued = webauth.parse_cookie(request.cookies.get(webauth.COOKIE))
     if not ident:
         return _auth_fail(path)
     g.panel_user = ident
+    if webauth.needs_renew(issued):         # 有在用就自動續期（等於只要登入一次）
+        g.renew_login = ident
     if request.method not in ("GET", "HEAD", "OPTIONS") and not webauth.same_origin(request):
         return jsonify({"error": "forbidden", "message": "來源不符"}), 403
     if webauth.is_owner_only(path) and not ident.get("owner"):
@@ -157,6 +159,17 @@ def _wake_on_action():
     except Exception:
         pass
     return None
+
+
+@flask_app.after_request
+def _renew_login(resp):
+    """登入 cookie 簽發超過 1 天 → 重發一張新的（再 400 天）；串流回應不動"""
+    ident = g.get("renew_login")
+    if ident and not resp.is_streamed:
+        value = webauth.make_cookie_value(ident)
+        if value:
+            webauth.set_login_cookie(resp, request, value)
+    return resp
 
 
 @flask_app.after_request
