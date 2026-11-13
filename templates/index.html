@@ -252,7 +252,7 @@
         </div>
         <div class="pb-right">
             <div class="pb-extras" id="barExtras">
-                <!-- 分組：[音量] | [循環 隨機] | [自動推薦 音量平衡 睡眠] | [停止]；data-tip = 即時提示（CSS，觸控長按也會顯示） -->
+                <!-- 分組：[音量] | [循環 隨機] | [自動推薦 音量平衡 音效 睡眠] | [停止]；data-tip = 即時提示（CSS，觸控長按也會顯示） -->
                 <div class="volume-row has-tip" data-tip="音量（↑ ↓ 調整・M 靜音）">
                     <i class="fas fa-volume-low vol-icon" aria-hidden="true"></i>
                     <input type="range" class="volume-slider" id="volumeSlider" min="0" max="200" value="100" aria-label="音量">
@@ -276,6 +276,22 @@
                     <span class="ctrl-label" aria-hidden="true">平衡</span>
                     <input type="checkbox" id="normalizeToggle" class="switch" role="switch" aria-label="音量平衡">
                 </label>
+                <!-- 音效等化器：點開選單選預設；播放中從目前位置立即生效（展開畫面裡是整列的膠囊） -->
+                <div class="eq-wrap" id="eqWrap">
+                    <button class="ctrl-btn has-tip eq-btn" id="btnEq" type="button" data-tip="音效：原音（點一下選擇 重低音 / 人聲 / 高音清晰 / 夜間）" aria-label="音效：原音" aria-haspopup="menu" aria-expanded="false" aria-controls="eqMenu">
+                        <i class="fas fa-sliders eq-ico" aria-hidden="true"></i><span class="ctrl-badge" id="eqIndicator"></span><span class="ctrl-label">音效</span>
+                        <span class="eq-pill-text"><span class="eq-pill-title">音效</span><span class="eq-pill-value" id="eqValue">原音</span></span>
+                        <i class="fas fa-chevron-up eq-pill-caret" aria-hidden="true"></i>
+                    </button>
+                    <div class="eq-menu" id="eqMenu" role="menu" aria-label="音效等化器" hidden>
+                        <div class="eq-menu-head"><span>音效等化器</span><span class="eq-menu-note">播放中立即生效</span></div>
+                        <button type="button" class="eq-opt" role="menuitemradio" data-eq="off" aria-checked="true" tabindex="-1"><span class="eq-opt-text"><span class="eq-opt-name">原音</span><span class="eq-opt-desc">不加任何音效</span></span><i class="fas fa-check eq-opt-check" aria-hidden="true"></i></button>
+                        <button type="button" class="eq-opt" role="menuitemradio" data-eq="bass" aria-checked="false" tabindex="-1"><span class="eq-opt-text"><span class="eq-opt-name">重低音</span><span class="eq-opt-desc">低頻加強，鼓聲貝斯更有力</span></span><i class="fas fa-check eq-opt-check" aria-hidden="true"></i></button>
+                        <button type="button" class="eq-opt" role="menuitemradio" data-eq="vocal" aria-checked="false" tabindex="-1"><span class="eq-opt-text"><span class="eq-opt-name">人聲</span><span class="eq-opt-desc">人聲更清楚、壓低悶聲</span></span><i class="fas fa-check eq-opt-check" aria-hidden="true"></i></button>
+                        <button type="button" class="eq-opt" role="menuitemradio" data-eq="treble" aria-checked="false" tabindex="-1"><span class="eq-opt-text"><span class="eq-opt-name">高音清晰</span><span class="eq-opt-desc">高頻加強，細節更亮</span></span><i class="fas fa-check eq-opt-check" aria-hidden="true"></i></button>
+                        <button type="button" class="eq-opt" role="menuitemradio" data-eq="night" aria-checked="false" tabindex="-1"><span class="eq-opt-text"><span class="eq-opt-name">夜間</span><span class="eq-opt-desc">音量起伏變小、峰值柔和，適合深夜</span></span><i class="fas fa-check eq-opt-check" aria-hidden="true"></i></button>
+                    </div>
+                </div>
                 <button class="ctrl-btn has-tip" id="btnSleep" data-tip="睡眠計時：關（點一下切換 30 分 / 60 分 / 播完這首）" aria-label="睡眠計時：關" aria-pressed="false"><i class="fas fa-moon" aria-hidden="true"></i><span class="loop-indicator ctrl-badge" id="sleepIndicator"></span><span class="ctrl-label">睡眠</span></button>
                 <span class="pb-sep" aria-hidden="true"></span>
                 <button class="ctrl-btn has-tip" id="btnStop" data-tip="停止（清空佇列，留在語音頻道）" aria-label="停止"><i class="fas fa-stop" aria-hidden="true"></i></button>

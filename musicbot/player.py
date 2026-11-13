@@ -767,6 +767,56 @@ async def _seek_playing(gid, vc, page_url, pos, version, gen):
         return {"status": "ok", "position": pos, "paused": False}
 
 
+# ---------- 播放中換濾鏡（音效等化器）：沿用跳轉機制，從目前位置用新濾鏡重開 FFmpeg ----------
+REAPPLY_LEAD_MIN, REAPPLY_LEAD_MAX = 0.05, 1.5
+_reapply_lead = 0.35          # FFmpeg 重開預估秒數（新來源從「現在 + 這段時間」開始 → 換上時剛好接上，不重複不漏）
+reapply_stats = {}            # guild_id: {"ms": 實測毫秒, "pos": 起點秒, "ok": bool}（日誌 / 測試用）
+_reapply_gen = {}
+
+
+async def reapply_audio(gid, retries=10):
+    """音效設定改了：播放中 → 從目前位置重開 FFmpeg 立即生效；暫停中 → 備好新位置的來源，按繼續時換上；
+    沒在播 / 長度未知（直播）→ 下一首生效。連按只做最後一次。回傳 "now" / "paused" / "next" / "superseded"。"""
+    global _reapply_lead
+    gen = _reapply_gen[gid] = _reapply_gen.get(gid, 0) + 1
+    for attempt in range(retries + 1):
+        if _reapply_gen.get(gid) != gen:
+            return "superseded"
+        vc = _current_vc(gid)
+        if not vc or not now_playing.get(gid) or not now_playing_url.get(gid) or not (vc.is_playing() or vc.is_paused()):
+            lock = play_locks.get(gid)
+            if lock and lock.locked() and attempt < retries:
+                await asyncio.sleep(0.3)      # 正在開下一首：等它開好再重開（開播時可能已讀到舊設定）
+                continue
+            return "next"
+        if (song_durations.get(gid, 0) or 0) <= 0:
+            return "next"
+        paused = vc.is_paused()
+        if audio.applied_eq.get(gid, audio.EQ_DEFAULT) == audio.eq_preset(gid) and not pending_seeks.get(gid):
+            return "now"                      # 目前的 FFmpeg 已經是新設定（例如等待期間剛開播的下一首）
+        lead = 0.0 if paused else _reapply_lead
+        pos = paused_position.get(gid, _elapsed(gid)) if paused else _elapsed(gid) + lead
+        t0 = time.monotonic()
+        res = await seek(gid, pos, wait=True)
+        ms = (time.monotonic() - t0) * 1000
+        if res.get("status") == "ok":
+            if not res.get("paused"):
+                # 下次的預估往實測值靠（EWMA），夾在合理範圍
+                _reapply_lead = min(REAPPLY_LEAD_MAX, max(REAPPLY_LEAD_MIN, 0.7 * _reapply_lead + 0.3 * ms / 1000))
+            reapply_stats[gid] = {"ms": round(ms), "pos": round(pos, 2), "ok": True, "paused": bool(res.get("paused"))}
+            log.info(f"[等化器] {gid} 已從 {format_time(pos)} 套用新音效（{'暫停中，繼續時生效' if res.get('paused') else f'{ms:.0f} ms'}）")
+            return "paused" if res.get("paused") else "now"
+        if res.get("code") == "busy" and attempt < retries:
+            await asyncio.sleep(0.3)          # 正在換歌 / 淡出 / 別的跳轉：稍後再試
+            continue
+        reapply_stats[gid] = {"ms": round(ms), "pos": round(pos, 2), "ok": False, "code": res.get("code")}
+        if res.get("code") in ("not_playing", "unseekable", "busy"):
+            return "next"
+        log.warning(f"[等化器] {gid} 播放中套用失敗，下一首生效：{res.get('message')}")
+        return "next"
+    return "next"
+
+
 async def resume_playback(gid, vc):
     """恢復播放（Web / Discord 按鈕 / 指令共用）：暫停中有跳轉過就先用新位置重開 FFmpeg"""
     pend = pending_seeks.pop(gid, None)

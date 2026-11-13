@@ -102,6 +102,66 @@ class Run:
         await self.pg.keyboard.press("Escape")
 
 
+async def eq_checks(R, pg, ctx, w):
+    """音效等化器：選單開關（Esc 只關選單、不收展開畫面）、選擇後狀態 / 徽章 / 後端濾鏡、其他分頁即時同步"""
+    if w < 1180:
+        await R.J("() => openNpView()"); await pg.wait_for_timeout(600)
+    btn = pg.locator("#btnEq:visible")
+    if not await btn.count(): R.bad("找不到音效按鈕"); return
+    other = await ctx.new_page()          # 另一個面板分頁：等一下看會不會即時同步
+    await other.goto(BASE + "/"); await other.wait_for_timeout(1500)
+    if not await other.evaluate("() => !!state.guildId"):
+        await other.evaluate("() => { const s = document.getElementById('guildSelect'); const o = [...s.options].find(o => o.value); if (o) { s.value = o.value; s.dispatchEvent(new Event('change', {bubbles: true})); } }")
+        await other.wait_for_timeout(1500)
+    await btn.first.evaluate("e => e.scrollIntoView({block:'center'})")
+    await btn.first.click(); await pg.wait_for_timeout(250)
+    if await R.hidden("#eqMenu"): R.bad("音效選單點了沒打開"); await other.close(); return
+    if await R.J("() => document.getElementById('btnEq').getAttribute('aria-expanded')") != "true": R.bad("音效按鈕 aria-expanded 沒變")
+    box = await R.J("() => { const r = document.getElementById('eqMenu').getBoundingClientRect(); return [r.left, r.right, r.top, r.bottom, innerWidth, innerHeight]; }")
+    if box[0] < 0 or box[1] > box[4] + 1 or box[2] < 0: R.bad(f"音效選單超出畫面 {box}")
+    await R.audit("18_eq_menu")
+    await pg.keyboard.press("Escape"); await pg.wait_for_timeout(200)
+    if not await R.hidden("#eqMenu"): R.bad("音效選單 Esc 沒關")
+    if w < 1180 and not await R.J("() => npOpen"): R.bad("在音效選單按 Esc 連展開畫面也收起來了")
+    if w > 600:
+        await R.esc_and_outside("#btnEq", "#eqMenu", "音效選單")
+    # 選「重低音」
+    if w < 1180 and not await R.J("() => npOpen"):
+        await R.J("() => openNpView()"); await pg.wait_for_timeout(500)
+    await btn.first.click(); await pg.wait_for_timeout(200)
+    await pg.click('#eqMenu .eq-opt[data-eq="bass"]'); await pg.wait_for_timeout(1200)
+    st = await R.J("() => [state.eq, document.getElementById('btnEq').classList.contains('active'), document.getElementById('eqIndicator').textContent, document.getElementById('eqValue').textContent, document.querySelector('#eqMenu .eq-opt[aria-checked=true]').dataset.eq, document.getElementById('eqMenu').hidden]")
+    if st != ["bass", True, "低", "重低音", "bass", True]: R.bad(f"選重低音後畫面狀態不對 {st}")
+    if not await R.J("() => [...document.querySelectorAll('.toast')].some(t => t.textContent.includes('重低音'))"): R.bad("選音效後沒有提示")
+    srv = await R.J("async () => (await (await fetch('/api/eq?guild_id=' + state.guildId)).json()).eq")
+    if srv != "bass": R.bad(f"伺服器端音效沒變（{srv}）")
+    ff = await R.J("async () => (await fetch('/sim/ffmpeg')).json()")
+    if await R.J("() => !!(state.isPlaying)"):
+        if not ff.get("opens") or "bass=" not in (ff["opens"][-1].get("options") or ""): R.bad(f"播放中切換後 FFmpeg 沒套上重低音 {str(ff)[:160]}")
+        if not (ff.get("reapply") or {}).get("ok"): R.bad(f"播放中切換沒從目前位置重開 {ff.get('reapply')}")
+    for _ in range(20):
+        if await other.evaluate("() => state.eq") == "bass": break
+        await other.wait_for_timeout(200)
+    o = await other.evaluate("() => [state.eq, document.getElementById('eqIndicator').textContent]")
+    if o != ["bass", "低"]: R.bad(f"另一個分頁沒有即時同步音效 {o}")
+    await R.audit("19_eq_bass")
+    # 鍵盤：Enter 打開 → 焦點在目前選項 → ↓ 到人聲 → Enter
+    await btn.first.focus(); await pg.keyboard.press("Enter"); await pg.wait_for_timeout(200)
+    foc = await R.J("() => document.activeElement && document.activeElement.dataset.eq")
+    if foc != "bass": R.bad(f"鍵盤打開音效選單後焦點不在目前選項（{foc}）")
+    await pg.keyboard.press("ArrowDown"); await pg.keyboard.press("Enter"); await pg.wait_for_timeout(900)
+    if await R.J("() => state.eq") != "vocal": R.bad("音效選單鍵盤操作失敗")
+    # 改回原音
+    if w < 1180 and not await R.J("() => npOpen"):
+        await R.J("() => openNpView()"); await pg.wait_for_timeout(500)
+    await btn.first.click(); await pg.wait_for_timeout(200)
+    await pg.click('#eqMenu .eq-opt[data-eq="off"]'); await pg.wait_for_timeout(900)
+    if await R.J("() => [state.eq, document.getElementById('btnEq').classList.contains('active'), document.getElementById('eqIndicator').textContent]") != ["off", False, ""]:
+        R.bad("改回原音後狀態不對")
+    await other.close()
+    await pg.keyboard.press("Escape")
+
+
 async def scenario(br, theme, w):
     ctx = await br.new_context(viewport={"width": w, "height": 900 if w > 600 else 844}, is_mobile=w < 600, has_touch=w < 600, color_scheme=theme)
     await ctx.add_init_script(f"try{{localStorage.setItem('theme','{theme}')}}catch(e){{}}")
@@ -183,7 +243,7 @@ async def scenario(br, theme, w):
     await R.J("() => connectProgressStream(state.guildId)")
     if w < 1180:
         await R.J("() => openNpView()"); await pg.wait_for_timeout(700)
-    for bid in ("btnSkip", "btnLoop", "btnShuffle", "btnLoop", "btnLoop", "btnShuffle", "btnBarFav", "btnSleep"):
+    for bid in ("btnSkip", "btnLoop", "btnShuffle", "btnLoop", "btnLoop", "btnShuffle", "btnBarFav", "btnSleep", "btnEq"):
         loc = pg.locator(f"#{bid}:visible")
         if not await loc.count(): continue
         if w < 1180 and bid != "btnSkip":
@@ -203,6 +263,7 @@ async def scenario(br, theme, w):
         await vol.first.evaluate("e => { e.value = 40; e.dispatchEvent(new Event('input', {bubbles:true})); e.dispatchEvent(new Event('change', {bubbles:true})); }")
         await pg.wait_for_timeout(800)
         if reqs["n"] == n0: R.bad("音量滑桿沒送出請求")
+    await eq_checks(R, pg, ctx, w)
     await R.J("() => closeNpView()"); await pg.wait_for_timeout(600)
     # 個人歌單：依登入身分（不用再貼金鑰）→ 新增 → 出現在清單
     tab = pg.locator('.tab-btn[data-tab="mylists"]:visible').first

@@ -3,6 +3,8 @@
 - 音量平衡用 ffmpeg 的 dynaudnorm（動態音量平衡）：實測 CPU 只有 loudnorm 的約 1/9，
   適合即時串流；每個伺服器可各自開關，預設由 .env 的 AUDIO_NORMALIZE 決定（未設定 = 開啟）
 - 開關在「下一首」生效（ffmpeg 串流開始後無法換濾鏡）
+- 音效等化器（EQ 預設：原音 / 重低音 / 人聲 / 高音清晰 / 夜間）：每個伺服器各自設定、存檔（重啟保留）；
+  播放中切換由 player.reapply_audio 用跳轉機制從目前位置重開 FFmpeg（舊來源播到新來源預熱好才換上，不跳歌、不重複）
 - 每首歌開頭 0.25 秒淡入（ffmpeg afade）：短到按下去馬上聽得到，又不會爆音
 - 跳過 / 停止時先把 PCMVolumeTransformer 的音量在約 0.12 秒內降到 0 再停止，避免突然斷音；
   呼叫端（Web API）在背景執行淡出，不讓 HTTP 回應等它
@@ -10,6 +12,7 @@
   FFmpeg 啟動期間舊歌繼續播（跳轉）/ 播放執行緒不會卡住後一次爆送一堆封包（discord.py 會追趕時間）
 """
 import asyncio
+import json
 import os
 import threading
 
@@ -44,10 +47,105 @@ def set_normalize(gid, enabled):
     return normalize_guilds[gid]
 
 
-def build_filter_chain(normalize, fade_in=FADE_IN_SECONDS):
+# ---------- 音效等化器 ----------
+# pre = 音色濾鏡（放在音量平衡之前：平衡器會把加強後的整體音量拉回來，不會越調越大聲）
+# post = 動態處理（放在平衡之後：夜間模式的壓縮若放前面會被 dynaudnorm 補回去，實測 LRA 幾乎沒變）
+# boost = 有加強某段頻率 → 沒開音量平衡時尾端加限幅器，避免削波爆音（平衡器本身已把峰值壓在 0.9）
+# 實測（ffmpeg 7.1、3.5 分鐘歌曲）：各預設只比原音多 0.2~0.6 秒 CPU / 首（約 +0.1~0.3% 單核），峰值都在 0 dBFS 以下
+EQ_DEFAULT = "off"
+EQ_LIMITER = "alimiter=limit=0.95:attack=5:release=50:level=disabled"
+EQ_PRESETS = {
+    "off":    {"label": "原音", "desc": "不加任何音效", "pre": "", "post": "", "boost": False},
+    "bass":   {"label": "重低音", "desc": "低頻 +6 dB（90 Hz 以下更有力）",
+               "pre": "bass=g=6:f=90:w=0.7", "post": "", "boost": True},
+    "vocal":  {"label": "人聲", "desc": "人聲頻段 +4 dB、壓低悶聲與低頻轟鳴",
+               "pre": "highpass=f=80,equalizer=f=250:t=q:w=1:g=-2,equalizer=f=3000:t=q:w=1.2:g=4",
+               "post": "", "boost": True},
+    "treble": {"label": "高音清晰", "desc": "高頻 +4 dB（5 kHz 以上更清楚）",
+               "pre": "treble=g=4:f=5000:w=0.6", "post": "", "boost": True},
+    # 夜間：壓縮動態（大聲處變小、小聲處相對清楚）+ 低頻 -3 dB + 峰值限制在 -3 dB；整體比原音小約 4 LU
+    "night":  {"label": "夜間", "desc": "壓縮音量起伏、峰值更柔和、低頻減少，適合深夜小聲聽",
+               "pre": "",
+               "post": "acompressor=threshold=-24dB:ratio=4:attack=10:release=250:knee=6:makeup=6dB,"
+                       "bass=g=-3:f=100:w=0.7,alimiter=limit=0.7:attack=5:release=80:level=disabled",
+               "boost": False},
+}
+SETTINGS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "audio_settings.json")
+eq_guilds = {}          # guild_id: preset key（只存非預設值）
+applied_eq = {}         # guild_id: 目前 FFmpeg 實際使用的 preset
+_settings_loaded = False
+_settings_lock = threading.Lock()
+
+
+def _load_settings():
+    global _settings_loaded
+    if _settings_loaded:
+        return
+    _settings_loaded = True
+    try:
+        with open(SETTINGS_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        for k, v in (data.get("eq") or {}).items():
+            if v in EQ_PRESETS and v != EQ_DEFAULT:
+                eq_guilds[int(k)] = v
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        from .config import log
+        log.warning(f"[等化器] 讀取設定失敗，使用預設：{e}")
+
+
+def _save_settings():
+    data = {"eq": {str(g): v for g, v in eq_guilds.items() if v != EQ_DEFAULT}}
+    try:
+        with _settings_lock:
+            os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
+            tmp = SETTINGS_FILE + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False)
+            os.replace(tmp, SETTINGS_FILE)
+    except Exception as e:
+        from .config import log
+        log.warning(f"[等化器] 儲存設定失敗：{e}")
+
+
+def eq_preset(gid):
+    _load_settings()
+    return eq_guilds.get(gid, EQ_DEFAULT)
+
+
+def set_eq(gid, preset):
+    """設定伺服器的 EQ 預設並存檔；回傳 (新預設, 是否有變)。不認得的預設 → ValueError"""
+    preset = str(preset or "").strip().lower()
+    if preset not in EQ_PRESETS:
+        raise ValueError(f"未知的音效：{preset}")
+    _load_settings()
+    prev = eq_guilds.get(gid, EQ_DEFAULT)
+    if preset == EQ_DEFAULT:
+        eq_guilds.pop(gid, None)
+    else:
+        eq_guilds[gid] = preset
+    if prev != preset:
+        _save_settings()
+    return preset, prev != preset
+
+
+def eq_choices():
+    """前端 / 指令用的選項清單（順序固定）"""
+    return [{"key": k, "label": v["label"], "desc": v["desc"]} for k, v in EQ_PRESETS.items()]
+
+
+def build_filter_chain(normalize, fade_in=FADE_IN_SECONDS, eq=EQ_DEFAULT):
+    p = EQ_PRESETS.get(eq) or EQ_PRESETS[EQ_DEFAULT]
     parts = []
+    if p["pre"]:
+        parts.append(p["pre"])
     if normalize:
         parts.append(NORMALIZE_FILTER)
+    if p["post"]:
+        parts.append(p["post"])
+    elif p["boost"] and not normalize:
+        parts.append(EQ_LIMITER)
     if fade_in and fade_in > 0:
         # 淡入放在平衡之後：平衡器看到的是原始音量，不會把淡入「補」回來
         parts.append(f"afade=t=in:st=0:d={fade_in:g}")
@@ -56,7 +154,9 @@ def build_filter_chain(normalize, fade_in=FADE_IN_SECONDS):
 
 def ffmpeg_options(gid, fade_in=FADE_IN_SECONDS):
     """傳給 discord.FFmpegPCMAudio 的 options（-vn + 濾鏡鏈）"""
-    chain = build_filter_chain(normalize_enabled(gid), fade_in=fade_in)
+    eq = eq_preset(gid)
+    applied_eq[gid] = eq      # 最近一次開 FFmpeg 用的音效（播放中換音效時用來判斷要不要重開）
+    chain = build_filter_chain(normalize_enabled(gid), fade_in=fade_in, eq=eq)
     return f"-vn -af {chain}" if chain else "-vn"
 
 

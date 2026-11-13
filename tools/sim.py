@@ -25,6 +25,7 @@ if SIM_DATA != "repo":
     idlesleep.SESSION_FILE = os.path.join(SIM_DATA, "voice_session.json")
     _al.EXIT_FILE = os.path.join(SIM_DATA, "last_exit.json")
     _wa.SECRET_FILE = os.path.join(SIM_DATA, "panel_secret")
+    audio.SETTINGS_FILE = os.path.join(SIM_DATA, "audio_settings.json")
     print(f"sim data: {SIM_DATA}", flush=True)
 
 SONG_LEN = float(os.getenv("SIM_SONG_LEN", "4"))
@@ -32,6 +33,7 @@ G = 111
 loop = asyncio.new_event_loop()
 client.loop = loop
 EVENTS = []
+FFMPEG_OPENS = []   # 每次開 FFmpeg 的參數（before_options / options），測試看濾鏡有沒有套上
 
 
 class FakeMember:
@@ -160,7 +162,7 @@ patches = [
     mock.patch.object(type(client), "latency", new_callable=mock.PropertyMock, return_value=0.05),
     mock.patch.object(prefetch, "extract_stream", fake_extract),
     mock.patch.object(player, "_get_output_channel", mock.AsyncMock(return_value=FAKE_TEXT)),
-    mock.patch.object(player.discord, "FFmpegPCMAudio", lambda *a, **k: mock.MagicMock()),
+    mock.patch.object(player.discord, "FFmpegPCMAudio", lambda *a, **k: FFMPEG_OPENS.append(k) or mock.MagicMock()),
     mock.patch.object(player.discord, "PCMVolumeTransformer", lambda src, volume=1.0: types.SimpleNamespace(volume=volume, original=src, cleanup=lambda: None)),
     mock.patch.object(audio, "prime_source", mock.AsyncMock(side_effect=lambda s: s)),
     mock.patch.object(player, "progress_updater", mock.AsyncMock()),
@@ -198,6 +200,12 @@ def _sim_channel():
             if GUILD.voice_client: GUILD.voice_client.channel = ch
             state.notify_change()
     return _js(ok=True, channels=[(c.id, c.name, c._n) for c in GUILD.voice_channels])
+
+
+@webapi.flask_app.route("/sim/ffmpeg", methods=["GET"])
+def _sim_ffmpeg():
+    """測試用：最近幾次開 FFmpeg 的參數 + 播放中換音效的實測"""
+    return _js(opens=FFMPEG_OPENS[-5:], count=len(FFMPEG_OPENS), reapply=player.reapply_stats.get(G))
 
 
 if __name__ == "__main__":

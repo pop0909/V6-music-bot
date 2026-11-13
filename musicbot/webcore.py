@@ -233,6 +233,25 @@ async def web_set_normalize(gid, enabled):
     return {"status": "ok", "normalize": _audio.set_normalize(gid, enabled)}
 
 
+async def web_set_eq(gid, preset):
+    """從 Web 切換音效等化器：存檔 + 推 SSE（所有面板同步），播放中背景用新濾鏡從目前位置重開"""
+    from .player import reapply_audio
+    try:
+        preset, changed = _audio.set_eq(gid, preset)
+    except ValueError as e:
+        return {"status": "error", "message": str(e)}
+    applies = "next"
+    vc = voice_clients.get(gid)
+    if vc and now_playing.get(gid) and (vc.is_playing() or vc.is_paused()):
+        applies = "paused" if vc.is_paused() else ("live" if (song_durations.get(gid, 0) or 0) <= 0 else "now")
+    if changed:
+        log.info(f"[等化器] {gid} → {_audio.EQ_PRESETS[preset]['label']}")
+        notify_change()
+        if vc and applies != "live":
+            _spawn(reapply_audio(gid))    # 沒在播時它會立刻結束；正在開下一首時會等開好再確認
+    return {"status": "ok", "eq": preset, "label": _audio.EQ_PRESETS[preset]["label"], "applies": applies}
+
+
 async def web_join_voice(gid, channel_id):
     """從 Web 加入指定的語音頻道（若已在某頻道則切換過去）"""
     import discord
@@ -434,6 +453,7 @@ def get_guild_status(gid):
             "loop_mode": loop_modes.get(gid, "none"),
             "autoplay": _autoplay.is_enabled(gid),
             "normalize": _audio.normalize_enabled(gid),
+            "eq": _audio.eq_preset(gid),
             "bitrate": _audio.current_bitrate.get(gid) if is_connected else None,
             "notice": play_notices.get(gid),
             "guild_name": guild_names.get(gid, f"伺服器 {gid}"),
