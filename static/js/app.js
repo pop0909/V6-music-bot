@@ -229,7 +229,7 @@ function setShuffleUI(on) {
 }
 const TOGGLE_TIPS = {
     autoplayToggle: ['自動推薦接歌', '佇列播完自動接相關歌曲'],
-    normalizeToggle: ['音量平衡', '讓每首歌音量差不多，下一首生效'],
+    normalizeToggle: ['音量平衡', '讓每首歌音量差不多，切換立即生效'],
 };
 function setToggleUI(input, on) {
     const row = input && input.closest('.toggle-row');
@@ -1857,7 +1857,8 @@ if (el.normalizeToggle) {
         normalizeBusy = false;
         if (res && res.status === 'ok') {
             updateNormalizeToggle(res.normalize);
-            showToast(res.normalize ? '🎚️ 已開啟音量平衡（下一首生效）' : '🎚️ 已關閉音量平衡（下一首生效）', 'success');
+            const when = { now: '已從目前位置套用', paused: '繼續播放時生效', live: '直播無法中途切換，下一首生效', next: '下一首開始生效' }[res.applies] || '';
+            showToast(`🎚️ 已${res.normalize ? '開啟' : '關閉'}音量平衡${when ? `（${when}）` : ''}`, 'success', { key: 'normalize' });
         } else {
             updateNormalizeToggle(!want);
             showToast('❌ 設定失敗', 'error');

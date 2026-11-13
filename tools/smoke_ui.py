@@ -158,6 +158,19 @@ async def eq_checks(R, pg, ctx, w):
     await pg.click('#eqMenu .eq-opt[data-eq="off"]'); await pg.wait_for_timeout(900)
     if await R.J("() => [state.eq, document.getElementById('btnEq').classList.contains('active'), document.getElementById('eqIndicator').textContent]") != ["off", False, ""]:
         R.bad("改回原音後狀態不對")
+    # 音量平衡：播放中切換也要立即重開 FFmpeg（不等下一首）
+    tg = pg.locator("label[for=normalizeToggle]:visible")
+    if await tg.count() and await R.J("() => !!state.isPlaying"):
+        if w < 1180 and not await R.J("() => npOpen"):
+            await R.J("() => openNpView()"); await pg.wait_for_timeout(500)
+        was = await R.J("() => document.getElementById('normalizeToggle').checked")
+        n0 = (await R.J("async () => (await fetch('/sim/ffmpeg')).json()"))["count"]
+        await tg.first.click(); await pg.wait_for_timeout(1200)
+        ff = await R.J("async () => (await fetch('/sim/ffmpeg')).json()")
+        if ff["count"] <= n0 or (("dynaudnorm" in (ff["opens"][-1].get("options") or "")) == was):
+            R.bad(f"音量平衡切換後沒有立即重開 FFmpeg {str(ff)[:160]}")
+        await tg.first.click(); await pg.wait_for_timeout(900)
+        if await R.J("() => document.getElementById('normalizeToggle').checked") != was: R.bad("音量平衡切回去失敗")
     await other.close()
     await pg.keyboard.press("Escape")
 
@@ -335,6 +348,15 @@ async def scenario(br, theme, w):
     await pg.fill("#searchInput", "測試"); await pg.keyboard.press("Enter"); await pg.wait_for_timeout(1200)
     await pg.keyboard.press("Escape"); await pg.wait_for_timeout(150)
     if await R.J("() => !!document.getElementById('searchResults').firstChild"): R.bad("搜尋結果 Esc 沒收起")
+    # 頂欄：桌機各種寬度都不能把右側按鈕 / 「播放中」擠出畫面（之前 1081–1279px 會超出）
+    if w > 600:
+        for vw in range(900, 1601, 20):
+            await pg.set_viewport_size({"width": vw, "height": 900}); await pg.wait_for_timeout(60)
+            o = await R.J("""() => { const h = document.querySelector('.app-header').getBoundingClientRect();
+                return [document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+                        [...document.querySelectorAll('.app-header *')].some(e => { const r = e.getBoundingClientRect(); return r.width && (r.right > h.right + .5 || r.left < h.left - .5); })]; }""")
+            if any(o): R.bad(f"頂欄在 {vw}px 超出 {o}")
+        await pg.set_viewport_size({"width": w, "height": 900}); await pg.wait_for_timeout(200)
     # 通知
     await R.J("() => { showToast('✅ 測試成功', 'success'); showToast('連線失敗', 'error'); showToast('注意', 'warning'); }")
     await R.audit("14_toasts")

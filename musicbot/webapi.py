@@ -311,7 +311,7 @@ def api_autoplay():
 
 @flask_app.route("/api/normalize", methods=["POST"])
 def api_normalize():
-    """切換音量平衡（下一首生效）。body: {guild_id, enabled}"""
+    """切換音量平衡（播放中從目前位置立即生效）。body: {guild_id, enabled}"""
     data = request.get_json() or {}
     gid = int(data.get("guild_id", 0))
     if not gid:

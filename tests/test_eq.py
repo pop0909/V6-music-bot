@@ -33,12 +33,14 @@ class _TmpSettings:
         self._p.start()
         audio.eq_guilds.clear()
         audio.applied_eq.clear()
+        audio.applied_norm.clear()
         audio._settings_loaded = False
 
     def tearDown(self):
         self._p.stop()
         audio.eq_guilds.clear()
         audio.applied_eq.clear()
+        audio.applied_norm.clear()
         audio._settings_loaded = False
         shutil.rmtree(self._tmp, ignore_errors=True)
 
@@ -221,6 +223,62 @@ class EqPlaybackTest(_TmpSettings, SeekTestBase):
         self.assertAlmostEqual(self.elapsed(), 50 + (time.time() - t0), delta=0.06)
         self.assertGreater(player._reapply_lead, 0.2)                # 預估往實測值靠
         self.assertIsNotNone(real_primed)
+
+    async def test_normalize_toggle_applies_mid_song(self):
+        """音量平衡也和音效一樣：播放中切換 → 從目前位置重開（不切歌），下一首也用新設定"""
+        state.song_start_times[G] = time.time() - 30
+        on = audio.normalize_enabled(G)
+        self.assertEqual(audio.applied_norm[G], on)
+        n = self.ffmpeg.call_count
+        with mock.patch.object(player, "_cleanup_later"):
+            r = await webcore.web_set_normalize(G, not on)
+            self.assertEqual(r, {"status": "ok", "normalize": (not on), "applies": "now"})
+            await player.wait_background()
+        self.assertEqual(self.ffmpeg.call_count, n + 1)
+        _, before, opts = self.last_ffmpeg()
+        self.assertGreater(float(before.split()[1]), 30.0)
+        self.assertEqual("dynaudnorm" in opts, not on)
+        self.assertIn("afade=t=in:st=0:d=0.05", opts)
+        self.assertEqual(self.vc.swaps, 1)
+        self.assertEqual(webcore.get_guild_status(G)["current_url"], A)
+        self.assertAlmostEqual(self.elapsed(), float(before.split()[1]), delta=1)
+        self.assertEqual(webcore.get_full_app_state(G)["normalize"], not on)
+        # 同樣的值再送一次：不重開
+        await webcore.web_set_normalize(G, not on)
+        await player.wait_background()
+        self.assertEqual(self.ffmpeg.call_count, n + 1)
+        # 下一首
+        self.vc.stop()
+        await player.play_next(G)
+        await self.drain()
+        url, before, opts = self.last_ffmpeg()
+        self.assertIn("BBBBBBBBBBB", url)
+        self.assertEqual("dynaudnorm" in opts, not on)
+
+    async def test_normalize_and_eq_together(self):
+        audio.set_normalize(G, True)
+        await webcore.web_set_eq(G, "night")
+        await player.wait_background()
+        await webcore.web_set_normalize(G, False)
+        await player.wait_background()
+        opts = self.last_ffmpeg()[2]
+        self.assertNotIn("dynaudnorm", opts)
+        self.assertIn("acompressor", opts)
+        self.assertTrue(audio.filters_current(G))
+
+    async def test_normalize_while_paused(self):
+        self.vc.pause()
+        state.paused_position[G] = 12.0
+        state.song_start_times.pop(G, None)
+        on = audio.normalize_enabled(G)
+        r = await webcore.web_set_normalize(G, not on)
+        self.assertEqual(r["applies"], "paused")
+        await player.wait_background()
+        self.assertTrue(self.vc.is_paused())
+        self.assertEqual(self.vc.swaps, 0)
+        _, before, opts = self.last_ffmpeg()
+        self.assertTrue(before.startswith("-ss 12.000 "))
+        self.assertEqual("dynaudnorm" in opts, not on)
 
     async def test_same_preset_does_nothing(self):
         n = self.ffmpeg.call_count

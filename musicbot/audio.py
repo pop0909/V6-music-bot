@@ -2,7 +2,7 @@
 
 - 音量平衡用 ffmpeg 的 dynaudnorm（動態音量平衡）：實測 CPU 只有 loudnorm 的約 1/9，
   適合即時串流；每個伺服器可各自開關，預設由 .env 的 AUDIO_NORMALIZE 決定（未設定 = 開啟）
-- 開關在「下一首」生效（ffmpeg 串流開始後無法換濾鏡）
+- 播放中切換也立即生效：和音效等化器一樣由 player.reapply_audio 從目前位置重開 FFmpeg
 - 音效等化器（EQ 預設：原音 / 重低音 / 人聲 / 高音清晰 / 夜間）：每個伺服器各自設定、存檔（重啟保留）；
   播放中切換由 player.reapply_audio 用跳轉機制從目前位置重開 FFmpeg（舊來源播到新來源預熱好才換上，不跳歌、不重複）
 - 每首歌開頭 0.25 秒淡入（ffmpeg afade）：短到按下去馬上聽得到，又不會爆音
@@ -48,6 +48,12 @@ def set_normalize(gid, enabled):
     return normalize_guilds[gid]
 
 
+def filters_current(gid):
+    """目前播放中的 FFmpeg 濾鏡是否已經是最新設定（音效 + 音量平衡）"""
+    return (applied_eq.get(gid, EQ_DEFAULT) == eq_preset(gid)
+            and applied_norm.get(gid, normalize_enabled(gid)) == normalize_enabled(gid))
+
+
 # ---------- 音效等化器 ----------
 # pre = 音色濾鏡（放在音量平衡之前：平衡器會把加強後的整體音量拉回來，不會越調越大聲）
 # post = 動態處理（放在平衡之後：夜間模式的壓縮若放前面會被 dynaudnorm 補回去，實測 LRA 幾乎沒變）
@@ -74,6 +80,7 @@ EQ_PRESETS = {
 SETTINGS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "audio_settings.json")
 eq_guilds = {}          # guild_id: preset key（只存非預設值）
 applied_eq = {}         # guild_id: 目前 FFmpeg 實際使用的 preset
+applied_norm = {}       # guild_id: 目前 FFmpeg 實際有沒有開音量平衡
 _settings_loaded = False
 _settings_lock = threading.Lock()
 
@@ -156,8 +163,10 @@ def build_filter_chain(normalize, fade_in=FADE_IN_SECONDS, eq=EQ_DEFAULT):
 def ffmpeg_options(gid, fade_in=FADE_IN_SECONDS):
     """傳給 discord.FFmpegPCMAudio 的 options（-vn + 濾鏡鏈）"""
     eq = eq_preset(gid)
-    applied_eq[gid] = eq      # 最近一次開 FFmpeg 用的音效（播放中換音效時用來判斷要不要重開）
-    chain = build_filter_chain(normalize_enabled(gid), fade_in=fade_in, eq=eq)
+    norm = normalize_enabled(gid)
+    applied_eq[gid] = eq      # 最近一次開 FFmpeg 用的音效 / 音量平衡（播放中切換時用來判斷要不要重開）
+    applied_norm[gid] = norm
+    chain = build_filter_chain(norm, fade_in=fade_in, eq=eq)
     return f"-vn -af {chain}" if chain else "-vn"
 
 

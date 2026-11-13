@@ -787,7 +787,7 @@ _reapply_gen = {}
 
 
 async def reapply_audio(gid, retries=10):
-    """音效設定改了：播放中 → 從目前位置重開 FFmpeg 立即生效；暫停中 → 備好新位置的來源，按繼續時換上；
+    """音效 / 音量平衡設定改了：播放中 → 從目前位置重開 FFmpeg 立即生效；暫停中 → 備好新位置的來源，按繼續時換上；
     沒在播 / 長度未知（直播）→ 下一首生效。連按只做最後一次。回傳 "now" / "paused" / "next" / "superseded"。"""
     global _reapply_lead
     gen = _reapply_gen[gid] = _reapply_gen.get(gid, 0) + 1
@@ -804,7 +804,7 @@ async def reapply_audio(gid, retries=10):
         if (song_durations.get(gid, 0) or 0) <= 0:
             return "next"
         paused = vc.is_paused()
-        if audio.applied_eq.get(gid, audio.EQ_DEFAULT) == audio.eq_preset(gid) and not pending_seeks.get(gid):
+        if audio.filters_current(gid) and not pending_seeks.get(gid):
             return "now"                      # 目前的 FFmpeg 已經是新設定（例如等待期間剛開播的下一首）
         # 預估往低估（×0.7）：估少了由快轉精準補齊（20 ms 一格）；估多了才會跳過一小段
         lead = 0.0 if paused else _reapply_lead * 0.7

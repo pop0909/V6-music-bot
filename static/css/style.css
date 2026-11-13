@@ -2001,3 +2001,12 @@ a.hdr-btn { display: inline-flex; align-items: center; justify-content: center; 
 :where(html[data-theme="light"]) .np-extra #btnEq { background: rgba(30,24,60,.035); }
 :where(html[data-theme="light"]) .np-extra #btnEq .eq-ico { background: rgba(30,24,60,.07); }
 :where(html[data-theme="light"]) .np-extra #btnEq.active { background: var(--gold-dim); }
+
+/* 頂欄（1081–1320px 單列時）：搜尋框可以縮、右側按鈕群不縮，兩個下拉稍微變窄 → 「播放中」不會被擠出畫面 */
+.search-row { min-width: 0; }
+.header-right { flex-shrink: 0; }
+@media (min-width: 1081px) and (max-width: 1320px) {
+    .app-header { gap: 14px; }
+    .header-right { gap: 8px; }
+    .header-right .cdd-btn { width: 168px; max-width: 168px; }
+}

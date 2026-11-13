@@ -444,7 +444,7 @@ class HistoryApiTest(unittest.TestCase):
     def test_normalize_endpoint(self):
         with mock.patch.object(self.webapi, "run_async", lambda coro: asyncio.run(coro)):
             r = self.client.post("/api/normalize", json={"guild_id": 9, "enabled": False}).get_json()
-        self.assertEqual(r, {"status": "ok", "normalize": False})
+        self.assertEqual(r, {"status": "ok", "normalize": False, "applies": "next"})   # 沒在播 → 下一首生效
         self.assertFalse(audio.normalize_enabled(9))
         self.assertEqual(self.client.post("/api/normalize", json={}).status_code, 400)
 

@@ -228,9 +228,26 @@ async def web_set_loop(gid, mode):
     return {"status": "ok", "loop_mode": mode}
 
 
+def _applies_now(gid):
+    """播放中換濾鏡會在什麼時候生效：now / paused / live（直播不能跳轉）/ next（沒在播）"""
+    vc = voice_clients.get(gid)
+    if vc and now_playing.get(gid) and (vc.is_playing() or vc.is_paused()):
+        return "paused" if vc.is_paused() else ("live" if (song_durations.get(gid, 0) or 0) <= 0 else "now")
+    return "next"
+
+
 async def web_set_normalize(gid, enabled):
-    """從 Web 切換音量平衡（下一首生效）"""
-    return {"status": "ok", "normalize": _audio.set_normalize(gid, enabled)}
+    """從 Web 切換音量平衡：和音效一樣，播放中從目前位置立即生效"""
+    from .player import reapply_audio
+    prev = _audio.normalize_enabled(gid)
+    now = _audio.set_normalize(gid, enabled)
+    applies = _applies_now(gid)
+    if now != prev:
+        log.info(f"[音量平衡] {gid} → {'開' if now else '關'}")
+        notify_change()
+        if voice_clients.get(gid) and applies != "live":
+            _spawn(reapply_audio(gid))
+    return {"status": "ok", "normalize": now, "applies": applies}
 
 
 async def web_set_eq(gid, preset):
@@ -240,10 +257,8 @@ async def web_set_eq(gid, preset):
         preset, changed = _audio.set_eq(gid, preset)
     except ValueError as e:
         return {"status": "error", "message": str(e)}
-    applies = "next"
+    applies = _applies_now(gid)
     vc = voice_clients.get(gid)
-    if vc and now_playing.get(gid) and (vc.is_playing() or vc.is_paused()):
-        applies = "paused" if vc.is_paused() else ("live" if (song_durations.get(gid, 0) or 0) <= 0 else "now")
     if changed:
         log.info(f"[等化器] {gid} → {_audio.EQ_PRESETS[preset]['label']}")
         notify_change()
