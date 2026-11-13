@@ -198,6 +198,30 @@ class EqPlaybackTest(_TmpSettings, SeekTestBase):
         self.assertTrue(st["ok"])
         self.assertLess(st["ms"], 1000)
 
+    async def test_slow_restart_is_caught_up(self):
+        """FFmpeg 重開比預估慢：新來源先快轉同樣長度，換上時接在舊來源正在播的位置"""
+        state.song_start_times[G] = time.time() - 50
+        player._reapply_lead = 0.2
+        real_primed = player._primed_at
+
+        async def slow_primed(gid, url, pos):
+            await asyncio.sleep(0.6)
+            ps = audio.PrimedSource(_FakePCM())
+            ps.prime()
+            return ps
+        with mock.patch.object(player, "_primed_at", slow_primed), mock.patch.object(player, "_cleanup_later"):
+            t0 = time.time()
+            r = await player.reapply_audio(G) if audio.set_eq(G, "bass") else None
+        self.assertEqual(r, "now")
+        st = player.reapply_stats[G]
+        self.assertAlmostEqual(st["lead_ms"], 140, delta=2)          # 0.2 × 0.7
+        self.assertGreater(st["dropped_ms"], 400)                    # 慢了約 0.46 秒 → 快轉補齊
+        self.assertLess(st["dropped_ms"], 700)
+        # 進度 = 換上時舊來源播到的位置（50 + 經過時間），誤差 < 60 ms
+        self.assertAlmostEqual(self.elapsed(), 50 + (time.time() - t0), delta=0.06)
+        self.assertGreater(player._reapply_lead, 0.2)                # 預估往實測值靠
+        self.assertIsNotNone(real_primed)
+
     async def test_same_preset_does_nothing(self):
         n = self.ffmpeg.call_count
         r = await webcore.web_set_eq(G, "off")
@@ -281,6 +305,68 @@ class EqPlaybackTest(_TmpSettings, SeekTestBase):
         r = await webcore.web_set_eq(G, "loud")
         self.assertEqual(r["status"], "error")
         self.assertEqual(audio.eq_preset(G), "off")
+
+
+class _FakePCM:
+    """假 FFmpeg 來源：每格 3840 bytes（20 ms 48k 立體聲 s16），內容 = 格號（看得出丟了幾格）"""
+    def __init__(self, frames=10_000, value=1000):
+        self.i, self.frames, self.value = 0, frames, value
+
+    def read(self):
+        if self.i >= self.frames:
+            return b""
+        self.i += 1
+        import array as _a
+        return _a.array("h", [self.value] * 1920).tobytes()
+
+    def cleanup(self):
+        pass
+
+
+class DropFramesTest(unittest.IsolatedAsyncioTestCase):
+    async def test_drop_and_fade(self):
+        import array as _a
+        src = audio.PrimedSource(_FakePCM())
+        src.prime()
+        got = await audio.drop_frames(src, 0.5)
+        self.assertAlmostEqual(got, 0.5)
+        self.assertEqual(src.original.i, 25)          # 第 1 格（預熱讀的）+ 再讀 24 格 = 丟掉 25 格
+        f = [_a.array("h", src.read()) for _ in range(4)]
+        self.assertEqual(f[0][0], 0)                  # 接上時從 0 淡入
+        self.assertTrue(f[0][-1] <= f[1][0] < f[1][-1] <= f[2][0] < f[2][-1] <= 1000)
+        self.assertEqual(f[0][0], f[0][1])               # 左右聲道同增益
+        self.assertEqual(list(set(f[3])), [1000])     # 60 ms 後恢復原音量
+
+    async def test_stops_at_end_and_caps(self):
+        src = audio.PrimedSource(_FakePCM(frames=5))
+        self.assertAlmostEqual(await audio.drop_frames(src, 1.0), 0.1)
+        src2 = audio.PrimedSource(_FakePCM())
+        self.assertAlmostEqual(await audio.drop_frames(src2, 60, max_seconds=2), 2.0)
+        self.assertEqual(await audio.drop_frames(src2, 0.01), 0.0)
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "沒有 ffmpeg")
+    async def test_real_ffmpeg_drop_lines_up_exactly(self):
+        """真 FFmpeg：-ss P 開檔後快轉 D 秒，接上的第一格 = 同一個 -ss P 串流第 D/0.02 格（逐位元相同：不重複、不漏）"""
+        import discord
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        f = os.path.join(tmp, "noise.webm")
+        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "anoisesrc=d=12:c=white:seed=7:r=48000:a=0.3",
+                        "-ac", "2", "-c:a", "libopus", "-b:a", "128k", f], check=True, timeout=60)
+        P, D = 4.0, 1.24
+        opts = "-vn"                                   # 不加濾鏡：比對原始樣本
+        ref = discord.FFmpegPCMAudio(f, executable="ffmpeg", before_options=f"-ss {P:.3f}", options=opts)
+        frames = [ref.read() for _ in range(80)]
+        ref.cleanup()
+        src = discord.FFmpegPCMAudio(f, executable="ffmpeg", before_options=f"-ss {P:.3f}", options=opts)
+        ps = await audio.prime_source(src)
+        dropped = await audio.drop_frames(ps, D)
+        ps._fade = None                                # 比對樣本時不要淡入
+        got = [ps.read() for _ in range(3)]
+        ps.cleanup()
+        n = round(dropped / audio.FRAME_SECONDS)
+        self.assertEqual(n, 62)
+        self.assertEqual(got, frames[n:n + 3])
 
 
 class EqApiTest(_TmpSettings, unittest.TestCase):

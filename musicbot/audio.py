@@ -11,6 +11,7 @@
 - 新來源先「預熱」（PrimedSource：在背景執行緒先讀到第一格 PCM）才交給播放執行緒：
   FFmpeg 啟動期間舊歌繼續播（跳轉）/ 播放執行緒不會卡住後一次爆送一堆封包（discord.py 會追趕時間）
 """
+import array
 import asyncio
 import json
 import os
@@ -175,6 +176,7 @@ class PrimedSource(discord.AudioSource):
     def __init__(self, source):
         self.original = source
         self._first = None
+        self._fade = None       # [已淡入格數, 總格數]：快轉後接上時做短淡入（快轉掉了 FFmpeg 的 afade）
 
     def prime(self):
         data = self.original.read()
@@ -184,8 +186,26 @@ class PrimedSource(discord.AudioSource):
     def read(self):
         if self._first is not None:
             data, self._first = self._first, None
-            return data
-        return self.original.read()
+        else:
+            data = self.original.read()
+        if self._fade is not None and data:
+            data = self._apply_fade(data)
+        return data
+
+    def fade_in(self, frames=3):
+        self._fade = [0, max(1, int(frames))]
+
+    def _apply_fade(self, data):
+        k, total = self._fade
+        pcm = array.array("h")
+        pcm.frombytes(data[: len(data) - len(data) % 2])
+        n = len(pcm)
+        start, span = k * (n // 2), total * (n // 2) or 1   # 以「取樣點」計（立體聲左右聲道同一個增益）
+        for i in range(n):
+            pcm[i] = int(pcm[i] * (start + i // 2) / span)
+        k += 1
+        self._fade = None if k >= total else [k, total]
+        return pcm.tobytes()
 
     def is_opus(self):
         return False
@@ -206,6 +226,29 @@ async def prime_source(source, timeout=PRIME_TIMEOUT):
         _in_thread(ps.cleanup)
         raise RuntimeError("FFmpeg 沒有輸出音訊（串流網址可能已失效）")
     return ps
+
+
+FRAME_SECONDS = 0.02    # discord.py 每次 read() = 20 ms PCM
+
+
+async def drop_frames(source, seconds, max_seconds=15.0):
+    """把已預熱的來源往前快轉 seconds 秒（讀掉 PCM 不播）。換音效時用：FFmpeg 重開花的時間比預估久，
+    舊來源在這段期間已經往前播了 → 新來源丟掉同樣長度，換上時剛好接上（不重複一段）。回傳實際丟掉的秒數。"""
+    n = int(min(seconds, max_seconds) / FRAME_SECONDS)
+    if n <= 0:
+        return 0.0
+
+    def run():
+        done = 0
+        while done < n:
+            if not source.read():
+                break
+            done += 1
+        return done
+    done = await _in_thread(run)
+    if done and hasattr(source, "fade_in"):
+        source.fade_in()          # 60 ms 淡入，避免接點爆音
+    return done * FRAME_SECONDS
 
 
 def _in_thread(fn):
