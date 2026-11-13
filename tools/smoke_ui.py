@@ -179,6 +179,17 @@ async def scenario(br, theme, w):
             await hb.click(); await pg.wait_for_timeout(800); await R.audit("10_np_history_recent")
             seg = await pg.query_selector('#npHistoryMode button:nth-child(2)')
             if seg: await seg.click(); await pg.wait_for_timeout(800); await R.audit("11_np_history_rank")
+        ab = await pg.query_selector('#npTabs .tab-btn[data-np="actions"]')
+        if not ab or not await ab.is_visible():
+            R.bad("展開畫面沒有「操作紀錄」分頁")
+        else:
+            await ab.click(); await pg.wait_for_timeout(900); await R.audit("11b_np_actions")
+            n = await R.J("() => document.querySelectorAll('#npActList .act-item').length")
+            if n < 1: R.bad("操作紀錄是空的（前面按過「播放全部」應該有一筆點歌）")
+            await pg.click('#npActFilter .seg-btn[data-act="remove"]'); await pg.wait_for_timeout(300)
+            if await R.J("() => [...document.querySelectorAll('#npActList .act-item')].some(e => !e.classList.contains('act-remove'))"):
+                R.bad("操作紀錄篩選「刪歌」後還有別的種類")
+            await pg.click('#npActFilter .seg-btn[data-act=""]'); await pg.wait_for_timeout(200)
         await pg.keyboard.press("Escape"); await pg.wait_for_timeout(500)
         if await R.J("() => document.body.classList.contains('np-open') || document.documentElement.classList.contains('np-open')"): R.bad("Esc 沒收合播放畫面")
     # 播放控制回歸：先確定有歌在播（模擬器的歌很短，前面的步驟跑完時可能已經播完了）

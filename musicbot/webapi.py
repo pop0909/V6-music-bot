@@ -29,7 +29,13 @@ from .webcore import (
     get_guild_list, get_guild_status, get_full_app_state, web_set_normalize, web_import_songs,
 )
 from . import importer
-from . import webauth, extmembers
+from . import webauth, extmembers, actionlog
+
+
+def _actor():
+    """操作紀錄用：網頁面板登入的金鑰成員名稱（擁有者 = 「擁有者」），來源 = 網頁面板"""
+    u = getattr(g, "panel_user", None) or {}
+    return (u.get("name") or "網頁", "web")
 
 # 模組化後 Flask 位於套件內，需明確指向專案根目錄的 templates/ 與 static/
 _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -260,7 +266,7 @@ def api_play():
 def api_skip():
     data = request.get_json() or {}
     gid = int(data.get("guild_id", 0))
-    result = run_async(web_skip(gid))
+    result = run_async(web_skip(gid, actor=_actor()))
     return _ack(result)
 
 @flask_app.route("/api/stop", methods=["POST"])
@@ -390,6 +396,16 @@ def api_history_top():
     return jsonify({"status": "ok", "range": rng, "items": items})
 
 
+@flask_app.route("/api/actions")
+def api_actions():
+    """操作紀錄（點歌 / 跳過 / 刪歌，最近 7 天，新的在前）：有金鑰登入的人都能看"""
+    gid = _history_gid()
+    if not gid:
+        return jsonify({"status": "ok", "items": [], "keep_days": actionlog.KEEP_DAYS})
+    limit = request.args.get("limit", 200, type=int)
+    return jsonify({"status": "ok", "items": actionlog.recent(gid, limit), "keep_days": actionlog.KEEP_DAYS})
+
+
 @flask_app.route("/api/queue/add", methods=["POST"])
 def api_queue_add():
     data = request.get_json() or {}
@@ -415,7 +431,8 @@ def api_queue_add():
         return jsonify({"status": "error", "message": "請提供網址"}), 400
     if not valid_song_url(url):
         return jsonify({"status": "error", "message": "網址格式不正確（需要 http/https 連結）"}), 400
-    result = run_async(web_add_to_queue(gid, url, title, auto_play=not no_play, duration=data.get("duration")))
+    result = run_async(web_add_to_queue(gid, url, title, auto_play=not no_play, duration=data.get("duration"),
+                                        actor=_actor()))
     if not result:
         return jsonify({"status": "error", "message": "加入失敗"})
     if result.get("invalid"):
@@ -453,7 +470,7 @@ def api_queue_add_batch():
     with state_lock:
         before = len(queues.get(gid, []))
     stats = {}
-    count = run_async(web_add_to_queue_batch(gid, songs, stats=stats))
+    count = run_async(web_add_to_queue_batch(gid, songs, stats=stats, actor=_actor()))
     skipped = stats.get("full_skipped", 0)
     if not count and skipped:
         return jsonify({"status": "error", "code": "queue_full", "message": queue_full_message(),
@@ -478,9 +495,10 @@ def api_import():
                 next(iter(guild_names), 0))
     if not gid:
         return jsonify({"status": "error", "message": "Bot 尚未連線到任何伺服器"}), 400
+    actor = _actor()        # 背景執行緒裡沒有 flask.g，先取好
     def _done(name, songs):
         stats = {}
-        added = run_async(web_import_songs(gid, songs, stats=stats))
+        added = run_async(web_import_songs(gid, songs, stats=stats, actor=actor, label=f"匯入：{name}" if name else "匯入歌單"))
         return added, stats.get("full_skipped", 0)
     jid = importer.start_job(url, _done)
     return jsonify({"status": "ok", "job": jid}), 202
@@ -528,9 +546,12 @@ def api_queue_remove():
     data = request.get_json() or {}
     gid = int(data.get("guild_id", 0))
     index = int(data.get("index", -1))
+    removed = None
     with state_lock:
         if gid in queues and 0 <= index < len(queues[gid]):
-            queues[gid].pop(index)
+            removed = queues[gid].pop(index)
+    if removed:
+        actionlog.record(gid, "remove", _actor(), removed[1], url=removed[0])
     return jsonify({"status": "ok"})
 
 @flask_app.route("/api/queue/reorder", methods=["POST"])
@@ -560,7 +581,7 @@ def api_queue_play():
     data = request.get_json() or {}
     gid = int(data.get("guild_id", 0))
     index = int(data.get("index", -1))
-    result = run_async(web_play_index(gid, index))
+    result = run_async(web_play_index(gid, index, actor=_actor()))
     return _ack(result)
 
 @flask_app.route("/api/queue/clear", methods=["POST"])
@@ -642,7 +663,7 @@ def api_playlist_play():
     if index < 0 or index >= len(local_playlist):
         return jsonify({"status": "error", "message": "無效索引"}), 400
     song = local_playlist[index]
-    result = run_async(web_add_to_queue(gid, song["url"], song["title"]))
+    result = run_async(web_add_to_queue(gid, song["url"], song["title"], actor=_actor()))
     if not result:
         return jsonify({"status": "error", "message": "加入失敗"})
     if result.get("full") or result.get("invalid"):
@@ -663,7 +684,7 @@ def api_playlist_play_all():
         songs = local_playlist.copy()
     if shuffle: random.shuffle(songs)
     stats = {}
-    count = run_async(web_play_all(gid, songs, stats=stats))
+    count = run_async(web_play_all(gid, songs, stats=stats, actor=_actor(), label="本地歌單"))
     skipped = stats.get("full_skipped", 0)
     return jsonify({"status": "ok", "count": count or 0, "full_skipped": skipped, "message": queue_skip_message(skipped)})
 

@@ -13,6 +13,9 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
 
 from musicbot import userlists, userlistapi, extmembers, webapi, importer, state  # noqa: E402
+
+from musicbot import actionlog as _actionlog  # noqa: E402
+_actionlog._reset_for_tests()   # 操作紀錄寫到暫存資料夾，不碰專案的 data/
 webapi.flask_app.config["LOGIN_DISABLED"] = True   # 這裡測 API 本身；登入另外在 test_webauth.py 測
 
 U = "https://www.youtube.com/watch?v=%011d"
@@ -211,7 +214,7 @@ class Frontend(unittest.TestCase):
         html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
         self.assertIn('data-tab="mylists"', html)
         self.assertIn('id="tabMylists"', html)
-        self.assertIn("app.js?v=20261113noeq", html)
+        self.assertIn("app.js?v=20261114actlog", html)
         js = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
         self.assertIn("'/api/ext/lists'", js)
 

@@ -25,6 +25,8 @@ if SIM_DATA != "repo":
     idlesleep.SESSION_FILE = os.path.join(SIM_DATA, "voice_session.json")
     _al.EXIT_FILE = os.path.join(SIM_DATA, "last_exit.json")
     _wa.SECRET_FILE = os.path.join(SIM_DATA, "panel_secret")
+    from musicbot import actionlog as _act
+    _act._reset_for_tests(os.path.join(SIM_DATA, "action_log.json"))
     print(f"sim data: {SIM_DATA}", flush=True)
 
 SONG_LEN = float(os.getenv("SIM_SONG_LEN", "4"))

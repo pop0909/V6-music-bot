@@ -36,7 +36,7 @@ class ExtApiTest(unittest.TestCase):
         state.queues.pop(G, None)
 
     def add(self, **body):
-        async def fake_add(gid, url, title, auto_play=True, duration=None, requester="網頁"):
+        async def fake_add(gid, url, title, auto_play=True, duration=None, requester="網頁", **kw):
             q = state.queues.setdefault(gid, [])
             for i, (u, _t) in enumerate(q):
                 if u == url:

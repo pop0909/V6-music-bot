@@ -1085,6 +1085,7 @@ async def _process_and_play(interaction, query, gid, vc):
             return
         from .state import queue_room, queue_full_message
         added = full_skipped = 0
+        added_songs = []
         entries = info.get("entries", [info])
         for entry in entries:
             if entry:
@@ -1098,11 +1099,15 @@ async def _process_and_play(interaction, query, gid, vc):
                     title = clean_str(entry.get("title", "未知"))[:200]
                     queues[gid].append((url, title))
                     note_song_meta(gid, url, requester=interaction.user.display_name, source="user")
+                    added_songs.append((url, title))
                     added += 1
         if added == 0:
             msg = f"⚠️ {queue_full_message()}" if full_skipped else "無法解析歌曲！"
             await interaction.followup.send(msg, ephemeral=True)
             return
+        from . import actionlog       # 操作紀錄：一首記歌名；YouTube 播放清單只記一筆「N 首」
+        actionlog.record_add(gid, actionlog.discord_actor(interaction), added_songs,
+                             label=(f"清單：{clean_str(info.get('title') or '')[:80]}" if len(added_songs) > 1 and info.get("title") else None))
         # 發送到指定頻道
         out_ch = await _get_output_channel(gid)
         if out_ch:

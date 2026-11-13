@@ -12,6 +12,7 @@ from .state import (
     is_playing_state, is_paused_state,
 )
 from .storage import load_favorites, add_favorite_song
+from . import actionlog
 
 
 class MusicControlView(discord.ui.View):
@@ -65,6 +66,9 @@ class MusicControlView(discord.ui.View):
         from .audio import fade_out_stop
         vc = interaction.guild.voice_client
         if vc and (vc.is_playing() or vc.is_paused()):
+            gid = self._gid(interaction)
+            actionlog.record(gid, "skip", actionlog.discord_actor(interaction), now_playing.get(gid, ""),
+                             url=now_playing_url.get(gid))
             await interaction.response.send_message("已跳過", ephemeral=True)
             await fade_out_stop(self._gid(interaction), vc)   # 0.12 秒淡出再切歌
         else:
@@ -117,6 +121,7 @@ class MusicControlView(discord.ui.View):
         if gid not in queues: queues[gid] = []
         song = random.choice(favs)
         queues[gid].append((song["url"], song["title"]))
+        actionlog.record(gid, "add", actionlog.discord_actor(interaction), song["title"], url=song["url"], detail="隨機最愛")
         await interaction.response.send_message(f"隨機選取最愛：**{song['title']}**", ephemeral=True)
         if not vc.is_playing() and not vc.is_paused():
             await play_next(gid, interaction.channel)
@@ -141,6 +146,7 @@ class MusicControlView(discord.ui.View):
         random_loop_guilds[gid] = True
         song = random.choice(local_playlist)
         queues[gid].append((song["url"], song["title"]))
+        actionlog.record(gid, "add", actionlog.discord_actor(interaction), song["title"], url=song["url"], detail="隨機循環")
         await interaction.response.send_message(f"隨機循環：**{song['title']}**", ephemeral=True)
         if not vc.is_playing() and not vc.is_paused():
             await play_next(gid, interaction.channel)

@@ -17,7 +17,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700&display=swap">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <link rel="stylesheet" href="/static/css/style.css?v=20261113noeq">
+    <link rel="stylesheet" href="/static/css/style.css?v=20261114actlog">
 </head>
 <body>
     <div class="stroke-bg" aria-hidden="true"><svg viewBox="0 0 1400 900" fill="none" preserveAspectRatio="xMidYMid slice">
@@ -199,6 +199,7 @@
                     <div class="tabs" id="npTabs">
                         <button class="tab-btn active" data-np="queue"><i class="fas fa-list-ul"></i><span>播放佇列</span></button>
                         <button class="tab-btn" data-np="history"><i class="fas fa-clock-rotate-left"></i><span>播放紀錄</span></button>
+                        <button class="tab-btn" data-np="actions"><i class="fas fa-list-check"></i><span>操作紀錄</span></button>
                     </div>
                     <span class="badge queue-badge-pos" id="npQueueBadge">佇列 0</span>
                 </div>
@@ -227,6 +228,22 @@
                         </div>
                     </div>
                     <div class="list-container history-list" id="npHistoryList"></div>
+                </div>
+                <!-- 操作紀錄：誰點歌 / 跳過 / 刪歌（有金鑰的人都看得到，保留 7 天） -->
+                <div class="tab-content" id="npTabActions">
+                    <div class="tab-toolbar">
+                        <div class="seg" id="npActFilter">
+                            <button class="seg-btn active" data-act="">全部</button>
+                            <button class="seg-btn" data-act="add"><i class="fas fa-plus"></i> 點歌</button>
+                            <button class="seg-btn" data-act="skip"><i class="fas fa-forward"></i> 跳過</button>
+                            <button class="seg-btn" data-act="remove"><i class="fas fa-trash"></i> 刪歌</button>
+                        </div>
+                        <div class="toolbar-actions">
+                            <span class="tab-count act-keep" id="npActCount">保留 7 天</span>
+                            <button class="btn-sm" id="npBtnActRefresh" title="重新整理"><i class="fas fa-rotate"></i></button>
+                        </div>
+                    </div>
+                    <div class="list-container history-list act-list" id="npActList"></div>
                 </div>
             </section>
         </div>
@@ -349,6 +366,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=20261113noeq"></script>
+    <script src="/static/js/app.js?v=20261114actlog"></script>
 </body>
 </html>

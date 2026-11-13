@@ -27,6 +27,7 @@ from .state import play_notices, note_song_meta, known_durations, remember_durat
 from .state import pending_seeks as _pending_seeks, sleep_timers
 from .utils import clean_str, format_time, valid_song_url, safe_title
 from .player import _clear_guild_state, _update_panel, play_next, resume_playback, _spawn
+from . import actionlog
 
 
 # ================== 從 Web UI 控制 Discord 的輔助函數 ==================
@@ -81,7 +82,7 @@ async def ensure_voice_connected(gid):
         return None
 
 
-async def web_add_to_queue(gid, url, title, auto_play=True, duration=None, requester="網頁"):
+async def web_add_to_queue(gid, url, title, auto_play=True, duration=None, requester="網頁", actor=None):
     """從 Web 加入歌曲到 Discord 佇列
 
     auto_play=False 時不自動播放（讓 Web UI 使用者手動按播放）
@@ -107,6 +108,7 @@ async def web_add_to_queue(gid, url, title, auto_play=True, duration=None, reque
     position = len(queues[gid])
     remember_duration(url, duration)
     note_song_meta(gid, url, requester=requester, source="user")
+    actionlog.record(gid, "add", actor, title, url=url)     # 操作紀錄（actor=None 不記）
     if gid in random_loop_guilds: random_loop_guilds[gid] = False
     if auto_play:
         # 確保 bot 在語音中（不在的話自動重連上次的頻道）
@@ -168,12 +170,13 @@ async def web_toggle_play(gid):
     return {"status": "error", "message": "佇列為空"}
 
 
-async def web_skip(gid):
+async def web_skip(gid, actor=None):
     """從 Web 跳過歌曲：淡出（0.12 秒）+ 停止在背景執行，立刻回應（accepted）。
     停止後 after_play → play_next 照常接下一首；下一首通常已被預先解析。"""
     vc = await ensure_voice_connected(gid)
     if vc:
         if vc.is_playing() or vc.is_paused():
+            actionlog.record(gid, "skip", actor, now_playing.get(gid, ""), url=now_playing_url.get(gid))
             _spawn(_audio.fade_out_stop(gid, vc))
         elif queues.get(gid):
             manual_advance[gid] = True      # 閒置但佇列有歌：跳過 = 直接播下一首
@@ -269,10 +272,11 @@ async def web_join_voice(gid, channel_id):
         return {"status": "error", "message": str(e)}
 
 
-async def web_remove_queue(gid, index):
+async def web_remove_queue(gid, index, actor=None):
     """從 Web 移除佇列歌曲"""
     if gid in queues and 0 <= index < len(queues[gid]):
-        queues[gid].pop(index)
+        url, title = queues[gid].pop(index)
+        actionlog.record(gid, "remove", actor, title, url=url)
     _prefetch.ensure(gid)  # 下一首可能變了 → 重新瞄準預先解析
     return {"status": "ok"}
 
@@ -286,7 +290,7 @@ async def web_reorder_queue(gid, frm, to):
     return {"status": "ok"}
 
 
-async def web_play_index(gid, index):
+async def web_play_index(gid, index, actor=None):
     """從 Web 播放指定索引（將目標歌曲移到佇列最前，靠 after_play 驅動 play_next）"""
     if gid not in queues or index < 0 or index >= len(queues[gid]):
         return {"status": "error", "message": "無效索引"}
@@ -299,6 +303,9 @@ async def web_play_index(gid, index):
     if vc:
         _prefetch.ensure(gid)   # 目標歌曲立刻開始解析（與淡出同時進行）
         if vc.is_playing() or vc.is_paused():
+            # 操作紀錄：目前這首被跳過、改播佇列裡的另一首
+            actionlog.record(gid, "skip", actor, now_playing.get(gid, ""), url=now_playing_url.get(gid),
+                             detail=f"改播：{song[1]}")
             # 淡出 + 停止在背景；after_play 會自動 call play_next，從位置 0 播放
             _spawn(_audio.fade_out_stop(gid, vc))
         else:
@@ -312,11 +319,12 @@ async def web_play_index(gid, index):
     return {"status": "error", "message": "bot 不在語音頻道且無法自動重連"}
 
 
-async def web_add_to_queue_batch(gid, songs, stats=None):
+async def web_add_to_queue_batch(gid, songs, stats=None, actor=None, label=None):
     """批次加入多首歌曲（單次 run_async 呼叫，不自動播放）。
     佇列上限：加到滿為止，stats["full_skipped"] = 因為佇列滿而沒加入的首數"""
     if gid not in queues: queues[gid] = []
     count = skipped = 0
+    added = []
     for song in songs:
         if not isinstance(song, dict):
             continue
@@ -329,7 +337,9 @@ async def web_add_to_queue_batch(gid, songs, stats=None):
             queues[gid].append((url, title))
             remember_duration(url, song.get("duration"))
             note_song_meta(gid, url, requester="網頁", source="user")
+            added.append((url, title))
             count += 1
+    actionlog.record_add(gid, actor, added, label)     # 多首只記一筆
     if stats is not None:
         stats["full_skipped"] = skipped
     if gid in random_loop_guilds: random_loop_guilds[gid] = False
@@ -352,7 +362,7 @@ def get_active_guild():
     return _state.active_guild_id
 
 
-async def web_play_all(gid, songs, stats=None):
+async def web_play_all(gid, songs, stats=None, actor=None, label=None):
     """清空佇列、一次加入整份歌單（依網址去重，最多 QUEUE_MAX 首），閒置時開播。取代逐首 run_async。"""
     seen = set()
     new_q = []
@@ -368,6 +378,7 @@ async def web_play_all(gid, songs, stats=None):
         stats["full_skipped"] = max(0, len(new_q) - cap)
     new_q = new_q[:cap]
     queues[gid] = new_q
+    actionlog.record_add(gid, actor, new_q, label)     # 整份歌單：只記一筆
     if gid in random_loop_guilds:
         random_loop_guilds[gid] = False
     vc = await ensure_voice_connected(gid)
@@ -481,6 +492,7 @@ def get_full_app_state(gid):
     state_data["restore"] = idlesleep.saved_info(gid)
     from . import userlists
     state_data["ul_rev"] = userlists.rev()
+    state_data["act_rev"] = actionlog.rev()        # 操作紀錄有新的 → 正在看的面板重新抓
     return state_data
 
 
@@ -494,7 +506,7 @@ def _sleep_info(gid):
     return {"mode": info.get("mode")}
 
 
-async def web_import_songs(gid, songs, requester="網頁", stats=None):
+async def web_import_songs(gid, songs, requester="網頁", stats=None, actor=None, label=None):
     """匯入歌單：附加到佇列尾端（依網址去重），閒置在語音中就開播。回傳加入數量。
     佇列上限：加到滿為止，stats["full_skipped"] = 因為佇列滿而沒加入的首數"""
     q = queues.setdefault(gid, [])
@@ -502,6 +514,7 @@ async def web_import_songs(gid, songs, requester="網頁", stats=None):
     if now_playing_url.get(gid):
         existing.add(now_playing_url[gid])      # 正在播的那首不算「不在佇列」：連點播放歌單不會又把它加回去
     count = skipped = 0
+    added = []
     for s in songs:
         if not isinstance(s, dict) or not isinstance(s.get("url"), str):
             continue
@@ -517,7 +530,9 @@ async def web_import_songs(gid, songs, requester="網頁", stats=None):
         q.append((url, safe_title(s.get("title"), url)))
         remember_duration(url, s.get("duration"))
         note_song_meta(gid, url, requester=requester, source="user")
+        added.append(q[-1])
         count += 1
+    actionlog.record_add(gid, actor, added, label)     # 匯入 / 整份歌單：只記一筆
     if stats is not None:
         stats["full_skipped"] = skipped
     if gid in random_loop_guilds:

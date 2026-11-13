@@ -104,7 +104,7 @@ class ApiTest(MembersBase):
         _, tok = extmembers.create("小明")
         seen = {}
 
-        async def fake_add(gid, url, title, auto_play=True, duration=None, requester="網頁"):
+        async def fake_add(gid, url, title, auto_play=True, duration=None, requester="網頁", **kw):
             seen["requester"] = requester
             return {"ok": True, "position": 1, "starts_now": True}
         import asyncio

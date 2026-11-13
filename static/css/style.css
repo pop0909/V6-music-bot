@@ -1943,3 +1943,43 @@ a.hdr-btn { display: inline-flex; align-items: center; justify-content: center; 
     .header-right { gap: 8px; }
     .header-right .cdd-btn { width: 168px; max-width: 168px; }
 }
+
+/* ================== 操作紀錄（展開畫面第三個分頁） ================== */
+#npTabActions .tab-toolbar { gap: 8px; flex-wrap: wrap; }
+.act-day {
+    position: sticky; top: 0; z-index: 1;
+    margin: 6px 4px 2px; padding: 3px 10px;
+    width: fit-content; border-radius: 999px;
+    font-size: 11.5px; font-weight: 700; letter-spacing: .02em;
+    color: var(--sub); background: var(--bg-2);
+    border: 1px solid var(--line);
+}
+.act-day:first-child { margin-top: 0; }
+.act-item { cursor: default; }
+.act-item .act-ico { font-size: 11px; }
+.act-add .act-ico { color: var(--accent-2); background: color-mix(in srgb, var(--accent-2) 14%, transparent); }
+.act-skip .act-ico { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.act-remove .act-ico { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.act-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.act-line .item-title { flex: 0 1 auto; }
+.act-verb { flex: none; font-size: 12px; font-weight: 700; color: var(--sub); }
+.act-add .act-verb { color: var(--accent-2); }
+.act-skip .act-verb { color: var(--accent); }
+.act-remove .act-verb { color: var(--danger); }
+.act-count { flex: none; font-size: 11.5px; font-weight: 600; color: var(--sub); white-space: nowrap; }
+.act-meta { display: flex; gap: 8px; align-items: center; }
+.act-meta > span { flex: none; }
+.act-meta .act-detail { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.act-who { font-weight: 600; color: var(--text); opacity: .85; }
+.act-src i { font-size: 10.5px; margin-right: 1px; }
+.act-time { flex: none; font-size: 12px; color: var(--sub); font-variant-numeric: tabular-nums; }
+html[data-theme="light"] .act-add .act-ico, html[data-theme="light"] .act-add .act-verb { color: #0a7f95; }
+html[data-theme="light"] .act-skip .act-ico, html[data-theme="light"] .act-skip .act-verb { color: #c81673; }
+html[data-theme="light"] .act-remove .act-ico, html[data-theme="light"] .act-remove .act-verb { color: #c8233f; }
+@media (max-width: 760px) {
+    #npBtnActRefresh { min-height: 36px; min-width: 40px; }
+    #npActFilter .seg-btn { padding: 6px 9px; }
+    #npActFilter .seg-btn i { display: none; }
+    .act-keep { display: none; }
+    .act-meta { gap: 6px; }
+}

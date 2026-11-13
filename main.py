@@ -34,6 +34,9 @@ if __name__ == "__main__":
     # 載入歌單
     load_local_playlist()
     os.makedirs(FAVORITES_DIR, exist_ok=True)
+    # 操作紀錄：啟動時清掉超過 7 天的
+    from musicbot import actionlog
+    actionlog.prune()
 
     # 啟動 Flask 網頁伺服器（背景執行緒）
     flask_thread = threading.Thread(target=start_flask, daemon=True)

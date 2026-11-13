@@ -96,6 +96,12 @@ def _lookup_title(url):
         return None
 
 
+def ext_actor():
+    """操作紀錄用：(金鑰成員名稱, 來源)。帶 X-Ext-Token 標頭 = Chrome 擴充功能；用登入 cookie = 網頁面板"""
+    who = (getattr(g, "ext_user", None) or {}).get("name") or "未知"
+    return (who, "ext" if "X-Ext-Token" in request.headers else "web")
+
+
 def _pick_guild():
     with state_lock:
         gid = get_active_guild()
@@ -156,7 +162,7 @@ def ext_add():
     title = (clean_str(data.get("title") or "") or "").strip()[:TITLE_MAX] or _lookup_title(url) or url
     nxt = bool(data.get("next"))
     who = g.ext_user.get("name")
-    result = run_async(web_add_to_queue(gid, url, title, auto_play=True, requester=who))
+    result = run_async(web_add_to_queue(gid, url, title, auto_play=True, requester=who, actor=ext_actor()))
     if not result:
         return jsonify({"status": "error", "message": "加入失敗"}), 500
     if result.get("full"):

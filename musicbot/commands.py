@@ -11,7 +11,7 @@ from .state import (
     state_lock, queues, now_playing, voice_clients, volumes,
     volume_transformers, control_panels, song_start_times, song_durations,
     paused_position, random_loop_guilds, loop_modes, saved_queues,
-    guild_names, local_playlist,
+    guild_names, local_playlist, now_playing_url,
 )
 from .storage import load_favorites
 from . import audio, history, ytdl
@@ -92,7 +92,9 @@ async def import_cmd(interaction: discord.Interaction, url: str):
         await interaction.followup.send("清單裡沒有可加入的歌曲", ephemeral=True)
         return
     stats = {}
-    added = await web_import_songs(gid, songs, requester=interaction.user.display_name, stats=stats)
+    from . import actionlog
+    added = await web_import_songs(gid, songs, requester=interaction.user.display_name, stats=stats,
+                                   actor=actionlog.discord_actor(interaction), label=f"匯入：{name}" if name else "匯入歌單")
     if not added and stats.get("full_skipped"):
         from .state import queue_full_message
         await interaction.followup.send(f"⚠️ {queue_full_message()}", ephemeral=True)
@@ -113,6 +115,9 @@ async def import_cmd(interaction: discord.Interaction, url: str):
 async def skip(interaction: discord.Interaction):
     vc = interaction.guild.voice_client
     if vc and (vc.is_playing() or vc.is_paused()):
+        from . import actionlog
+        actionlog.record(interaction.guild_id, "skip", actionlog.discord_actor(interaction),
+                         now_playing.get(interaction.guild_id, ""), url=now_playing_url.get(interaction.guild_id))
         await interaction.response.send_message("✅ 已跳過", ephemeral=True)
         await audio.fade_out_stop(interaction.guild_id, vc)   # 0.12 秒淡出再切歌
         out_ch = await _get_output_channel(interaction.guild_id)

@@ -86,7 +86,9 @@ async def play(interaction: discord.Interaction, name: str, shuffle: bool = Fals
     if shuffle:
         random.shuffle(songs)
     stats = {}
-    n = await web_import_songs(interaction.guild.id, songs, requester=interaction.user.display_name, stats=stats)
+    from . import actionlog
+    n = await web_import_songs(interaction.guild.id, songs, requester=interaction.user.display_name, stats=stats,
+                               actor=actionlog.discord_actor(interaction), label=f"歌單：{pl['name']}")
     sk = stats.get("full_skipped", 0)
     if not n and sk:
         return await _say(interaction, f"⚠️ {queue_full_message()}")

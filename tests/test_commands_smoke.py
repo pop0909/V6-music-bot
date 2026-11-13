@@ -14,6 +14,9 @@ os.environ.setdefault("DISCORD_TOKEN", "test-dummy")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from musicbot import commands, mylist_cmd, userlists, extmembers, player, state  # noqa: E402
+
+from musicbot import actionlog as _actionlog  # noqa: E402
+_actionlog._reset_for_tests()   # 操作紀錄寫到暫存資料夾，不碰專案的 data/
 from musicbot.bot import tree  # noqa: E402
 
 GID = 424242

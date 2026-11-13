@@ -116,7 +116,9 @@ def _play(k, lid, d):
         return jsonify({"status": "error", "message": "機器人尚未連線到伺服器"}), 400
     stats = {}
     who = g.ext_user.get("name") or "網頁"
-    n = run_async(web_import_songs(gid, songs, requester=who, stats=stats)) or 0
+    from .extapi import ext_actor
+    n = run_async(web_import_songs(gid, songs, requester=who, stats=stats, actor=ext_actor(),
+                                   label=f"歌單：{pl['name']}")) or 0
     skipped = stats.get("full_skipped", 0)
     if not n and skipped:
         return jsonify({"status": "error", "code": "queue_full", "message": queue_full_message()}), 409

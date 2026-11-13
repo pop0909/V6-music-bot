@@ -84,7 +84,7 @@ const QV = { np: { list: $('npQueueList'), count: $('npQueueCount') } };
 // 最愛歌曲只在主畫面（展開畫面只有播放佇列 / 播放紀錄）
 const FV = { home: { list: el.favList, count: el.favCount } };
 const HV = { np: $('npHistoryList') };
-const npDirty = { queue: true, history: true };
+const npDirty = { queue: true, history: true, actions: true };
 const homeDirty = { favorites: false };
 let npOpen = false;
 let npTab = 'queue';
@@ -321,6 +321,7 @@ const API = {
     normalize: (e, g) => api('POST', '/api/normalize', { guild_id: g || gid(), enabled: e }),
     history: (g) => api('GET', `/api/history?guild_id=${g || gid()}&limit=60`),
     historyTop: (r, g) => api('GET', `/api/history/top?guild_id=${g || gid()}&range=${encodeURIComponent(r)}&limit=30`),
+    actions: (g) => api('GET', `/api/actions?guild_id=${g || gid()}&limit=300`),
     sleepTimer: (mode, minutes) => api('POST', '/api/sleep-timer', { guild_id: gid() || 0, mode, minutes }),
 };
 
@@ -1107,6 +1108,15 @@ function applyLiveState(data) {
     
     // === 個人歌單版本號（來自 SSE）：有人改了歌單（擴充功能 / Discord / 其他分頁）→ 重抓自己的 ===
     if (data.ul_rev !== undefined) ML.onRev(data.ul_rev);
+    // === 操作紀錄版本號：有人點歌 / 跳過 / 刪歌 → 正在看操作紀錄就重抓，沒在看只標記 ===
+    if (data.act_rev !== undefined && data.act_rev !== state._actRev) {
+        const first = state._actRev === undefined;
+        state._actRev = data.act_rev;
+        if (!first) {
+            npDirty.actions = true;
+            if (actionsVisible()) scheduleActionsReload(400);
+        }
+    }
 
     // === 最愛快取（來自 SSE） ===
     if (data.favorites !== undefined) {
@@ -1961,6 +1971,138 @@ HIST_RANGE_GROUPS.forEach(g => g.addEventListener('click', (e) => {
 }));
 if ($('npBtnHistoryRefresh')) $('npBtnHistoryRefresh').addEventListener('click', () => loadHistory());
 
+// ==================== 操作紀錄（誰點歌 / 跳過 / 刪歌；有金鑰的人都看得到，保留 7 天） ====================
+const actState = { filter: '', seq: 0, timer: 0, items: [], failed: false };
+const ACT_LABEL = { add: '點歌', skip: '跳過', remove: '刪歌' };
+const ACT_ICON = { add: 'fa-plus', skip: 'fa-forward', remove: 'fa-trash' };
+const ACT_SRC = {
+    discord: { label: 'Discord', icon: 'fab fa-discord' },
+    web: { label: '網頁面板', icon: 'fas fa-globe' },
+    ext: { label: '擴充功能', icon: 'fab fa-chrome' },
+};
+// 「今天 / 昨天」以台北時間判斷（紀錄的時間也是台北時間）
+const _actDayFmt = (() => {
+    try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }); }
+    catch (e) { return null; }
+})();
+function actDayLabel(date) {
+    if (!date) return '';
+    if (_actDayFmt) {
+        const now = Date.now();
+        if (date === _actDayFmt.format(now)) return '今天';
+        if (date === _actDayFmt.format(now - 86400000)) return '昨天';
+    }
+    const [, m, d] = date.split('-');
+    const wd = '日一二三四五六'[new Date(date + 'T12:00:00+08:00').getUTCDay()];
+    return `${+m}/${+d}（${wd}）`;
+}
+function actionsVisible() { return npOpen && npTab === 'actions'; }
+function scheduleActionsReload(delay = 0) {
+    clearTimeout(actState.timer);
+    actState.timer = setTimeout(loadActions, delay);
+}
+async function loadActions() {
+    const list = $('npActList');
+    if (!list) return;
+    if (!npOpen) { npDirty.actions = true; return; }
+    npDirty.actions = false;
+    if (!state.guildId) { list.innerHTML = '<div class="empty-state"><i class="fas fa-list-check"></i><p>選擇伺服器以檢視操作紀錄</p></div>'; return; }
+    const seq = ++actState.seq;
+    const res = await API.actions();
+    if (seq !== actState.seq) return;
+    actState.failed = !res || res.status !== 'ok';
+    actState.items = res && Array.isArray(res.items) ? res.items : [];
+    renderActions();
+}
+function renderActions() {
+    const list = $('npActList');
+    if (!list) return;
+    cancelChunks(list);
+    list.innerHTML = '';
+    const f = actState.filter;
+    const items = f ? actState.items.filter(it => it.act === f) : actState.items;
+    const cnt = $('npActCount');
+    if (cnt) cnt.textContent = items.length ? `${items.length} 筆・保留 7 天` : '保留 7 天';
+    if (actState.failed) { list.innerHTML = '<div class="empty-state"><i class="fas fa-triangle-exclamation"></i><p>讀取操作紀錄失敗</p></div>'; return; }
+    if (!items.length) {
+        list.innerHTML = `<div class="empty-state"><i class="fas fa-list-check"></i><p>${f ? `最近 7 天沒有「${ACT_LABEL[f]}」紀錄` : '最近 7 天還沒有操作紀錄<br>點歌、跳過、刪歌都會記在這裡'}</p></div>`;
+        return;
+    }
+    // 依日期分段：日期標題 + 當天的紀錄（新的在前）
+    const rows = [];
+    let day = null;
+    for (const it of items) {
+        if (it.date !== day) { day = it.date; rows.push({ day }); }
+        rows.push({ it });
+    }
+    appendChunked(list, rows.length, (i) => {
+        const r = rows[i];
+        if (r.day !== undefined) {
+            const h = document.createElement('div');
+            h.className = 'act-day';
+            h.textContent = actDayLabel(r.day);
+            return h;
+        }
+        const it = r.it;
+        const div = document.createElement('div');
+        div.className = `list-item history-item act-item act-${it.act}`;
+        const ico = document.createElement('span');
+        ico.className = 'item-index act-ico';
+        ico.title = ACT_LABEL[it.act] || '';
+        ico.innerHTML = `<i class="fas ${ACT_ICON[it.act] || 'fa-circle'}"></i>`;
+        const main = document.createElement('div');
+        main.className = 'hist-main';
+        const line = document.createElement('div');
+        line.className = 'act-line';
+        const verb = document.createElement('span');
+        verb.className = 'act-verb';
+        verb.textContent = ACT_LABEL[it.act] || it.act;
+        const title = document.createElement('span');
+        title.className = 'item-title';
+        title.textContent = it.title || it.url || '（未知歌曲）';   // textContent：歌名不會被當成 HTML
+        title.title = it.title || '';
+        line.append(verb, title);
+        if (it.n > 1) {
+            const n = document.createElement('span');
+            n.className = 'act-count';
+            n.textContent = `等 ${it.n} 首`;
+            line.appendChild(n);
+        }
+        const meta = document.createElement('span');
+        meta.className = 'hist-meta act-meta';
+        const src = ACT_SRC[it.src] || ACT_SRC.web;
+        const who = document.createElement('span');
+        who.className = 'act-who';
+        who.textContent = it.who || '未知';
+        const via = document.createElement('span');
+        via.className = 'act-src';
+        via.innerHTML = `<i class="${src.icon}"></i>`;
+        via.append(' ' + src.label);
+        meta.append(who, via);
+        if (it.detail) {
+            const d = document.createElement('span');
+            d.className = 'act-detail';
+            d.textContent = it.detail;
+            meta.appendChild(d);
+        }
+        const time = document.createElement('span');
+        time.className = 'act-time';
+        time.textContent = (it.time || '').slice(-8, -3);    // HH:MM（完整時間在滑鼠提示）
+        time.title = (it.time || '') + '（台北時間）';
+        main.append(line, meta);
+        div.append(ico, main, time);
+        return div;
+    });
+}
+if ($('npActFilter')) $('npActFilter').addEventListener('click', (e) => {
+    const b = e.target.closest('.seg-btn');
+    if (!b || b.dataset.act === actState.filter) return;
+    actState.filter = b.dataset.act;
+    $('npActFilter').querySelectorAll('.seg-btn').forEach(x => x.classList.toggle('active', x.dataset.act === actState.filter));
+    renderActions();
+});
+if ($('npBtnActRefresh')) $('npBtnActRefresh').addEventListener('click', () => loadActions());
+
 // ==================== 睡眠計時器 ====================
 const SLEEP_OPTIONS = [
     { label: '30 分鐘', mode: 'minutes', minutes: 30 },
@@ -2660,6 +2802,7 @@ function refreshNpTab(name, quiet = !npView.classList.contains('open')) {
 function refreshNpTabInner(name) {
     if (name === 'queue' && npDirty.queue) { renderQueueList(state.queue || [], QV.np); npDirty.queue = false; }
     else if (name === 'history' && npDirty.history) { loadHistory(); }
+    else if (name === 'actions') { loadActions(); }      // 切到操作紀錄一律重抓（換過伺服器也會對）
 }
 function homeCatchUp() {
     if (homeDirty.favorites && isTabShown('favorites')) { renderFavList(state.favorites || [], FV.home); homeDirty.favorites = false; }
@@ -2670,7 +2813,7 @@ function activateNpTab(name, { instant = false } = {}) {
     const changed = npTab !== name;
     npTab = name;
     document.querySelectorAll('#npTabs .tab-btn').forEach(b => b.classList.toggle('active', b === btn));
-    [['queue', 'npTabQueue'], ['history', 'npTabHistory']]
+    [['queue', 'npTabQueue'], ['history', 'npTabHistory'], ['actions', 'npTabActions']]
         .forEach(([n, id]) => $(id).classList.toggle('active', n === name));
     fxMovePill(btn, instant);
     if (changed) fxListStagger = true;
