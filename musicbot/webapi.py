@@ -26,7 +26,7 @@ from .webcore import (
     run_async, web_add_to_queue, web_toggle_play, web_skip, web_stop,
     web_set_loop, web_join_voice, web_play_index,
     web_add_to_queue_batch, web_play_all, web_set_autoplay, _set_active_guild, get_active_guild,
-    get_guild_list, get_guild_status, get_full_app_state, web_set_normalize, web_set_eq, web_import_songs,
+    get_guild_list, get_guild_status, get_full_app_state, web_set_normalize, web_import_songs,
 )
 from . import importer
 from . import webauth, extmembers
@@ -318,30 +318,6 @@ def api_normalize():
         return jsonify({"status": "error", "message": "缺少 guild_id"}), 400
     result = run_async(web_set_normalize(gid, bool(data.get("enabled", True))))
     return jsonify(result or {"status": "error"})
-
-
-@flask_app.route("/api/eq", methods=["GET", "POST"])
-def api_eq():
-    """音效等化器。GET → 可選預設清單；POST body: {guild_id, preset}（播放中立即從目前位置生效）"""
-    from . import audio as _audio_mod
-    if request.method == "GET":
-        gid = request.args.get("guild_id", type=int)
-        return jsonify({"status": "ok", "presets": _audio_mod.eq_choices(),
-                        "eq": _audio_mod.eq_preset(gid) if gid else _audio_mod.EQ_DEFAULT})
-    data = request.get_json(silent=True) or {}
-    try:
-        gid = int(data.get("guild_id", 0) or 0)
-    except (TypeError, ValueError):
-        gid = 0
-    if not gid:
-        return jsonify({"status": "error", "message": "缺少 guild_id"}), 400
-    preset = str(data.get("preset") or "").strip().lower()
-    if preset not in _audio_mod.EQ_PRESETS:
-        return jsonify({"status": "error", "message": f"未知的音效：{preset[:20]}"}), 400
-    result = run_async(web_set_eq(gid, preset))
-    if (result or {}).get("status") != "ok":
-        return jsonify(result or {"status": "error"}), 400
-    return jsonify(result)
 
 
 @flask_app.route("/api/seek", methods=["POST"])

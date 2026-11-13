@@ -6,7 +6,7 @@ import discord
 from discord import app_commands
 
 from .bot import client, tree
-from .config import PUBLIC_URL, log, DEFAULT_VOLUME
+from .config import PUBLIC_URL, log
 from .state import (
     state_lock, queues, now_playing, voice_clients, volumes,
     volume_transformers, control_panels, song_start_times, song_durations,
@@ -131,42 +131,21 @@ async def stop(interaction: discord.Interaction):
     if out_ch:
         await out_ch.send(f"⏹ **{interaction.user.display_name}** 已停止播放並清空佇列")
 
-_EQ_CHOICES = [app_commands.Choice(name=v["label"], value=k) for k, v in audio.EQ_PRESETS.items()]
-
-
-@tree.command(name="volume", description="調整播放音量與音效（等化器）")
-@app_commands.describe(level="音量大小：0~200（不填 = 不變）", eq="音效：原音 / 重低音 / 人聲 / 高音清晰 / 夜間（播放中立即生效）")
-@app_commands.choices(eq=_EQ_CHOICES)
-async def volume(interaction: discord.Interaction, level: int = None, eq: app_commands.Choice[str] = None):
+@tree.command(name="volume", description="調整播放音量")
+@app_commands.describe(level="音量大小：0~200")
+async def volume(interaction: discord.Interaction, level: int):
     gid = interaction.guild.id
-    if level is None and eq is None:
-        cur = round(volumes.get(gid, DEFAULT_VOLUME) * 100)
-        lbl = audio.EQ_PRESETS[audio.eq_preset(gid)]["label"]
-        await interaction.response.send_message(f"🔊 目前音量 **{cur}**%・🎛️ 音效 **{lbl}**", ephemeral=True)
-        return
-    if level is not None and (level < 0 or level > 200):
+    if level < 0 or level > 200:
         await interaction.response.send_message("音量範圍為 0~200", ephemeral=True)
         return
-    done, notes = [], []
-    if level is not None:
-        vol = level / 100.0
-        volumes[gid] = vol
-        if gid in volume_transformers:
-            volume_transformers[gid].volume = vol
-        done.append(f"音量設為 **{level}**%")
-    if eq is not None:
-        from .webcore import web_set_eq
-        res = await web_set_eq(gid, getattr(eq, "value", eq))
-        if res.get("status") != "ok":
-            await interaction.response.send_message(f"❌ {res.get('message', '設定失敗')}", ephemeral=True)
-            return
-        done.append(f"音效設為 **{res['label']}**")
-        if res.get("applies") == "live":
-            notes.append("（直播無法中途切換，下一首生效）")
+    vol = level / 100.0
+    volumes[gid] = vol
+    if gid in volume_transformers:
+        volume_transformers[gid].volume = vol
     out_ch = await _get_output_channel(gid)
     if out_ch:
-        await out_ch.send(f"{'🔊' if level is not None else '🎛️'} **{interaction.user.display_name}** 將" + "、".join(done))
-    await interaction.response.send_message("✅ 已將" + "、".join(done) + "".join(notes), ephemeral=True)
+        await out_ch.send(f"🔊 **{interaction.user.display_name}** 將音量設為 **{level}**%")
+    await interaction.response.send_message(f"✅ 音量已設為 **{level}**%", ephemeral=True)
 
 @tree.command(name="queue", description="顯示目前的播放佇列")
 async def queue(interaction: discord.Interaction):

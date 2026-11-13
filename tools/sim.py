@@ -25,7 +25,6 @@ if SIM_DATA != "repo":
     idlesleep.SESSION_FILE = os.path.join(SIM_DATA, "voice_session.json")
     _al.EXIT_FILE = os.path.join(SIM_DATA, "last_exit.json")
     _wa.SECRET_FILE = os.path.join(SIM_DATA, "panel_secret")
-    audio.SETTINGS_FILE = os.path.join(SIM_DATA, "audio_settings.json")
     print(f"sim data: {SIM_DATA}", flush=True)
 
 SONG_LEN = float(os.getenv("SIM_SONG_LEN", "4"))
@@ -204,7 +203,7 @@ def _sim_channel():
 
 @webapi.flask_app.route("/sim/ffmpeg", methods=["GET"])
 def _sim_ffmpeg():
-    """測試用：最近幾次開 FFmpeg 的參數 + 播放中換音效的實測"""
+    """測試用：最近幾次開 FFmpeg 的參數 + 播放中換濾鏡的實測"""
     return _js(opens=FFMPEG_OPENS[-5:], count=len(FFMPEG_OPENS), reapply=player.reapply_stats.get(G))
 
 

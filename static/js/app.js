@@ -319,7 +319,6 @@ const API = {
     seek: (pos, g) => api('POST', '/api/seek', { guild_id: g || gid(), position: pos }),
     autoplay: (e, g) => api('POST', '/api/autoplay', { guild_id: g || gid(), enabled: e }),
     normalize: (e, g) => api('POST', '/api/normalize', { guild_id: g || gid(), enabled: e }),
-    eq: (preset, g) => api('POST', '/api/eq', { guild_id: g || gid(), preset }),
     history: (g) => api('GET', `/api/history?guild_id=${g || gid()}&limit=60`),
     historyTop: (r, g) => api('GET', `/api/history/top?guild_id=${g || gid()}&range=${encodeURIComponent(r)}&limit=30`),
     sleepTimer: (mode, minutes) => api('POST', '/api/sleep-timer', { guild_id: gid() || 0, mode, minutes }),
@@ -1157,7 +1156,6 @@ function applyLiveState(data) {
     
     // === 自動推薦接歌 ===
     if (data.normalize !== undefined) updateNormalizeToggle(data.normalize);
-    if (data.eq !== undefined) updateEqUI(data.eq);
     // 播放問題提示（例如 YouTube 機器人驗證）：同一則只跳一次
     if (data.notice && data.notice.ts && data.notice.ts !== state._noticeTs) {
         state._noticeTs = data.notice.ts;
@@ -2030,98 +2028,6 @@ $('btnSleep').addEventListener('click', async (e) => {
     }
 });
 
-// ==================== 音效等化器（播放列的「音效」選單；窄視窗在展開畫面是整列膠囊） ====================
-const EQ_PRESETS = {
-    off: { label: '原音', badge: '' },
-    bass: { label: '重低音', badge: '低' },
-    vocal: { label: '人聲', badge: '聲' },
-    treble: { label: '高音清晰', badge: '高' },
-    night: { label: '夜間', badge: '夜' },
-};
-let eqBusy = 0;          // 送出中：SSE 推來的舊值先不要蓋掉剛選的
-function updateEqUI(key, force) {
-    if (eqBusy && !force) return;
-    if (!EQ_PRESETS[key]) key = 'off';
-    state.eq = key;
-    const p = EQ_PRESETS[key], btn = $('btnEq');
-    if (!btn) return;
-    const on = key !== 'off';
-    btn.classList.toggle('active', on);
-    const ind = $('eqIndicator'); if (ind && ind.textContent !== p.badge) ind.textContent = p.badge;
-    const val = $('eqValue'); if (val && val.textContent !== p.label) val.textContent = p.label;
-    setTip(btn, `音效：${p.label}（點一下選擇 原音 / 重低音 / 人聲 / 高音清晰 / 夜間）`, `音效：${p.label}`);
-    document.querySelectorAll('#eqMenu .eq-opt').forEach(o => {
-        const c = String(o.dataset.eq === key);
-        if (o.getAttribute('aria-checked') !== c) o.setAttribute('aria-checked', c);
-    });
-}
-(function eqMenu() {
-    const btn = $('btnEq'), menu = $('eqMenu');
-    if (!btn || !menu) return;
-    const opts = () => [...menu.querySelectorAll('.eq-opt')];
-    function open(o, focusFirst) {
-        menu.hidden = !o;
-        btn.setAttribute('aria-expanded', String(o));
-        if (o) {
-            btn.classList.remove('tip-show');
-            if (window.closeDropdowns) window.closeDropdowns();
-            if (typeof setKbdHelp === 'function') setKbdHelp(false);
-            const sp = $('statusPop'); if (sp && !sp.hidden && $('statusClose')) $('statusClose').click();
-            if (focusFirst) (menu.querySelector('.eq-opt[aria-checked="true"]') || opts()[0]).focus({ preventScroll: true });
-        }
-    }
-    window.closeEqMenu = () => { if (!menu.hidden) open(false); };
-    btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (!state.guildId) { showToast('請先選擇伺服器', 'error'); return; }
-        // 鍵盤（Enter / 空白鍵）打開時把焦點移進選單；滑鼠 / 觸控不搶焦點
-        open(menu.hidden, e.detail === 0);
-    });
-    async function choose(key) {
-        open(false);
-        btn.focus({ preventScroll: true });
-        if (!state.guildId || !EQ_PRESETS[key]) return;
-        const prev = state.eq || 'off';
-        if (key === prev) return;
-        updateEqUI(key, true);          // 先切換畫面（樂觀更新），失敗再改回
-        eqBusy++;
-        let res;
-        try { res = await API.eq(key); } finally { eqBusy--; }
-        if (!res || res.status !== 'ok') {
-            updateEqUI(prev, true);
-            showToast('❌ ' + ((res && res.message) || '音效設定失敗'), 'error');
-            return;
-        }
-        updateEqUI(res.eq, true);
-        const when = { now: '已從目前位置套用', paused: '繼續播放時生效', live: '直播無法中途切換，下一首生效', next: '下一首開始生效' }[res.applies] || '';
-        showToast(`🎛️ 音效：${res.label}${when ? `（${when}）` : ''}`, 'success', { key: 'eq' });
-    }
-    menu.addEventListener('click', (e) => {
-        const o = e.target.closest('.eq-opt');
-        if (o) { e.stopPropagation(); choose(o.dataset.eq); }
-    });
-    // 點外面就收起（捕獲階段：其他按鈕的 stopPropagation 擋不住）
-    document.addEventListener('pointerdown', (e) => {
-        if (!menu.hidden && !menu.contains(e.target) && !btn.contains(e.target)) open(false);
-    }, { capture: true, passive: true });
-    // 捕獲階段處理鍵盤：Esc 只關選單（不要連展開畫面一起收）；方向鍵在選單裡移動，不調音量 / 跳轉
-    document.addEventListener('keydown', (e) => {
-        if (menu.hidden) return;
-        const list = opts(), i = list.indexOf(document.activeElement);
-        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); open(false); btn.focus({ preventScroll: true }); }
-        else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-            e.preventDefault(); e.stopPropagation();
-            const n = list.length, j = i < 0 ? 0 : (i + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
-            list[j].focus({ preventScroll: true });
-        } else if (e.key === 'Home' || e.key === 'End') {
-            e.preventDefault(); e.stopPropagation();
-            list[e.key === 'Home' ? 0 : list.length - 1].focus({ preventScroll: true });
-        } else if ((e.key === 'Enter' || e.key === ' ') && i >= 0) {
-            e.preventDefault(); e.stopPropagation(); choose(list[i].dataset.eq);
-        } else if (e.key === 'Tab') open(false);
-    }, true);
-})();
-
 function updateVolumeSlider(value) {
     const pct = value / 2;  /* 0-200 → 0-100% */
     el.volumeSlider.style.background = `linear-gradient(to right, var(--accent) 0%, var(--accent-2) ${pct}%, var(--track, rgba(255,255,255,.12)) ${pct}%)`;
@@ -2792,7 +2698,6 @@ function setKbdHelp(open) {
     if (btnShortcuts) btnShortcuts.setAttribute('aria-expanded', open ? 'true' : 'false');
     if (open) {   // 同一時間只開一個彈出框：開快捷鍵就收起狀態框
         if (window.closeDropdowns) window.closeDropdowns();
-        if (window.closeEqMenu) window.closeEqMenu();
         const sp = $('statusPop');
         if (sp && !sp.hidden) $('statusClose').click();
         if (btnShortcuts) btnShortcuts.classList.remove('tip-show');
@@ -3229,7 +3134,7 @@ setShuffleUI(!!state.shuffleMode);
     function open(o) {
         if (pop.hidden === !o) return;
         pop.hidden = !o;
-        if (o) { setKbdHelp(false); btn.classList.remove('tip-show'); if (window.closeDropdowns) window.closeDropdowns(); if (window.closeEqMenu) window.closeEqMenu(); }   // 跟快捷鍵說明 / 音效選單互斥
+        if (o) { setKbdHelp(false); btn.classList.remove('tip-show'); if (window.closeDropdowns) window.closeDropdowns(); }   // 跟快捷鍵說明互斥
         btn.setAttribute('aria-expanded', String(o));
         clearInterval(timer);
         if (o) { refresh(); timer = setInterval(() => { if (!document.hidden) refresh(); }, 3000); }
@@ -3500,7 +3405,6 @@ const ML = (() => {
         if (typeof setKbdHelp === 'function') setKbdHelp(false);
         const sp = $('statusPop'); if (sp && !sp.hidden && $('statusClose')) $('statusClose').click();
         document.querySelectorAll('#mlList .ml-item.menu-open').forEach(x => x.classList.remove('menu-open'));
-        if (window.closeEqMenu) window.closeEqMenu();
     }
     window.closeDropdowns = () => all.forEach(d => d.close(false));
 

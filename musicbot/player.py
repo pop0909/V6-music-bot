@@ -580,7 +580,7 @@ def _cleanup_later(src, delay=1.0):
 async def _restart_at(gid, vc, page_url, pos, version, resume=False, catch=None):
     """用 -ss 重開 FFmpeg 並直接替換播放中的來源（不 stop → 不會觸發 after_play 切歌）。
     濾鏡沿用目前的音量平衡設定，只做極短淡入。回傳 False = 期間已換歌 / 停止。
-    catch={"t0": monotonic, "lead": 秒}（換音效用）：重開實際花的時間超過 lead 時，新來源先快轉同樣長度，
+    catch={"t0": monotonic, "lead": 秒}（播放中換濾鏡用）：重開實際花的時間超過 lead 時，新來源先快轉同樣長度，
     換上時接在舊來源正在播的位置；快轉秒數寫回 catch["dropped"]"""
     stream_url = await _stream_url_for(gid, page_url)
     if (progress_versions.get(gid) != version or now_playing_url.get(gid) != page_url
@@ -778,7 +778,7 @@ async def _seek_playing(gid, vc, page_url, pos, version, gen, catch=None):
         return {"status": "ok", "position": pos, "paused": False}
 
 
-# ---------- 播放中換濾鏡（音效等化器）：沿用跳轉機制，從目前位置用新濾鏡重開 FFmpeg ----------
+# ---------- 播放中換濾鏡（音量平衡）：沿用跳轉機制，從目前位置用新濾鏡重開 FFmpeg ----------
 REAPPLY_LEAD_MIN, REAPPLY_LEAD_MAX = 0.05, 1.5
 _reapply_lead = 0.35          # FFmpeg 重開預估秒數（新來源從「現在 + 這段時間」開始 → 換上時剛好接上）；
                               # 實際比預估久 → _restart_at 會把新來源快轉補齊（不重複）；比預估快 → 只會跳過 < 預估的一小段
@@ -787,7 +787,7 @@ _reapply_gen = {}
 
 
 async def reapply_audio(gid, retries=10):
-    """音效 / 音量平衡設定改了：播放中 → 從目前位置重開 FFmpeg 立即生效；暫停中 → 備好新位置的來源，按繼續時換上；
+    """音量平衡設定改了：播放中 → 從目前位置重開 FFmpeg 立即生效；暫停中 → 備好新位置的來源，按繼續時換上；
     沒在播 / 長度未知（直播）→ 下一首生效。連按只做最後一次。回傳 "now" / "paused" / "next" / "superseded"。"""
     global _reapply_lead
     gen = _reapply_gen[gid] = _reapply_gen.get(gid, 0) + 1
@@ -819,7 +819,7 @@ async def reapply_audio(gid, retries=10):
                 _reapply_lead = min(REAPPLY_LEAD_MAX, max(REAPPLY_LEAD_MIN, 0.7 * _reapply_lead + 0.3 * ms / 1000))
             reapply_stats[gid] = {"ms": round(ms), "pos": round(pos, 2), "ok": True, "paused": bool(res.get("paused")),
                                   "lead_ms": round(lead * 1000), "dropped_ms": round((catch or {}).get("dropped", 0) * 1000)}
-            log.info(f"[等化器] {gid} 已從 {format_time(pos)} 套用新音效（{'暫停中，繼續時生效' if res.get('paused') else f'{ms:.0f} ms'}）")
+            log.info(f"[音量平衡] {gid} 已從 {format_time(pos)} 套用新設定（{'暫停中，繼續時生效' if res.get('paused') else f'{ms:.0f} ms'}）")
             return "paused" if res.get("paused") else "now"
         if res.get("code") == "busy" and attempt < retries:
             await asyncio.sleep(0.3)          # 正在換歌 / 淡出 / 別的跳轉：稍後再試
@@ -827,7 +827,7 @@ async def reapply_audio(gid, retries=10):
         reapply_stats[gid] = {"ms": round(ms), "pos": round(pos, 2), "ok": False, "code": res.get("code")}
         if res.get("code") in ("not_playing", "unseekable", "busy"):
             return "next"
-        log.warning(f"[等化器] {gid} 播放中套用失敗，下一首生效：{res.get('message')}")
+        log.warning(f"[音量平衡] {gid} 播放中套用失敗，下一首生效：{res.get('message')}")
         return "next"
     return "next"
 

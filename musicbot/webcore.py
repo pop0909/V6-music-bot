@@ -237,7 +237,7 @@ def _applies_now(gid):
 
 
 async def web_set_normalize(gid, enabled):
-    """從 Web 切換音量平衡：和音效一樣，播放中從目前位置立即生效"""
+    """從 Web 切換音量平衡：播放中從目前位置立即生效（暫停中繼續時、直播下一首）"""
     from .player import reapply_audio
     prev = _audio.normalize_enabled(gid)
     now = _audio.set_normalize(gid, enabled)
@@ -248,23 +248,6 @@ async def web_set_normalize(gid, enabled):
         if voice_clients.get(gid) and applies != "live":
             _spawn(reapply_audio(gid))
     return {"status": "ok", "normalize": now, "applies": applies}
-
-
-async def web_set_eq(gid, preset):
-    """從 Web 切換音效等化器：存檔 + 推 SSE（所有面板同步），播放中背景用新濾鏡從目前位置重開"""
-    from .player import reapply_audio
-    try:
-        preset, changed = _audio.set_eq(gid, preset)
-    except ValueError as e:
-        return {"status": "error", "message": str(e)}
-    applies = _applies_now(gid)
-    vc = voice_clients.get(gid)
-    if changed:
-        log.info(f"[等化器] {gid} → {_audio.EQ_PRESETS[preset]['label']}")
-        notify_change()
-        if vc and applies != "live":
-            _spawn(reapply_audio(gid))    # 沒在播時它會立刻結束；正在開下一首時會等開好再確認
-    return {"status": "ok", "eq": preset, "label": _audio.EQ_PRESETS[preset]["label"], "applies": applies}
 
 
 async def web_join_voice(gid, channel_id):
@@ -468,7 +451,6 @@ def get_guild_status(gid):
             "loop_mode": loop_modes.get(gid, "none"),
             "autoplay": _autoplay.is_enabled(gid),
             "normalize": _audio.normalize_enabled(gid),
-            "eq": _audio.eq_preset(gid),
             "bitrate": _audio.current_bitrate.get(gid) if is_connected else None,
             "notice": play_notices.get(gid),
             "guild_name": guild_names.get(gid, f"伺服器 {gid}"),
