@@ -250,6 +250,57 @@ class PlayNextTest(Base):
         self.assertIn(G, prewarm._watch)                # 開播後開始監看，快結束時預熱 C
 
 
+class GapLogTest(Base):
+    """換歌間隔：after 回呼記結束時間，下一首開播時記一行日誌（伺服器上量實際換歌速度用）"""
+
+    async def asyncTearDown(self):
+        prewarm._ended.clear()
+        prewarm.gaps.clear()
+        await super().asyncTearDown()
+
+    async def test_logs_gap(self):
+        prewarm.gaps.clear()
+        with mock.patch.object(prewarm.time, "monotonic", return_value=100.0):
+            prewarm.mark_end(G)
+        with mock.patch.object(prewarm.time, "monotonic", return_value=100.042), \
+             self.assertLogs(prewarm.log, "INFO") as cm:
+            ms = prewarm.note_start(G, True, False)
+        self.assertAlmostEqual(ms, 42, delta=1)
+        self.assertIn("播完→下一首開播 42 ms（已預熱）", cm.output[0])
+        self.assertEqual(prewarm.gaps[-1], {"ms": 42, "warm": True, "manual": False})
+        self.assertIsNone(prewarm.note_start(G, True))      # 只記一次
+
+    async def test_no_end_or_too_old_or_discarded(self):
+        self.assertIsNone(prewarm.note_start(G, False))     # 第一首（之前沒有歌結束）
+        with mock.patch.object(prewarm.time, "monotonic", return_value=100.0):
+            prewarm.mark_end(G)
+        with mock.patch.object(prewarm.time, "monotonic", return_value=100.0 + prewarm.GAP_MAX + 1):
+            self.assertIsNone(prewarm.note_start(G, False))  # 停止很久後才又點歌，不算換歌
+        prewarm.mark_end(G)
+        prewarm.discard(G)                                   # 停止 / 離開 → 清掉
+        self.assertIsNone(prewarm.note_start(G, False))
+
+    async def test_play_next_records_gap(self):
+        state.queues[G] = [(B, "b")]
+        vc = state.voice_clients[G] = VC()
+        prewarm.mark_end(G)
+        ch = mock.MagicMock()
+        ch.send = mock.AsyncMock(return_value=mock.MagicMock())
+        prewarm.gaps.clear()
+        with mock.patch.object(player, "_get_output_channel", mock.AsyncMock(return_value=ch)), \
+             mock.patch.object(player.discord, "PCMVolumeTransformer", lambda s, volume=1: s), \
+             mock.patch.object(player, "progress_updater", mock.AsyncMock()):
+            await player.play_next(G)
+        self.assertEqual(len(vc.played), 1)
+        self.assertEqual(len(prewarm.gaps), 1)
+        self.assertFalse(prewarm.gaps[0]["warm"])
+        await drain()
+        for t in list(state.progress_tasks.values()):
+            t.cancel()
+        state.progress_tasks.clear()
+        await player._clear_guild_state(G)
+
+
 class InThreadTest(unittest.IsolatedAsyncioTestCase):
     async def test_exception_propagates(self):
         # 修正前：except 區塊結束後 e 被刪，回呼 NameError → future 永遠不完成（只能等逾時）

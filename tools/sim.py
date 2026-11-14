@@ -211,4 +211,6 @@ def _sim_ffmpeg():
 
 if __name__ == "__main__":
     print("sim ready", flush=True)
-    webapi.flask_app.run(host="127.0.0.1", port=int(os.getenv("SIM_PORT", "5055")), threaded=True, debug=False, use_reloader=False)
+    # 跟正式環境一樣用 waitress（webserver.serve），API / UI 煙霧測試才測得到真正的伺服器行為
+    from musicbot import webserver
+    webserver.serve(webapi.flask_app, "127.0.0.1", int(os.getenv("SIM_PORT", "5055")))

@@ -17,7 +17,11 @@ LEAD = 8.0          # 剩幾秒時開始預熱
 MAX_AGE = 45.0      # 預熱好的來源最多保留幾秒（避免上游連線閒置太久）
 POLL = 1.0
 
+GAP_MAX = 30.0      # 上一首結束到下一首開播超過這麼久就不算換歌（例如停止後過一陣子才又點歌）
+
 _warm = {}          # gid: {"url", "src", "opts", "res", "ts"}
+_ended = {}         # gid: 上一首結束（after 回呼）的 monotonic 時間
+gaps = []           # 最近幾次換歌間隔：{"ms", "warm", "manual"}
 _watch = {}         # gid: Task
 stats = {"warmed": 0, "used": 0, "discarded": 0}
 
@@ -37,8 +41,29 @@ def _cleanup(src):
         pass
 
 
+def mark_end(gid):
+    """播放執行緒的 after 回呼：記下上一首結束的時間（量換歌間隔用）"""
+    _ended[gid] = time.monotonic()
+
+
+def note_start(gid, warmed, manual=False):
+    """下一首 vc.play 之後呼叫：記一行「上一首結束到下一首開播」的實際間隔到日誌"""
+    t = _ended.pop(gid, None)
+    if t is None:
+        return None
+    ms = (time.monotonic() - t) * 1000
+    if ms > GAP_MAX * 1000:
+        return None
+    gaps.append({"ms": round(ms), "warm": bool(warmed), "manual": bool(manual)})
+    del gaps[:-50]
+    kind = "跳過" if manual else "播完"
+    log.info(f"[換歌] {gid} {kind}→下一首開播 {ms:.0f} ms（{'已預熱' if warmed else '未預熱'}）")
+    return ms
+
+
 def discard(gid):
     """收掉預熱好的來源並停止監看（停止 / 離開 / 睡眠計時器 / 狀態清除時呼叫）"""
+    _ended.pop(gid, None)
     t = _watch.pop(gid, None)
     if t and not t.done() and t is not _current_task():
         t.cancel()

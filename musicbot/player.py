@@ -294,6 +294,7 @@ async def _play_next_locked(guild_id, channel=None):
 
         def after_play(e):
             if e: log.error(f"播放錯誤: {e}")
+            prewarm.mark_end(guild_id)     # 量換歌間隔：上一首結束的時間
             asyncio.run_coroutine_threadsafe(play_next(guild_id), client.loop)
 
         kbps = audio.target_bitrate(vc)
@@ -303,6 +304,7 @@ async def _play_next_locked(guild_id, channel=None):
         now_playing[guild_id] = title
         now_playing_url[guild_id] = flat_url
         song_start_times[guild_id] = time.time()
+        prewarm.note_start(guild_id, bool(warm), advance)   # 日誌記一行實際換歌間隔
         is_playing_state[guild_id] = True
         is_paused_state[guild_id] = False
         if guild_id in paused_position:

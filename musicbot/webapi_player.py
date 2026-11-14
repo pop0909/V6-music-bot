@@ -237,6 +237,14 @@ def api_progress_stream():
     gid = request.args.get("guild_id", 0, type=int)
     check_auth = not flask_app.config.get("LOGIN_DISABLED")
     cookie = request.cookies.get(webauth.COOKIE)
+    # waitress 提供：客戶端已斷線就回 True（見 webserver.py）；開發伺服器沒有 → 等寫入失敗才知道
+    disconnected = request.environ.get("waitress.client_disconnected")
+    # 每個 SSE 連線會一直佔一條伺服器執行緒：名額滿了回 503（前端退避後重連），留執行緒給一般請求
+    from . import webserver
+    release = webserver.sse_acquire()
+    if release is None:
+        log.warning(f"[Web] 即時更新連線已達上限（{webserver.sse_max()}），請稍後重連")
+        return jsonify({"error": "busy", "message": "即時更新連線太多，稍後自動重連"}), 503
     # stream_with_context：讓 generator 內仍能存取 request context。
     # 沒有它，generator 一進入就脫離 request context，任何 request 存取都會炸。
     def generate():
@@ -246,6 +254,8 @@ def api_progress_stream():
         last_sent = time.monotonic()
         ver = change_version()
         while True:
+            if disconnected is not None and disconnected():
+                break                    # 分頁已關：結束串流、歸還執行緒與名額
             # 長連線也要隨時核對登入：金鑰被停用 / 刪除 / 重設 → 通知前端回登入頁並結束
             # （停用成員是 POST → notify_change 會立刻喚醒這裡，所以幾乎是即時的）
             if check_auth and not webauth.ident_from_cookie(cookie):
@@ -270,15 +280,24 @@ def api_progress_stream():
                 break
             # 休眠中沒有東西會動：只等狀態變更（醒來）或 15 秒一次的心跳，不再每秒重算
             from . import idlesleep
-            new_ver = wait_change(ver, 15.0 if idlesleep.all_asleep() else 1.0)
+            timeout = 15.0 if idlesleep.all_asleep() else 1.0
+            waited = 0.0
+            while True:                  # 分段等，每秒看一次分頁是否已關（不重算狀態，休眠時一樣省）
+                step = min(1.0, timeout - waited)
+                new_ver = wait_change(ver, step)
+                waited += step
+                if new_ver != ver or waited >= timeout or (disconnected is not None and disconnected()):
+                    break
             if new_ver != ver:
                 ver = new_ver
                 time.sleep(0.015)   # 合併同一波連續變更（例如清狀態 + 更新面板），少推幾次
                 ver = change_version()
-    return Response(stream_with_context(generate()), mimetype="text/event-stream", headers={
+    resp = Response(stream_with_context(generate()), mimetype="text/event-stream", headers={
         "Cache-Control": "no-cache",
         "X-Accel-Buffering": "no",
     })
+    resp.call_on_close(release)   # 客戶端斷線 / 串流結束時 WSGI 伺服器會呼叫 close() → 歸還名額
+    return resp
 
 async def _set_sleep_timer_async(gid, mode, minutes):
     """在 bot event loop 中設定睡眠計時器"""

@@ -250,12 +250,13 @@ class _ForeignRequestFilter(_logging.Filter):
 
 
 def start_flask():
-    """啟動 Flask（在背景執行緒中呼叫）"""
+    """啟動面板網頁伺服器（waitress，見 webserver.py；在背景執行緒中呼叫）"""
     from .config import PUBLIC_URL, WEB_HOST, WEB_PORT
     _logging.getLogger("werkzeug").addFilter(_ForeignRequestFilter(WEB_PORT))
     log.info(f"控制面板: http://127.0.0.1:{WEB_PORT}（監聽 {WEB_HOST}）")
     log.info(f"公開網址: {PUBLIC_URL}")
-    flask_app.run(host=WEB_HOST, port=WEB_PORT, threaded=True, debug=False, use_reloader=False)
+    from . import webserver
+    webserver.serve(flask_app, WEB_HOST, WEB_PORT)
 
 
 # 拆出去的 API 路由（行為不變）：最後才載入，它們用到上面的 flask_app 與 hook

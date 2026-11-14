@@ -60,13 +60,19 @@ def _spotify_tracks(url):
 
 def _yt_search_one(title, artist):
     q = f"{title} {artist}".strip()
+    from . import searchcache
+    hit = searchcache.get("spotify1", q)       # 同一首歌重複匯入不用再搜
+    if hit:
+        return hit[0]
     opts = ytdl.build_opts({"quiet": True, "no_warnings": True, "extract_flat": True, "skip_download": True})
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(f"ytsearch1:{q}", download=False)
     for e in (info or {}).get("entries") or []:
         if e and e.get("id"):
-            return {"url": f"https://www.youtube.com/watch?v={e['id']}",
-                    "title": clean_str(e.get("title") or q), "duration": e.get("duration") or 0}
+            r = {"url": f"https://www.youtube.com/watch?v={e['id']}",
+                 "title": clean_str(e.get("title") or q), "duration": e.get("duration") or 0}
+            searchcache.put("spotify1", q, [r])
+            return r
     return None
 
 

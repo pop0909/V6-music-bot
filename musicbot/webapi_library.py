@@ -216,6 +216,11 @@ def api_search():
     data = request.get_json() or {}
     query = data.get("query", "").strip()
     if not query: return jsonify({"status": "error", "message": "請輸入關鍵字"}), 400
+    from . import searchcache
+    # 同一個關鍵字一小時內重搜直接用暫存（只存文字結果；失敗 / 沒結果不存）
+    cached = searchcache.get("panel5", query)
+    if cached:
+        return jsonify({"status": "ok", "results": cached, "count": len(cached), "cached": True})
     try:
         with yt_dlp.YoutubeDL(ytdl.build_opts({
             "format": "bestaudio/best",
@@ -236,6 +241,7 @@ def api_search():
                             "duration": entry.get("duration", 0),
                             "thumbnail": f"https://i.ytimg.com/vi/{entry['id']}/hqdefault.jpg"
                         })
+            searchcache.put("panel5", query, results)
             return jsonify({"status": "ok", "results": results, "count": len(results)})
     except Exception as e:
         log.error(f"搜尋錯誤: {str(e)[:300]}")

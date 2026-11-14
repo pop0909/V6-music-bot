@@ -152,13 +152,40 @@ async def get_voice_client(interaction):
         return None
 
 
+def _search_entries(info):
+    """yt-dlp 文字搜尋的結果 → 只留可以暫存的欄位（扁平結果，沒有會過期的串流網址）；不是搜尋結果回傳 None"""
+    if not info or info.get("extractor_key") != "YoutubeSearch":
+        return None
+    out = []
+    for e in info.get("entries") or []:
+        if e and e.get("id"):
+            out.append({"id": e["id"], "url": e.get("webpage_url") or e.get("url") or f"https://www.youtube.com/watch?v={e['id']}",
+                        "title": e.get("title") or "未知", "duration": e.get("duration") or 0})
+    return out
+
+
+async def _lookup(query):
+    """/play 的查詢：打字搜尋先看暫存（searchcache），貼網址照常每次解析"""
+    from . import searchcache
+    cacheable = not searchcache.is_url(query)
+    if cacheable:
+        hit = searchcache.get("play", query)
+        if hit:
+            log.info(f"[搜尋暫存] 命中 /play：{query[:80]}")
+            return {"entries": hit}
+    loop = asyncio.get_running_loop()
+    with yt_dlp.YoutubeDL(ytdl.build_opts(ydl_opts)) as ydl:
+        info = await loop.run_in_executor(None, partial(ydl.extract_info, query, download=False))
+    if cacheable:
+        searchcache.put("play", query, _search_entries(info))
+    return info
+
+
 async def _process_and_play(interaction, query, gid, vc):
     if not interaction.response.is_done():
         await interaction.response.defer(thinking=True, ephemeral=True)
     try:
-        loop = asyncio.get_running_loop()
-        with yt_dlp.YoutubeDL(ytdl.build_opts(ydl_opts)) as ydl:
-            info = await loop.run_in_executor(None, partial(ydl.extract_info, query, download=False))
+        info = await _lookup(query)
         if not info:
             await interaction.followup.send("找不到歌曲！", ephemeral=True)
             return
