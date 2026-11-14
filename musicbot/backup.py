@@ -37,7 +37,6 @@ MIN_INTERVAL = _interval_days() * 86400   # 兩次備份最短間隔（秒）
 INTERVAL = 6 * 3600                       # 多久檢查一次
 FIRST_DELAY = 10 * 60
 DM_LIMIT = 8 * 1024 * 1024
-HASH_FILE = os.path.join(BACKUP_DIR, ".last_hash")
 
 
 def _read(path):

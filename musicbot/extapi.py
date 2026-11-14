@@ -6,7 +6,6 @@
         加入佇列；next=true → 插到下一首（已在佇列裡的也會移到下一首）
 允許 chrome-extension:// 來源的 CORS；沒設 EXT_TOKEN 時整組停用（503）。
 """
-import os
 import re
 from urllib.parse import urlparse, parse_qs
 

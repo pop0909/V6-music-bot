@@ -187,7 +187,8 @@ def _in_thread(fn):
         try:
             r = fn()
         except BaseException as e:
-            loop.call_soon_threadsafe(lambda: fut.done() or fut.set_exception(e))
+            # 用預設參數綁住例外：except 區塊結束時 Python 會刪掉 e，lambda 晚點才跑會 NameError、future 永遠不完成
+            loop.call_soon_threadsafe(lambda err=e: fut.done() or fut.set_exception(err))
         else:
             loop.call_soon_threadsafe(lambda: fut.done() or fut.set_result(r))
 

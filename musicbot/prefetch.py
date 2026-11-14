@@ -19,7 +19,7 @@ from urllib.parse import urlparse, parse_qs
 import yt_dlp
 
 from .config import log, ydl_opts_single
-from .state import queues, now_playing, loop_modes, saved_queues, random_loop_guilds, local_playlist, remember_duration
+from .state import queues, now_playing, loop_modes, random_loop_guilds, local_playlist, remember_duration
 from . import autoplay
 from . import ytdl
 

@@ -990,3 +990,4 @@ async def _set_sleep_timer_async(gid, mode, minutes):
 # Chrome 擴充功能 API（/api/ext/*，需 EXT_TOKEN）：最後才載入，它會用到上面的 flask_app
 from . import extapi as _extapi  # noqa: E402,F401
 from . import userlistapi as _userlistapi  # noqa: E402,F401
+from . import webstatic as _webstatic  # noqa: E402,F401

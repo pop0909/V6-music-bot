@@ -124,8 +124,12 @@ class RangeProxy(unittest.TestCase):
             w.assert_called_once()
 
     def test_player_uses_proxy_for_ffmpeg_input(self):
-        src = open(os.path.join(os.path.dirname(__file__), "..", "musicbot", "player.py"), encoding="utf-8").read()
-        self.assertEqual(src.count("rangeproxy.input_url("), 2)          # 起播 + 跳轉（預先解析共用起播路徑）
+        d = os.path.join(os.path.dirname(__file__), "..", "musicbot")
+        src = open(os.path.join(d, "player.py"), encoding="utf-8").read()
+        self.assertEqual(src.count("rangeproxy.input_url("), 1)          # 跳轉
+        self.assertIn("prewarm.open_source(", src)                       # 起播（預熱共用同一個建立函式）
+        pw = open(os.path.join(d, "prewarm.py"), encoding="utf-8").read()
+        self.assertEqual(pw.count("rangeproxy.input_url("), 1)
 
 
 @unittest.skipUnless(shutil.which("ffmpeg"), "需要 ffmpeg")

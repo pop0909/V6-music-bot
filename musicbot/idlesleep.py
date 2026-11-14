@@ -9,8 +9,7 @@ import time
 from .config import log
 from .state import (
     loop_modes,
-    queues, now_playing, now_playing_url, voice_clients, current_voice_channel,
-    is_playing_state, is_paused_state, notify_change,
+    queues, now_playing, now_playing_url, current_voice_channel, notify_change,
 )
 
 

@@ -25,8 +25,8 @@ from . import audio as _audio
 from .state import manual_advance, song_meta, queue_room, queue_max, queue_full_message
 from .state import play_notices, note_song_meta, known_durations, remember_duration, notify_change
 from .state import pending_seeks as _pending_seeks, sleep_timers
-from .utils import clean_str, format_time, valid_song_url, safe_title
-from .player import _clear_guild_state, _update_panel, play_next, resume_playback, _spawn
+from .utils import format_time, valid_song_url, safe_title
+from .player import _update_panel, play_next, resume_playback, _spawn  # noqa: F401  _update_panel：測試會替換
 from . import actionlog
 
 

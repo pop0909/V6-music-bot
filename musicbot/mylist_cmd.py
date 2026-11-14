@@ -6,7 +6,7 @@ import discord
 from discord import app_commands
 
 from .bot import tree
-from . import userlists, importer, ytdl
+from . import userlists, importer
 
 NOT_LINKED = ("你的 Discord 帳號還沒連結到個人歌單。請擁有者到網頁「成員管理」(/members) 幫你填上 Discord 使用者 ID"
               "（Discord 設定 → 進階 → 開發者模式，再對自己按右鍵「複製使用者 ID」）。")

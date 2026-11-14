@@ -59,6 +59,12 @@ async def on_ready():
     alerts.startup_notice()
     from . import ytdl
     ytdl.warn_cookie_quality()
+    from . import selfcheck
+    try:
+        selfcheck.startup_cookie_check()     # cookies 主檔被 yt-dlp 改寫 / 少 LOGIN_INFO → 私訊（24 小時一次）
+    except Exception as e:
+        log.warning(f"[自我檢查] 啟動檢查失敗：{e!r}")
+    selfcheck.start(client)                  # 每日自我檢查（台北 09:00）
     from . import backup
     backup.start(client)
 

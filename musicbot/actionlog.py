@@ -24,8 +24,6 @@ TITLE_MAX = 200
 WHO_MAX = 40
 ACTIONS = ("add", "skip", "remove")
 SOURCES = ("discord", "web", "ext")
-SOURCE_LABELS = {"discord": "Discord", "web": "網頁面板", "ext": "擴充功能"}
-ACTION_LABELS = {"add": "點歌", "skip": "跳過", "remove": "刪歌"}
 
 try:
     from zoneinfo import ZoneInfo

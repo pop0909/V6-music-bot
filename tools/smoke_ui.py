@@ -74,7 +74,6 @@ class Run:
         await self.pg.wait_for_timeout(250)
         r = await self.J(AUDIT_JS, tag)
         shot = f"{OUT}/{self.theme}_{self.w}_{tag}.png"
-        issue = r["hscroll"] or r["overflow"] or r["contrast"] or (r["small"] if self.w < 600 else [])
         await self.pg.screenshot(path=shot)
         if r["hscroll"]: self.bad(f"{tag}: 頁面可橫向捲動 {r['overflow']}")
         elif r["overflow"]: self.bad(f"{tag}: 超出畫面 {r['overflow']}")

@@ -8,7 +8,7 @@ import discord
 from .config import log
 from .state import (
     paused_position, song_start_times, queues, now_playing, now_playing_url,
-    volumes, volume_transformers, voice_clients, random_loop_guilds,
+    volumes, volume_transformers, random_loop_guilds,
     is_playing_state, is_paused_state,
 )
 from .storage import load_favorites, add_favorite_song

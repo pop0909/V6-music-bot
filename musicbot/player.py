@@ -4,7 +4,6 @@ import asyncio
 import math
 import random
 import time
-import traceback
 from functools import partial
 
 import discord
@@ -14,7 +13,7 @@ from .bot import client
 from . import rangeproxy
 from .config import OUTPUT_CHANNEL_ID, FFMPEG_PATH, log, ydl_opts
 from .state import (
-    state_lock, queues, now_playing, voice_clients, random_loop_guilds,
+    queues, now_playing, voice_clients, random_loop_guilds,
     volumes, volume_transformers, control_panels, now_playing_url,
     now_playing_thumbnail, song_start_times, song_durations, paused_position,
     progress_versions, progress_tasks, current_voice_channel,
@@ -33,7 +32,7 @@ STREAM_OPEN_RETRIES = 2
 from .utils import clean_str, format_time, parse_time_str
 from . import autoplay
 from . import prefetch
-from . import audio, history, ytdl
+from . import audio, history, ytdl, prewarm
 
 # 分段代理遇到 403/410（串流網址失效）時，用 yt-dlp 重新解析同一首歌的網址續傳（在代理執行緒裡同步跑）
 rangeproxy.set_resolver(lambda page: prefetch.extract_stream(page)["url"])
@@ -185,6 +184,7 @@ async def _clear_guild_state(gid):
     for d in [song_start_times, song_durations, paused_position, now_playing_stream]:
         if gid in d: del d[gid]
     prefetch.clear(gid)  # 釋放預先解析的快取、取消背景解析
+    prewarm.discard(gid)  # 收掉預熱好的下一首
     notify_change()
 
 
@@ -240,6 +240,7 @@ async def _play_next_locked(guild_id, channel=None):
 
     # 睡眠計時器（播完這首模式）：不播下一首，直接收工
     if check_track_end_sleep(guild_id):
+        prewarm.discard(guild_id)
         if guild_id in now_playing:
             del now_playing[guild_id]
         is_playing_state[guild_id] = False
@@ -280,6 +281,7 @@ async def _play_next_locked(guild_id, channel=None):
                 loop_current.pop(guild_id, None)   # 單曲循環不要在之後加新歌時重播舊的那首
                 song_durations.pop(guild_id, None)  # 播完了：面板不要還顯示上一首的長度
                 now_playing_url.pop(guild_id, None)
+                prewarm.discard(guild_id)
                 await _update_panel(guild_id, "播放完畢，佇列已空", view=None, remove=True)
                 return
 
@@ -319,8 +321,10 @@ async def _play_next_locked(guild_id, channel=None):
                     source = None
                 log.warning(f"[播放] 開播重試 {open_try + 1}/{STREAM_OPEN_RETRIES}：{flat_url}（{last_open_err}）"[:300])
                 await asyncio.sleep(0.8)
+            # 上一首結尾前已預熱好這首（FFmpeg 已讀到第一格）→ 直接用，換歌不用再等 FFmpeg 開啟
+            warm = prewarm.take(guild_id, flat_url) if open_try == 0 else None
             # 預先解析命中就直接用快取；否則（或共用進行中的解析）照常用 yt-dlp 解析
-            res = await prefetch.resolve(guild_id, flat_url)
+            res = warm[1] if warm else await prefetch.resolve(guild_id, flat_url)
             real_audio_url, duration, thumbnail = res["url"], res.get("duration", 0), res.get("thumbnail", "")
             song_durations[guild_id] = duration or 0
             now_playing_thumbnail[guild_id] = thumbnail
@@ -328,13 +332,12 @@ async def _play_next_locked(guild_id, channel=None):
             _drop_pending(guild_id)
             _remember_stream(guild_id, flat_url, real_audio_url)
             remember_duration(flat_url, duration)
-            source = discord.FFmpegPCMAudio(
-                rangeproxy.input_url(real_audio_url, page=flat_url),   # 長影片避開 YouTube 對「從頭到結尾」請求的限速
-                executable=FFMPEG_PATH,
-                before_options=audio.before_options(),
-                # 音量平衡（dynaudnorm，可每個伺服器開關）+ 開頭 0.25 秒淡入，見 audio.py
-                options=audio.ffmpeg_options(guild_id)
-            )
+            if warm:
+                source = warm[0]
+                last_open_err = None
+                break
+            # 長影片經分段代理避開 YouTube 對「從頭到結尾」請求的限速；音量平衡 + 開頭 0.25 秒淡入，見 audio.py
+            source = prewarm.open_source(guild_id, flat_url, real_audio_url)
             try:
                 # 先讓 FFmpeg 吐出第一格再交給播放執行緒（見 audio.PrimedSource）
                 source = await audio.prime_source(source)
@@ -376,6 +379,7 @@ async def _play_next_locked(guild_id, channel=None):
         version = progress_versions[guild_id]
         progress_tasks[guild_id] = asyncio.create_task(progress_updater(guild_id, channel, version))
         _start_history_watch(guild_id, version, flat_url, title, thumbnail, duration or 0)
+        prewarm.start(guild_id, version)   # 快播完時預熱下一首的 FFmpeg
         play_failures.pop(guild_id, None)  # 成功開播，重置失敗計數
         play_notices.pop(guild_id, None)
         autoplay.remember(guild_id, flat_url)  # 記錄播放歷史（自動推薦的種子與去重）

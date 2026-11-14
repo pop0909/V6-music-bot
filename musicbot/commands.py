@@ -1,20 +1,17 @@
 """全部 Discord slash 指令"""
-import random
 import time
 
 import discord
 from discord import app_commands
 
-from .bot import client, tree
-from .config import PUBLIC_URL, log
+from .bot import tree
+from .config import PUBLIC_URL
 from .state import (
-    state_lock, queues, now_playing, voice_clients, volumes,
+    queues, now_playing, voice_clients, volumes,
     volume_transformers, control_panels, song_start_times, song_durations,
-    paused_position, random_loop_guilds, loop_modes, saved_queues,
-    guild_names, local_playlist, now_playing_url,
+    paused_position, random_loop_guilds, now_playing_url,
 )
-from .storage import load_favorites
-from . import audio, history, ytdl
+from . import audio, ytdl
 from .utils import format_time
 
 
@@ -28,11 +25,11 @@ def _field_lines(lines, limit=1024):
         out.append(line)
         size += len(line) + 1
     return "\n".join(out)
-from .player import (
-    _get_output_channel, _update_panel, _clear_guild_state, play_next,
-    get_voice_client, _process_and_play, resume_playback, seek as _seek,
+from .player import (  # noqa: F401  play_next / _update_panel：測試用 mock.patch.object(commands, ...) 替換
+    _get_output_channel, _update_panel, play_next,
+    get_voice_client, _process_and_play,
 )
-from .views import MusicControlView, MusicLinkModal
+from .views import MusicControlView
 
 
 @tree.command(name="play", description="播放音樂（支援單曲、播放清單、關鍵字或網址）")
