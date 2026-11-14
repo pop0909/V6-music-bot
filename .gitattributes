@@ -1,0 +1,21 @@
+# 換行一律 LF（Windows 取出也是 LF）：部署是把檔案複製到 Linux 伺服器，換行一致才不會干擾部署前的 md5 比對
+* text=auto eol=lf
+
+# Windows 批次檔需要 CRLF（目前沒有，預先設好）
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二進位檔：不轉換、不做文字 diff
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.zip binary
+*.db binary
+*.sqlite binary
+*.pdf binary

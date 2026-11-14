@@ -15,7 +15,7 @@ from unittest import mock
 os.environ.setdefault("DISCORD_TOKEN", "test-dummy")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from musicbot import audio, player, state, webcore  # noqa: E402
+from musicbot import audio, player, player_seek, state, webcore  # noqa: E402
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_playback_state import A, B, G  # noqa: E402
 from test_seek import SeekTestBase  # noqa: E402
@@ -130,7 +130,7 @@ class NormalizeLiveTest(SeekTestBase):
     async def test_slow_restart_is_caught_up(self):
         """FFmpeg 重開比預估慢：新來源先快轉同樣長度，換上時接在舊來源正在播的位置"""
         state.song_start_times[G] = time.time() - 50
-        player._reapply_lead = 0.2
+        player_seek._reapply_lead = 0.2                                # 估計值在 player_seek（從 player.py 拆出）
         real_primed = player._primed_at
 
         async def slow_primed(gid, url, pos):
@@ -149,7 +149,7 @@ class NormalizeLiveTest(SeekTestBase):
         self.assertLess(st["dropped_ms"], 700)
         # 進度 = 換上時舊來源播到的位置（50 + 經過時間），誤差 < 60 ms
         self.assertAlmostEqual(self.elapsed(), 50 + (time.time() - t0), delta=0.06)
-        self.assertGreater(player._reapply_lead, 0.2)                # 預估往實測值靠
+        self.assertGreater(player_seek._reapply_lead, 0.2)                # 預估往實測值靠
         self.assertIsNotNone(real_primed)
 
     async def test_rapid_toggles_settle_on_last(self):

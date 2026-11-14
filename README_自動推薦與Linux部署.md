@@ -174,3 +174,10 @@ python -m unittest discover -s tests   # 只跑單元測試（UI 測試預設略
 - UI 煙霧測試用 Playwright（深色/淺色 × 1440/390 寬，會先登入）；沒裝會自動略過：
   `pip install playwright && python -m playwright install chromium`（伺服器記憶體小，不要裝在伺服器上）。
 - 模擬器（`tools/sim.py`）的資料放在暫存資料夾，不會動到專案的 `data/`、`list.txt`、`favorites/`；截圖在 `smoke_out/`。
+- 換行一律 LF（`.gitattributes`：`* text=auto eol=lf`），Windows 取出也是 LF；測試會檢查程式 / 範本 / 靜態檔沒有 CRLF。
+
+## 程式結構（播放與網頁 API）
+
+- `musicbot/player.py`：play_next、進度更新、狀態清理、控制面板；`player_seek.py`（跳轉 / 換濾鏡 / 恢復播放）、`player_voice.py`（語音連線、停止、離開、點歌解析）、`player_sleep.py`（睡眠計時器）從它拆出，名字照舊可從 `player` 取用。
+- `musicbot/webapi.py`：flask_app、登入 / 主機檢查、共用 hook、首頁、啟動；路由在 `webapi_player.py`（播放控制 / 狀態 / SSE）、`webapi_queue.py`（佇列 / 紀錄）、`webapi_library.py`（歌單 / 最愛 / 搜尋）。
+- 拆出去的模組呼叫原模組的函式時用 `_p.X` / `_w.X`（呼叫時才取），測試 `mock.patch.object(player, ...)`／`(webapi, ...)` 照樣生效。

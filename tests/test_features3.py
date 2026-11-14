@@ -62,7 +62,8 @@ class YtdlOptsTest(unittest.TestCase):
     def test_all_call_sites_use_build_opts(self):
         """播放解析、預先解析、搜尋、網址解析、自動推薦都要經過 build_opts"""
         root = os.path.join(os.path.dirname(__file__), "..", "musicbot")
-        for name in ("prefetch.py", "player.py", "autoplay.py", "webapi.py"):
+        # player.py / webapi.py 拆分後：點歌解析在 player_voice.py，網址解析 / 搜尋在 webapi_library.py
+        for name in ("prefetch.py", "player_voice.py", "autoplay.py", "webapi_library.py"):
             with open(os.path.join(root, name), encoding="utf-8") as fh:
                 src = fh.read()
             n_calls = src.count("yt_dlp.YoutubeDL(")

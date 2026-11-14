@@ -267,7 +267,8 @@ class RangeProxyRecovery(unittest.TestCase):
         self.assertIn("prewarm.open_source(guild_id, flat_url, real_audio_url)", src)
         pw = open(os.path.join(os.path.dirname(__file__), "..", "musicbot", "prewarm.py"), encoding="utf-8").read()
         self.assertIn("rangeproxy.input_url(stream_url, page=page_url)", pw)
-        self.assertIn("page=now_playing_url.get(gid)", src)
+        sk = open(os.path.join(os.path.dirname(__file__), "..", "musicbot", "player_seek.py"), encoding="utf-8").read()
+        self.assertIn("page=now_playing_url.get(gid)", sk)               # 跳轉（從 player.py 拆出）
         self.assertIn("STREAM_OPEN_RETRIES", src)
         self.assertIn("開播重試", src)
 
