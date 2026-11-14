@@ -100,6 +100,20 @@ class Shortcuts(unittest.TestCase):
         self.assertEqual(keys.count("k === 's'"), 1)
 
 
+class SearchBox(unittest.TestCase):
+    def test_emptying_input_hides_results(self):
+        self.assertIn("el.searchInput.addEventListener('input', _onSearchEmptied);", JS)
+        self.assertIn("el.searchInput.addEventListener('search', _onSearchEmptied);", JS)   # type=search 的 ✕
+        self.assertIn("if (!el.searchInput.value.trim() && el.searchResults.firstChild) clearSearchResults();", JS)
+
+    def test_stale_search_response_dropped(self):
+        body = _slice("async function doSearch(", "\n// ==================== 事件綁定")
+        self.assertIn("const seq = ++_searchSeq;", body)
+        self.assertIn("if (seq !== _searchSeq) return;", body)
+        esc = _slice("// 搜尋結果：按 Esc 收起", "\n});")
+        self.assertIn("clearSearchResults();", esc)
+
+
 @unittest.skipUnless(shutil.which("node"), "需要 node")
 class TintAndSkeletonBehaviour(unittest.TestCase):
     def run_js(self, expr):

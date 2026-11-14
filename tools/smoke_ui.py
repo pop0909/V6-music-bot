@@ -514,6 +514,25 @@ async def scenario(br, theme, w):
     await pg.fill("#searchInput", "測試"); await pg.keyboard.press("Enter"); await pg.wait_for_timeout(1200)
     await pg.keyboard.press("Escape"); await pg.wait_for_timeout(150)
     if await R.J("() => !!document.getElementById('searchResults').firstChild"): R.bad("搜尋結果 Esc 沒收起")
+    # 搜尋框刪光 → 結果收起；只刪幾個字還留著；等結果時清空，結果回來也不能再冒出來
+    has_res = lambda: R.J("() => !!document.getElementById('searchResults').firstChild")
+    await pg.fill("#searchInput", "測試"); await pg.keyboard.press("Enter"); await pg.wait_for_timeout(1200)
+    if not await has_res(): R.bad("搜尋沒有出現結果")
+    await pg.keyboard.press("Backspace"); await pg.wait_for_timeout(150)
+    if not await has_res(): R.bad("搜尋框只刪一個字，結果就不見了")
+    await pg.keyboard.press("Backspace"); await pg.wait_for_timeout(200)
+    if await has_res(): R.bad("搜尋框刪光後，搜尋結果沒有收起")
+    async def slow_search(route):
+        await asyncio.sleep(1.5)
+        try: await route.continue_()
+        except Exception: pass
+    await pg.route("**/api/search", slow_search)
+    await pg.fill("#searchInput", "測試"); await pg.keyboard.press("Enter"); await pg.wait_for_timeout(300)
+    if not await has_res(): R.bad("搜尋中沒有顯示佔位")
+    await pg.fill("#searchInput", ""); await pg.wait_for_timeout(2200)
+    if await has_res(): R.bad("搜尋中清空搜尋框，結果回來後又冒出來")
+    if await R.J("() => el.btnSearch.disabled"): R.bad("搜尋中清空後搜尋鈕一直停用")
+    await pg.unroute_all(behavior="ignoreErrors")
     # 頂欄：桌機各種寬度都不能把右側按鈕 / 「播放中」擠出畫面（之前 1081–1279px 會超出）
     if w > 600:
         for vw in range(900, 1601, 20):

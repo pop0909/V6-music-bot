@@ -218,7 +218,7 @@ def api_search():
     if not query: return jsonify({"status": "error", "message": "請輸入關鍵字"}), 400
     from . import searchcache
     # 同一個關鍵字一小時內重搜直接用暫存（只存文字結果；失敗 / 沒結果不存）
-    cached = searchcache.get("panel5", query)
+    cached = searchcache.get("panel5v", query)     # v：只放影片的版本（舊的可能混到頻道）
     if cached:
         return jsonify({"status": "ok", "results": cached, "count": len(cached), "cached": True})
     try:
@@ -226,22 +226,20 @@ def api_search():
             "format": "bestaudio/best",
             "quiet": True,
             "no_warnings": True,
-            "default_search": "ytsearch5",
             "extract_flat": True,
             "noplaylist": True,
         })) as ydl:
-            info = ydl.extract_info(f"ytsearch5:{query}", download=False)
+            # 多抓幾筆再濾：頻道 / 播放清單不是歌（沒長度、縮圖是灰的、點了也播不了）
+            info = ydl.extract_info(f"ytsearch{ytdl.SEARCH_FETCH}:{query}", download=False)
             results = []
-            if "entries" in info:
-                for entry in info["entries"]:
-                    if entry:
-                        results.append({
-                            "url": f"https://www.youtube.com/watch?v={entry['id']}",
-                            "title": clean_str(entry.get("title", "未知")),
-                            "duration": entry.get("duration", 0),
-                            "thumbnail": f"https://i.ytimg.com/vi/{entry['id']}/hqdefault.jpg"
-                        })
-            searchcache.put("panel5", query, results)
+            for entry in ytdl.video_entries(info, 5):
+                results.append({
+                    "url": f"https://www.youtube.com/watch?v={entry['id']}",
+                    "title": clean_str(entry.get("title") or "未知"),
+                    "duration": entry.get("duration") or 0,
+                    "thumbnail": f"https://i.ytimg.com/vi/{entry['id']}/hqdefault.jpg"
+                })
+            searchcache.put("panel5v", query, results)
             return jsonify({"status": "ok", "results": results, "count": len(results)})
     except Exception as e:
         log.error(f"搜尋錯誤: {str(e)[:300]}")

@@ -1874,6 +1874,16 @@ function renderPlaylistList(pl) {
 // ==================== 搜尋 ====================
 el.btnSearch.addEventListener('click', doSearch);
 el.searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+// 搜尋框清空（刪字、剪下、手機鍵盤、瀏覽器的 ✕）→ 結果一起收起來；還在搜的那次也作廢，回來不會再冒出來
+let _searchSeq = 0;
+function clearSearchResults() {
+    _searchSeq++;
+    el.searchResults.innerHTML = '';
+    el.btnSearch.disabled = false;
+}
+const _onSearchEmptied = () => { if (!el.searchInput.value.trim() && el.searchResults.firstChild) clearSearchResults(); };
+el.searchInput.addEventListener('input', _onSearchEmptied);
+el.searchInput.addEventListener('search', _onSearchEmptied);
 
 let _importing = false;
 async function importPlaylist(url) {
@@ -1950,13 +1960,15 @@ async function doSearch() {
     }
 
     // === 關鍵字搜尋 ===
+    const seq = ++_searchSeq;
     el.searchResults.innerHTML = skelHTML('result', 5).replace('aria-label="載入中"', 'aria-label="搜尋中"');
     el.btnSearch.disabled = true;
     const data = await API.search(query);
+    if (seq !== _searchSeq) return;   // 等結果時搜尋框被清空 / 按了 Esc / 又搜了別的
     el.btnSearch.disabled = false;
     el.searchResults.innerHTML = '';
 
-    if (!data.results || data.results.length === 0) {
+    if (!data || !data.results || data.results.length === 0) {
         el.searchResults.innerHTML = '<div style="padding:12px;text-align:center;color:var(--sub)">找不到結果</div>';
         return;
     }
@@ -4138,5 +4150,5 @@ const ML = (() => {
 document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || !el.searchResults || !el.searchResults.firstChild) return;
     if (document.querySelector('.modal-overlay.active')) return;
-    el.searchResults.innerHTML = '';
+    clearSearchResults();
 });

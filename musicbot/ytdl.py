@@ -13,6 +13,7 @@ cookiefile 注意：yt-dlp 會在結束時把 cookiejar 寫回 cookiefile（Yout
 """
 import atexit
 import os
+import re
 import shutil
 import tempfile
 import threading
@@ -247,6 +248,29 @@ def friendly_error(err, context=""):
     if is_bot_check(err):
         return report_bot_check(context)
     return str(err)[:200]
+
+
+# 文字搜尋（ytsearchN + extract_flat）的結果不一定都是影片：YouTube 會把頻道（ie_key YoutubeTab、
+# id UC… 24 字）或播放清單混在前面（例如搜「tuki.」第一筆是頻道「tuki.(17)」）。
+# 只留真的影片：ie_key 是 Youtube（或沒寫）、id 是 11 字的影片 id。
+_VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+SEARCH_FETCH = 8      # 面板要 5 首：多抓幾筆，濾掉頻道 / 清單後還湊得滿（同一次請求，不會比較慢）
+
+
+def is_video_entry(e):
+    if not isinstance(e, dict):
+        return False
+    if e.get("ie_key") not in (None, "Youtube"):
+        return False
+    if e.get("_type") not in (None, "url", "video", "url_transparent"):
+        return False
+    return bool(_VIDEO_ID_RE.match(str(e.get("id") or "")))
+
+
+def video_entries(info, limit=None):
+    """搜尋結果裡的影片（照原順序），最多 limit 筆"""
+    out = [e for e in ((info or {}).get("entries") or []) if is_video_entry(e)]
+    return out[:limit] if limit else out
 
 
 _warned = set()

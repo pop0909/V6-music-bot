@@ -157,28 +157,35 @@ def _search_entries(info):
     if not info or info.get("extractor_key") != "YoutubeSearch":
         return None
     out = []
-    for e in info.get("entries") or []:
-        if e and e.get("id"):
-            out.append({"id": e["id"], "url": e.get("webpage_url") or e.get("url") or f"https://www.youtube.com/watch?v={e['id']}",
-                        "title": e.get("title") or "未知", "duration": e.get("duration") or 0})
+    for e in ytdl.video_entries(info):
+        out.append({"id": e["id"], "url": e.get("webpage_url") or e.get("url") or f"https://www.youtube.com/watch?v={e['id']}",
+                    "title": e.get("title") or "未知", "duration": e.get("duration") or 0})
     return out
 
 
 async def _lookup(query):
-    """/play 的查詢：打字搜尋先看暫存（searchcache），貼網址照常每次解析"""
+    """/play 的查詢：打字搜尋先看暫存（searchcache），貼網址照常每次解析。
+    打字搜尋只取第一首「影片」：YouTube 有時把頻道 / 播放清單排在第一筆（例如「tuki.」→ 頻道 tuki.(17)），
+    以前用 default_search 的 ytsearch1 會把頻道網址塞進隊列、播不出來。"""
     from . import searchcache
     cacheable = not searchcache.is_url(query)
     if cacheable:
-        hit = searchcache.get("play", query)
+        hit = searchcache.get("play1v", query)
         if hit:
             log.info(f"[搜尋暫存] 命中 /play：{query[:80]}")
             return {"entries": hit}
     loop = asyncio.get_running_loop()
+    q = f"ytsearch3:{query}" if cacheable else query
     with yt_dlp.YoutubeDL(ytdl.build_opts(ydl_opts)) as ydl:
-        info = await loop.run_in_executor(None, partial(ydl.extract_info, query, download=False))
-    if cacheable:
-        searchcache.put("play", query, _search_entries(info))
-    return info
+        info = await loop.run_in_executor(None, partial(ydl.extract_info, q, download=False))
+    if not cacheable:
+        return info
+    entries = _search_entries(info)
+    if entries is None:          # 不是 YouTube 搜尋結果（不會發生，保險）：照原樣
+        return info
+    entries = entries[:1]
+    searchcache.put("play1v", query, entries)
+    return {"entries": entries} if entries else None
 
 
 async def _process_and_play(interaction, query, gid, vc):
