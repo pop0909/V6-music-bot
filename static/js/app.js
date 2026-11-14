@@ -657,23 +657,43 @@ function applyIdleSleep(data) {
     if (box.hidden === show) box.hidden = !show;
 }
 
-// ==================== 縮圖：16:9 來源優先 + 裁掉內嵌黑邊 ====================
-// 大封面：伺服器給的縮圖（yt-dlp 已挑好實際存在的最佳解析度，通常是 maxresdefault）→ hqdefault（4:3，上下黑邊靠 object-fit: cover 裁掉）→ mqdefault
-// 小圖：mqdefault（320x180、16:9、每支影片都有）→ 伺服器縮圖。不盲猜 maxresdefault（常 404，主控台會一直噴錯）
+// ==================== 縮圖：依顯示大小挑解析度 + 裁掉內嵌黑邊 ====================
+// 一律用 i.ytimg.com/vi/<id>/*.jpg：有 CORS（量黑邊、預先模糊要讀像素）。yt-dlp 給的 vi_webp/maxresdefault.webp
+// 沒有 CORS，加了 crossorigin 會載入失敗 → 舊版大封面其實一直退到 hqdefault（480x360）
+// 尺寸階梯（寬）：maxresdefault / hq720 1280 → sddefault 640（4:3）→ hqdefault 480（4:3）→ mqdefault 320（16:9、每支都有）
+// 依「實際顯示寬 × 螢幕倍率」從夠用的那階開始往下退；小圖不浪費流量
+const THUMB_TIERS = [
+    [1280, 'maxresdefault'], [1280, 'hq720'], [640, 'sddefault'], [480, 'hqdefault'], [320, 'mqdefault'],
+];
 function ytId(url) {
     const m = String(url || '').match(/(?:v=|youtu\.be\/|shorts\/|\/vi(?:_webp)?\/)([A-Za-z0-9_-]{11})/);
     return m ? m[1] : '';
 }
-function thumbCandidates(url, fallback, big) {
+// 已知不存在的尺寸（YouTube 回 404 + 120x90 灰色預設圖）：記住，同一支影片之後直接跳過
+const _thumbMissing = new Set();
+// need：需要的像素寬（CSS 寬 × devicePixelRatio）。舊呼叫法傳 true / false = 大封面 / 小圖
+function thumbCandidates(url, fallback, need) {
+    if (need === true) need = 1280;
+    else if (!need) need = 320;
     const id = ytId(url) || ytId(fallback);
     const list = [];
     if (id) {
-        const base = `https://i.ytimg.com/vi/${id}/`;
-        if (big) { if (fallback) list.push(fallback); list.push(base + 'hqdefault.jpg'); }
-        list.push(base + 'mqdefault.jpg');
+        // 從「第一個 >= need 的最小那階」開始；need 比最大還大就從最大開始
+        let start = 0;
+        for (let i = THUMB_TIERS.length - 1; i >= 0; i--) { if (THUMB_TIERS[i][0] >= need) { start = i; break; } }
+        while (start > 0 && THUMB_TIERS[start - 1][0] === THUMB_TIERS[start][0]) start--;   // 同寬的幾階都要試（maxres → hq720）
+        for (let i = start; i < THUMB_TIERS.length; i++) {
+            const u = `https://i.ytimg.com/vi/${id}/${THUMB_TIERS[i][1]}.jpg`;
+            if (!_thumbMissing.has(u)) list.push(u);
+        }
     }
-    if (fallback && !list.includes(fallback)) list.push(fallback);
+    // 不是 YouTube 的縮圖（或抓不到 id）才用伺服器給的原網址；YouTube 的 webp 沒 CORS，不用
+    if (fallback && !id) list.push(fallback);
     return list;
+}
+function thumbNeed(elOrWidth) {
+    const w = typeof elOrWidth === 'number' ? elOrWidth : (elOrWidth && elOrWidth.getBoundingClientRect().width) || 0;
+    return Math.round(w * Math.min(3, window.devicePixelRatio || 1));
 }
 // 依序嘗試候選網址（失敗換下一個），全部失敗才呼叫 onFail
 
@@ -686,15 +706,18 @@ function strokePlaceholder(kind) {
 function loadThumb(img, candidates, onFail) {
     let i = 0;
     const next = () => {
-        if (i >= candidates.length) { img.onerror = null; if (onFail) onFail(); return; }
+        if (i >= candidates.length) { img.onerror = img.onload = null; if (onFail) onFail(); return; }
         const src = candidates[i++];
-        img.onerror = next;
+        const miss = () => { if (img.src === src) { _thumbMissing.add(src); next(); } };
+        img.onerror = miss;
+        // 不存在的尺寸會回 404 + 120x90 灰圖，有的瀏覽器照樣觸發 load → 看實際大小判斷
+        img.onload = () => { if (img.src === src && i < candidates.length && img.naturalWidth > 0 && img.naturalWidth <= 120) miss(); };
         autoCrop(img, src);
         img.src = src;
     };
     next();
 }
-// 影片本身內嵌的邊（4:3 / 方形內容放在 16:9 畫面裡的左右色邊、黑邊）：載入後縮成 64x36 量一次，
+// 影片本身內嵌的邊（4:3 / 方形內容放在 16:9 畫面裡的左右色邊、黑邊）：載入後縮成 128x72 量一次，
 // 算出要放大多少才能裁掉，寫進 --crop（靜態 transform: scale，結果依網址快取）。只對允許 CORS 的 i.ytimg.com 做
 const _cropCache = new Map();
 let _cropCanvas = null;
@@ -705,20 +728,32 @@ function autoCrop(img, src) {
     if (!/(^|\.)ytimg\.com$/.test(host)) { if (img.crossOrigin) img.removeAttribute('crossorigin'); return; }
     img.crossOrigin = 'anonymous';
     const apply = (s) => { if (s > 1.005) img.style.setProperty('--crop', s.toFixed(3)); };
-    if (_cropCache.has(src)) { apply(_cropCache.get(src)); return; }
+    // 同一張圖放在方形（底部播放列）和 16:9（卡片）要裁的量不同 → 快取依「網址 + 顯示比例」分開
+    const key = () => { const r = img.getBoundingClientRect(); return src + '|' + (r.width && r.height ? (r.width / r.height).toFixed(1) : '?'); };
+    const k0 = key();
+    if (_cropCache.has(k0)) { apply(_cropCache.get(k0)); return; }
     img.addEventListener('load', function onLoad() {
         if (img.src !== src) return;
+        if (img.naturalWidth <= 120) return;   // 404 的 120x90 灰圖，loadThumb 會換下一張
         const s = measureBars(img);
-        _cropCache.set(src, s);
+        _cropCache.set(key(), s);
         apply(s);
     }, { once: true });
 }
 function measureBars(img) {
     try {
-        const W = 64, H = 36;
+        // 128x72（每格約 10px）：64x36 時縮圖混色會少算一格，邊沒裁乾淨（maxresdefault 上看得出一條）
+        const W = 128, H = 72;
         if (!_cropCanvas) { _cropCanvas = document.createElement('canvas'); _cropCanvas.width = W; _cropCanvas.height = H; }
         const ctx = _cropCanvas.getContext('2d', { willReadFrequently: true });
-        ctx.drawImage(img, 0, 0, W, H);
+        // 只量「object-fit: cover 之後看得到的那塊」：4:3 的 sddefault / hqdefault 上下有黑邊，
+        // 整欄一起量會因為黑邊跟色邊不同色而判斷成「沒有邊」，左右色邊就裁不掉
+        const nw = img.naturalWidth || W, nh = img.naturalHeight || H;
+        const r = img.getBoundingClientRect();
+        const ba = r.width && r.height ? r.width / r.height : 16 / 9;
+        let sw = nw, sh = nh;
+        if (nw / nh > ba) sw = nh * ba; else sh = nw / ba;
+        ctx.drawImage(img, (nw - sw) / 2, (nh - sh) / 2, sw, sh, 0, 0, W, H);
         const d = ctx.getImageData(0, 0, W, H).data;
         const lum = (x, y) => { const k = (y * W + x) * 4; return 0.299 * d[k] + 0.587 * d[k + 1] + 0.114 * d[k + 2]; };
         // 一整欄（列）顏色幾乎一樣、而且跟最外側那欄（列）相近 → 算邊
@@ -744,13 +779,9 @@ function measureBars(img) {
         const bx = pair(scan(maxX, colAt), scan(maxX, (k) => colAt(W - 1 - k)));
         const by = pair(scan(maxY, rowAt), scan(maxY, (k) => rowAt(H - 1 - k)));
         if (!bx && !by) return 1;
-        const cw = 1 - 2 * bx / W, ch = 1 - 2 * by / H;
-        // object-fit: cover 之後畫面看得到的比例（容器長寬比以元素本身計算）
-        const ia = (img.naturalWidth || 16) / (img.naturalHeight || 9);
-        const r = img.getBoundingClientRect();
-        const ba = r.width && r.height ? r.width / r.height : 16 / 9;
-        const vw = Math.min(1, ba / ia), vh = Math.min(1, ia / ba);
-        const s = Math.max(1, vw / cw, vh / ch);
+        // 多裁一格保險（縮小取樣時邊界那格可能是混色）
+        const cw = 1 - 2 * (bx ? bx + 1 : 0) / W, ch = 1 - 2 * (by ? by + 1 : 0) / H;
+        const s = Math.max(1, 1 / cw, 1 / ch);   // 量的已經是看得到的那塊，直接放大到邊被推出去
         return s > 1 ? Math.min(2, s * 1.02) : 1;
     } catch (_) { return 1; }   // 讀不到像素（CORS）就不裁
 }
@@ -779,7 +810,7 @@ function updateSongInfo(title, url, thumbnail) {
 
     // 更新封面縮圖
     // 重點！不重建 DOM，只換 src 屬性，避免打斷瀏覽器載入
-    const coverList = thumbCandidates(url, thumbnail, true);
+    const coverList = thumbCandidates(url, thumbnail, Math.max(640, thumbNeed(el.albumArt) || 1280));   // 大封面：通常是 maxresdefault（1280x720）
     if (coverList.length) {
         let img = el.albumArt.querySelector('img');
         if (!img) {
@@ -802,7 +833,7 @@ function updateSongInfo(title, url, thumbnail) {
     } else {
         el.albumArt.innerHTML = strokePlaceholder('phones');
     }
-    updateNowPlayingBackdrop(thumbnail);
+    updateNowPlayingBackdrop(thumbnail, url);
     updateBarSong(title, thumbnail, url);
 }
 
@@ -813,7 +844,7 @@ function updateBarSong(title, thumbnail, url) {
     setText(el.barTitle, title || '尚未播放');
     el.barTitle.title = title || '';
     if (el.playerBar) el.playerBar.classList.toggle('has-song', !!title);
-    const list = thumbCandidates(url, thumbnail, false);   // 小圖：mqdefault（16:9）就夠
+    const list = thumbCandidates(url, thumbnail, thumbNeed(el.barArt));   // 小圖：50~76px 方塊，mqdefault（320x180）就夠
     const src = list[0] || '';
     if (src === _barArtSrc) return;
     _barArtSrc = src;
@@ -830,9 +861,11 @@ function updateBarSong(title, thumbnail, url) {
 }
 
 // Now Playing 卡片的模糊封面背景（純視覺）
-function updateNowPlayingBackdrop(thumbnail) {
+function updateNowPlayingBackdrop(thumbnail, url) {
     const card = el.albumArt.closest('.np-card');
     if (!card) return;
+    // 背景會被模糊，用 mqdefault（320x180、16:9、有 CORS）就好；YouTube 的 webp 沒 CORS，預先模糊會失敗、退回很吃 GPU 的即時模糊
+    thumbnail = thumbCandidates(url, thumbnail, 320)[0] || '';
     if (thumbnail === _npArtSrc) return;
     _npArtSrc = thumbnail;
     const safe = thumbnail ? String(thumbnail).replace(/["\\\n\r()]/g, encodeURIComponent) : '';
@@ -1737,11 +1770,14 @@ async function doSearch() {
         const div = document.createElement('div');
         div.className = 'search-result-item';
         div.innerHTML = `
-            <img src="${escapeHtml(r.thumbnail)}" alt="" loading="lazy" onerror="this.style.display='none'">
+            <img alt="" loading="lazy" decoding="async" width="64" height="36">
             <span class="result-title">${escapeHtml(r.title)}</span>
             <span class="result-duration">${r.duration ? formatTime(r.duration) : ''}</span>
             <span class="result-add"><i class="fas fa-plus-circle"></i></span>`;
         div.querySelector('.result-title').title = r.title || '';
+        // 64x36 的小圖：mqdefault（320x180、16:9）就夠，伺服器給的 hqdefault（480x360、4:3 有黑邊）太大
+        const rimg = div.querySelector('img');
+        loadThumb(rimg, thumbCandidates(r.url, r.thumbnail, thumbNeed(64)), () => { rimg.style.display = 'none'; });
         div.addEventListener('click', async () => {
             const res = await API.playUrl(r.url, r.title, null, true, r.duration);  // no_play=true；guild 未選時後端自動 fallback
             toastAdded(res, r.title);
@@ -3014,6 +3050,7 @@ function renderShelf(items) {
         return;
     }
     const frag = document.createDocumentFragment();
+    const pending = [];
     items.forEach((it, i) => {
         const card = document.createElement('div');
         card.className = 'shelf-card';
@@ -3022,13 +3059,12 @@ function renderShelf(items) {
         card.setAttribute('role', 'button');
         const art = document.createElement('div');
         art.className = 'shelf-art';
-        const list = thumbCandidates(it.url, it.thumbnail, false);
-        if (list.length) {
+        if (thumbCandidates(it.url, it.thumbnail, 320).length) {
             const img = document.createElement('img');
             img.loading = 'lazy'; img.decoding = 'async'; img.alt = '';
             img.width = 320; img.height = 180;   // 固定尺寸：載入時不改版面
             art.appendChild(img);
-            loadThumb(img, list, () => img.remove());
+            pending.push([img, it]);
         }
         const play = document.createElement('span');
         play.className = 'shelf-play';
@@ -3051,6 +3087,11 @@ function renderShelf(items) {
         frag.appendChild(card);
     });
     row.appendChild(frag);
+    // 卡片放進畫面後才知道實際寬度（桌機約 180~220px、手機約 300~415px）→ 依寬度 × 螢幕倍率挑縮圖大小
+    pending.forEach(([img, it]) => {
+        const need = thumbNeed(img.parentNode) || 320;
+        loadThumb(img, thumbCandidates(it.url, it.thumbnail, need), () => img.remove());
+    });
 }
 ['shelfPrev', 'shelfNext'].forEach((id, k) => {
     const b = $(id);

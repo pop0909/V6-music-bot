@@ -260,6 +260,13 @@ async def scenario(br, theme, w):
     await pg.keyboard.press("Enter"); await pg.wait_for_timeout(1500)
     if not await R.J("() => document.getElementById('guildSelect').value"): R.bad("選伺服器失敗")
     await R.audit("03_home")
+    # 封面縮圖挑尺寸（純函式，不用連網）：大封面 maxresdefault.jpg 起跳、小圖 mqdefault；不用沒有 CORS 的 vi_webp
+    th = await R.J("""() => { const u = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', t = 'https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp';
+        return [thumbCandidates(u, t, 1340), thumbCandidates(u, t, 100), thumbCandidates(u, t, 500), thumbCandidates('', 'https://cdn.example/x.png', 999)]; }""")
+    if not (th[0][0].endswith("/vi/dQw4w9WgXcQ/maxresdefault.jpg") and th[0][-1].endswith("/mqdefault.jpg") and not any("vi_webp" in x for x in th[0])
+            and th[1] == ["https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg"] and th[2][0].endswith("/sddefault.jpg")
+            and th[3] == ["https://cdn.example/x.png"]):
+        R.bad(f"縮圖候選不對：{th}")
     await pg.click(".sel-wrap.cdd:has(#voiceChannelSelect) .cdd-btn"); await pg.wait_for_timeout(150)
     await R.audit("04_voice_dropdown")
     # 選單左右邊緣要和觸發按鈕一致
