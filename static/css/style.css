@@ -2045,3 +2045,91 @@ html[data-theme="light"] .act-remove .act-ico, html[data-theme="light"] .act-rem
     background: no-repeat left center / 100% 100% url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 6' fill='none'%3E%3Cpath d='M1 4.2C9 1.6 15 5 24 3.1s16 .4 22-.6 9 .5 13 .9' stroke='%23ff2e97' stroke-width='1.4' stroke-linecap='round' opacity='.75'/%3E%3C/svg%3E");
 }
 @media (max-width: 760px) { .set-fly.fly-inplace .kbd-list { gap: 10px 14px; } }
+
+/* =====================================================================
+   v2026-11-14 ui6：跑馬燈 / 封面主色 / 載入骨架 / 手機播放列 / 佇列把手
+   ===================================================================== */
+/* ---- 跑馬燈：歌名放不下才捲（app.js setMarquee 量寬度後加 .marquee）；滑鼠移上去暫停 ---- */
+.song-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; word-break: normal; }
+.song-title.marquee, .pb-title.marquee {
+    text-overflow: clip;
+    mask-image: linear-gradient(90deg, transparent, #000 4%, #000 92%, transparent);
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 4%, #000 92%, transparent);
+}
+.marquee-inner, .np-stage .song-title.marquee .marquee-inner {
+    display: inline-flex; padding-left: 0; white-space: nowrap;
+    animation: marquee var(--mq-dur, 16s) linear 1.6s infinite;
+    will-change: transform;
+}
+.mq-seg { flex: none; white-space: pre; padding-right: 3.5em; }
+.marquee:hover .marquee-inner { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .marquee-inner { animation: none !important; } }
+/* 展開的播放畫面為了效能關掉所有動畫（.np-view * { animation: none !important }），大歌名的跑馬燈例外 */
+.np-view .song-title.marquee .marquee-inner { animation: marquee var(--mq-dur, 16s) linear 1.6s infinite !important; }
+.np-view .song-title.marquee:hover .marquee-inner,
+html.fx-hidden .np-view .song-title.marquee .marquee-inner,
+html.wheeling .np-view .song-title.marquee .marquee-inner,
+.np-view .np-card.fx-offscreen .song-title.marquee .marquee-inner { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: reduce) { .np-view .song-title.marquee .marquee-inner { animation: none !important; } }
+
+/* ---- 封面主色：app.js 取樣後設 --tint-dark / --tint-light，跟主題色混合後只用在進度條、播放鍵、展開畫面的底光 ---- */
+@property --tc { syntax: '<color>'; inherits: true; initial-value: #ff2e97; }
+@property --tc2 { syntax: '<color>'; inherits: true; initial-value: #00e5ff; }
+:root { --tc: var(--accent); --tc2: var(--accent-2); transition: --tc .9s ease, --tc2 .9s ease; }
+html.has-tint { --tc: color-mix(in oklab, var(--tint-dark) 70%, var(--accent)); --tc2: color-mix(in oklab, var(--tint-dark) 35%, var(--accent-2)); }
+html.has-tint[data-theme="light"] { --tc: color-mix(in oklab, var(--tint-light) 70%, var(--accent)); --tc2: color-mix(in oklab, var(--tint-light) 35%, var(--accent-2)); }
+.progress-fill, .ctrl-play, .ctrl-play:hover { background: linear-gradient(135deg, var(--tc) 0%, var(--tc2) 100%); }
+.np-view .np-card { background-image: radial-gradient(120% 60% at 50% 0%, color-mix(in srgb, var(--tc) 14%, transparent), transparent 72%); }
+html[data-theme="light"] .np-view .np-card { background-image: radial-gradient(120% 60% at 50% 0%, color-mix(in srgb, var(--tc) 9%, transparent), transparent 72%); }
+@media (prefers-reduced-motion: reduce) { :root { transition: none; } }
+
+/* ---- 載入中骨架（app.js skelHTML；外層 display: contents，放進 grid 也不影響排版） ---- */
+.skel-wrap { display: contents; }
+.skel {
+    display: block; border-radius: 7px;
+    background: linear-gradient(90deg, rgba(255,255,255,.05) 25%, rgba(255,255,255,.11) 50%, rgba(255,255,255,.05) 75%);
+    background-size: 300% 100%;
+    animation: skel 1.4s ease-in-out infinite;
+}
+html[data-theme="light"] .skel { background-image: linear-gradient(90deg, rgba(30,24,60,.06) 25%, rgba(30,24,60,.12) 50%, rgba(30,24,60,.06) 75%); }
+@keyframes skel { from { background-position: 100% 0; } to { background-position: 0 0; } }
+.skel-row { display: flex; align-items: center; gap: 12px; padding: 13px 12px; }
+.skel-num { width: 26px; height: 26px; border-radius: 8px; flex: none; }
+.skel-line { height: 12px; min-width: 40px; }
+.skel-sm { height: 9px; margin-top: 7px; }
+.skel-card { min-width: 0; }
+.skel-card .skel-art { aspect-ratio: 16 / 9; border-radius: 12px; margin-bottom: 10px; }
+.skel-result { display: flex; align-items: center; gap: 12px; padding: 8px 12px; }
+.skel-thumb { width: 64px; height: 36px; border-radius: 8px; flex: none; }
+.skel-dot { width: 18px; height: 18px; border-radius: 50%; margin-left: auto; flex: none; }
+.skel-wrap .skel-row:nth-child(n+4) .skel, .skel-wrap .skel-card:nth-child(n+4) .skel { animation-delay: .15s; }
+@media (prefers-reduced-motion: reduce) { .skel { animation: none !important; } }
+html.low-power .skel { animation: none; }
+
+/* ---- 佇列把手：鍵盤可以 Tab 到、↑ ↓ 移動；觸控時把手變大（只拖把手，清單照常捲動） ---- */
+.drag-handle { display: inline-grid; place-items: center; border-radius: 6px; outline: none; }
+.drag-handle:focus-visible { opacity: 1; color: var(--accent); outline: 2px solid var(--gold); outline-offset: 1px; }
+.list-item:focus-within .drag-handle { opacity: 1; }
+@media (hover: none), (max-width: 760px) {
+    .drag-handle { width: 36px; height: 44px; padding: 0; margin: -8px -6px -8px -10px; font-size: 14px; opacity: .75; }
+}
+
+/* ---- 手機底部播放列：按鍵 ≥ 44px、單手好按；往上滑展開播放畫面 ---- */
+@media (max-width: 760px) {
+    :root { --bar-h: calc(74px + env(safe-area-inset-bottom, 0px)); }
+    .player-bar { gap: 6px; padding: 0 8px env(safe-area-inset-bottom, 0px) 12px; touch-action: none; }
+    .pb-left { gap: 4px; }
+    .player-bar .ctrl-btn { width: 46px; height: 46px; font-size: 17px; }
+    .player-bar .ctrl-play { width: 52px; height: 52px; font-size: 18px; }
+    .pb-art { width: 50px; height: 50px; border-radius: 10px; }
+    .pb-title { font-size: 15px; }
+    .pb-sub { font-size: 12.5px; }
+    .player-bar .progress-bar { height: 4px; }
+}
+/* 拖曳中那一列：不透明底 + 陰影 + 微微放大，蓋在別的列上面也看得清楚 */
+.list-item.q-lift {
+    background: color-mix(in srgb, var(--accent) 9%, var(--pop-bg));
+    box-shadow: 0 14px 30px -12px rgba(0,0,0,.65);
+    scale: none;
+}
+html[data-theme="light"] .list-item.q-lift { box-shadow: 0 14px 30px -14px rgba(40,30,80,.35); }

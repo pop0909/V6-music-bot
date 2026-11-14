@@ -17,7 +17,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700&display=swap">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <link rel="stylesheet" href="/static/css/style.css?v=20261114cover">
+    <link rel="stylesheet" href="/static/css/style.css?v=20261114ui6">
 </head>
 <body>
     <div class="stroke-bg" aria-hidden="true"><svg viewBox="0 0 1400 900" fill="none" preserveAspectRatio="xMidYMid slice">
@@ -105,8 +105,11 @@
                             <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>音量 +5% / −5%</dd>
                             <dt><kbd>M</kbd></dt><dd>靜音 / 取消靜音</dd>
                             <dt><kbd>F</kbd> 或 <kbd>E</kbd></dt><dd>展開 / 收合播放畫面</dd>
+                            <dt><kbd>L</kbd></dt><dd>切換循環（關 / 單曲 / 全部）</dd>
+                            <dt><kbd>S</kbd></dt><dd>隨機播放 開 / 關</dd>
                             <dt><kbd>Esc</kbd></dt><dd>收合播放畫面 / 關閉說明</dd>
                             <dt><kbd>?</kbd></dt><dd>顯示 / 隱藏這個說明</dd>
+                            <dt><i class="fas fa-grip-vertical" aria-label="佇列把手"></i> + <kbd>↑</kbd> <kbd>↓</kbd></dt><dd>移動佇列裡的歌（Tab 到把手）</dd>
                         </dl>
                         <p class="kbd-note">在輸入框打字時不會觸發。進度條可點擊或拖曳跳轉。</p>
                     </div>
@@ -148,7 +151,7 @@
                             <button class="shelf-arrow" id="shelfNext" title="下一頁" aria-label="下一頁"><i class="fas fa-chevron-right"></i></button>
                         </div>
                     </div>
-                    <div class="shelf-row" id="shelfRow"></div>
+                    <div class="shelf-row" id="shelfRow"><div class="skel-wrap" role="status" aria-busy="true" aria-label="載入中"><div class="skel-card"><span class="skel skel-art"></span><span class="skel skel-line" style="width:72%"></span><span class="skel skel-line skel-sm" style="width:38%"></span></div><div class="skel-card"><span class="skel skel-art"></span><span class="skel skel-line" style="width:54%"></span><span class="skel skel-line skel-sm" style="width:38%"></span></div><div class="skel-card"><span class="skel skel-art"></span><span class="skel skel-line" style="width:86%"></span><span class="skel skel-line skel-sm" style="width:38%"></span></div><div class="skel-card"><span class="skel skel-art"></span><span class="skel skel-line" style="width:61%"></span><span class="skel skel-line skel-sm" style="width:38%"></span></div><div class="skel-card"><span class="skel skel-art"></span><span class="skel skel-line" style="width:47%"></span><span class="skel skel-line skel-sm" style="width:38%"></span></div><div class="skel-card"><span class="skel skel-art"></span><span class="skel skel-line" style="width:79%"></span><span class="skel skel-line skel-sm" style="width:38%"></span></div></div></div>
                 </section>
 
                 <div class="home-panels">
@@ -172,7 +175,7 @@
                                 <button class="btn-sm gold" id="btnPlaylistAdd"><i class="fas fa-plus"></i> 新增</button>
                             </div>
                         </div>
-                        <div class="list-container playlist-list" id="playlistList"></div>
+                        <div class="list-container playlist-list" id="playlistList"><div class="skel-wrap" role="status" aria-busy="true" aria-label="載入中"><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:72%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:54%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:86%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:61%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:47%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:79%"></span></div></div></div>
                     </div>
 
                     <!-- 最愛歌曲 -->
@@ -184,7 +187,7 @@
                                 <button class="btn-sm gold" id="btnFavAddCurrent"><i class="fas fa-heart"></i> 加入目前</button>
                             </div>
                         </div>
-                        <div class="list-container fav-list" id="favList"></div>
+                        <div class="list-container fav-list" id="favList"><div class="skel-wrap" role="status" aria-busy="true" aria-label="載入中"><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:72%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:54%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:86%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:61%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:47%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:79%"></span></div></div></div>
                     </div>
 
                     <!-- 我的歌單（個人；依登入身分，跟本地歌單 / 最愛分開） -->
@@ -252,7 +255,7 @@
                             <button class="btn-sm" id="npBtnQueueClear"><i class="fas fa-trash"></i> 清空</button>
                         </div>
                     </div>
-                    <div class="list-container queue-list" id="npQueueList"></div>
+                    <div class="list-container queue-list" id="npQueueList"><div class="skel-wrap" role="status" aria-busy="true" aria-label="載入中"><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:72%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:54%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:86%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:61%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:47%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:79%"></span></div></div></div>
                 </div>
                 <div class="tab-content" id="npTabHistory">
                     <div class="tab-toolbar">
@@ -318,10 +321,10 @@
                     <span class="volume-value" id="volumeValue">100%</span>
                 </div>
                 <span class="pb-sep" aria-hidden="true"></span>
-                <button class="ctrl-btn has-tip" id="btnLoop" data-tip="循環：關（點一下切換 單曲 / 全部）" aria-label="循環：關" aria-pressed="false">
+                <button class="ctrl-btn has-tip" id="btnLoop" data-tip="循環：關（點一下切換 單曲 / 全部・L）" aria-label="循環：關" aria-pressed="false">
                     <i class="fas fa-repeat" aria-hidden="true"></i><span class="loop-indicator ctrl-badge" id="loopIndicator"></span><span class="ctrl-label">循環</span>
                 </button>
-                <button class="ctrl-btn has-tip" id="btnShuffle" data-tip="隨機播放：關" aria-label="隨機播放" aria-pressed="false"><i class="fas fa-shuffle" aria-hidden="true"></i><span class="ctrl-label">隨機</span></button>
+                <button class="ctrl-btn has-tip" id="btnShuffle" data-tip="隨機播放：關（S）" aria-label="隨機播放" aria-pressed="false"><i class="fas fa-shuffle" aria-hidden="true"></i><span class="ctrl-label">隨機</span></button>
                 <span class="pb-sep" aria-hidden="true"></span>
                 <label class="toggle-row pb-toggle has-tip" for="autoplayToggle" data-tip="自動推薦接歌：關（佇列播完自動接相關歌曲）">
                     <span class="toggle-icon" aria-hidden="true"><i class="fas fa-radio"></i></span>
@@ -372,6 +375,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=20261114cover"></script>
+    <script src="/static/js/app.js?v=20261114ui6"></script>
 </body>
 </html>

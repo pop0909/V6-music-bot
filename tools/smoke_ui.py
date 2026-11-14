@@ -118,7 +118,8 @@ class Run:
         await self.pg.keyboard.press("Escape"); await self.pg.wait_for_timeout(150)
         if not await self.hidden(pop_sel): self.bad(f"{tag}: Esc 沒關")
         await self.click_or_menu(open_sel)
-        await self.pg.mouse.click(self.w // 2, 600 if self.w > 600 else 700); await self.pg.wait_for_timeout(150)
+        # 桌機點頂欄下方的空白（快捷鍵子選單變高後會蓋到畫面中間偏下）
+        await self.pg.mouse.click(self.w // 2, 120 if self.w > 600 else 700); await self.pg.wait_for_timeout(150)
         if not await self.hidden(pop_sel): self.bad(f"{tag}: 點外面沒關")
         await self.pg.keyboard.press("Escape")
 
@@ -241,6 +242,84 @@ async def normalize_checks(R, pg, w):
         if await R.J("() => document.getElementById('normalizeToggle').checked") != was: R.bad("音量平衡切回去失敗")
 
 
+async def ui6_checks(R, pg, w):
+    """跑馬燈 / 封面主色 / 骨架 / 手機播放列 / 佇列鍵盤排序 / L、S 快捷鍵"""
+    # 跑馬燈：放不下才捲；放得下是普通文字；減少動態效果時不捲
+    long_t = "很長很長的歌名" * 12
+    r = await R.J("""(t) => { setMarquee(el.barTitle, t); const a = el.barTitle.classList.contains('marquee') && !!el.barTitle.querySelector('.mq-seg + .mq-seg[aria-hidden=true]');
+        setMarquee(el.barTitle, '短'); const b = !el.barTitle.classList.contains('marquee') && el.barTitle.textContent === '短';
+        return [a, b]; }""", long_t)
+    if r != [True, True]: R.bad(f"跑馬燈判斷不對（長／短）：{r}")
+    # 展開的播放畫面：大歌名也要真的在捲（.np-view 為了效能關掉所有動畫，跑馬燈是例外）
+    await R.J("() => openNpView()"); await pg.wait_for_timeout(700)
+    big = await R.J("""(t) => { const n = document.getElementById('songTitle'), old = n._mqText || n.textContent; setMarquee(n, t);
+        const m = n.querySelector('.marquee-inner'), r = [n.classList.contains('marquee'), m ? m.getAnimations().length : -1];
+        n._mqText = undefined; setMarquee(n, old); return r; }""", long_t)
+    if big != [True, 1]: R.bad(f"播放畫面大歌名的跑馬燈沒在動：{big}")
+    if w >= 1180: await R.J("() => closeNpView()"); await pg.wait_for_timeout(400)
+    await pg.emulate_media(reduced_motion="reduce")
+    if await R.J("(t) => { el.barTitle._mqText = undefined; setMarquee(el.barTitle, t); return el.barTitle.classList.contains('marquee'); }", long_t + "x"):
+        R.bad("減少動態效果時歌名還在捲動")
+    await pg.emulate_media(reduced_motion="no-preference")
+    await R.J("() => { el.barTitle._mqText = undefined; updateBarSong(state.currentTitle || '', state.thumbnail, state.currentUrl); }")
+    # 封面主色：鮮豔的封面會上色，灰階的不會；上色後播放鍵的白色圖示對比要夠
+    t = await R.J("""() => { const px = (r, g, b, n) => { const a = []; for (let i = 0; i < n; i++) a.push(r, g, b, 255); return a; };
+        const red = pickTint(new Uint8ClampedArray(px(200, 30, 40, 576))), grey = pickTint(new Uint8ClampedArray(px(128, 128, 128, 576)));
+        const c = (rgb) => 1.05 / (relLum(rgb) + 0.05);
+        applyCoverTint(red); const on = document.documentElement.classList.contains('has-tint');
+        applyCoverTint(null); const off = !document.documentElement.classList.contains('has-tint');
+        return [!!red, grey, on, off, red ? c(red.dark) : 0, red ? c(red.light) : 0]; }""")
+    if not (t[0] and t[1] is None and t[2] and t[3] and t[4] >= 3.2 and t[5] >= 4.5): R.bad(f"封面主色不對：{t}")
+    # 骨架：外層 display: contents、讀屏念「載入中」
+    sk = await R.J("""() => { const d = document.createElement('div'); d.innerHTML = skelHTML('row', 3); document.body.appendChild(d);
+        const w = d.firstElementChild, r = [getComputedStyle(w).display, w.getAttribute('aria-busy'), d.querySelectorAll('.skel-row').length]; d.remove(); return r; }""")
+    if sk != ["contents", "true", 3]: R.bad(f"骨架畫面不對：{sk}")
+    # 手機播放列：按鍵至少 44px
+    if w < 600:
+        sz = await R.J("() => ['btnPlay', 'btnSkip', 'btnExpand'].map(id => { const r = document.getElementById(id).getBoundingClientRect(); return Math.min(r.width, r.height); })")
+        if min(sz) < 44: R.bad(f"手機播放列按鍵太小：{sz}")
+    # L / S 快捷鍵（焦點在頁面上；輸入框裡不觸發）
+    if w > 600:
+        await R.J("() => document.activeElement && document.activeElement.blur()")
+        s0 = await R.J("() => state.shuffleMode")
+        await pg.keyboard.press("s"); await pg.wait_for_timeout(700)
+        if await R.J("() => state.shuffleMode") == s0: R.bad("按 S 沒切換隨機播放")
+        await pg.keyboard.press("s"); await pg.wait_for_timeout(700)
+        l0 = await R.J("() => state.loopMode")
+        await pg.keyboard.press("l"); await pg.wait_for_timeout(700)
+        if await R.J("() => state.loopMode") == l0: R.bad("按 L 沒切換循環")
+        for _ in range(2): await pg.keyboard.press("l"); await pg.wait_for_timeout(500)
+        if await R.J("() => state.loopMode") != l0: R.bad("按三次 L 沒回到原本的循環模式")
+        await pg.focus("#searchInput"); await pg.keyboard.press("s"); await pg.wait_for_timeout(300)
+        if await R.J("() => state.shuffleMode") != s0: R.bad("在搜尋框打字時 S 還是切換了隨機")
+        await pg.fill("#searchInput", ""); await R.J("() => document.activeElement.blur()")
+    # 佇列：鍵盤把手 ↓ 移一格，再 ↑ 移回來（送出排序 API）
+    paused = await R.J("async () => { if (state.isPlaying && !state.isPaused) { await API.play(); return true; } return false; }")   # 先暫停：模擬器的歌很短，播完佇列會位移
+    await R.J("""async () => { for (let i = 1; i <= 3; i++) await fetch('/api/queue/add', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({guild_id: state.guildId, url: 'https://www.youtube.com/watch?v=KBMOVE0000' + i, title: '鍵盤移動 ' + i})}); }""")
+    await R.J("() => { openNpView(); document.querySelector('.tab-btn[data-np=\"queue\"]').click(); }"); await pg.wait_for_timeout(1800)   # 前面的測試可能停在「播放紀錄」分頁
+    names = lambda: R.J("() => [...document.querySelectorAll('#npQueueList .list-item .item-title')].slice(0, 2).map(n => n.firstChild.textContent)")
+    before = await names()
+    if len(before) == 2:
+        await pg.focus("#npQueueList .list-item:first-child .drag-handle")
+        fdbg = await R.J("() => { const h = document.querySelector('#npQueueList .list-item:first-child .drag-handle'); return [document.activeElement === h, document.activeElement.tagName + '.' + document.activeElement.className, typeof npOpen !== 'undefined' && npOpen, !!h.closest('[inert]'), getComputedStyle(h).visibility, getComputedStyle(h).display, h.getBoundingClientRect().width]; }")
+        await pg.keyboard.press("ArrowDown"); await pg.wait_for_timeout(900)
+        after = await names()
+        if after != before[::-1]:
+            dbg = await R.J("() => [typeof _qDrag, !!_qDrag, _qKeyBusy, document.activeElement.className, [...document.querySelectorAll('.toast')].map(t => t.innerText), (state.queue||[]).slice(0,3).map(s=>s.title)]")
+            R.bad(f"把手按 ↓ 沒有往下移：{before} → {after} {dbg} {fdbg}")
+        srv = await R.J("async () => (await (await fetch('/api/status?guild_id=' + state.guildId)).json()).queue.slice(0, 2).map(s => s.title)")
+        if srv != before[::-1]: R.bad(f"鍵盤移動沒同步到伺服器：{srv}")
+        focused = await R.J("() => !!document.activeElement.closest('#npQueueList .list-item:nth-child(2)')")
+        if not focused: R.bad("鍵盤移動後焦點沒跟著那首歌")
+        await pg.keyboard.press("ArrowUp"); await pg.wait_for_timeout(900)
+        if await names() != before: R.bad("把手按 ↑ 沒移回來")
+        await R.audit("21_queue_kbd")
+    else:
+        R.bad(f"佇列歌太少，測不了鍵盤移動：{before}")
+    if paused: await R.J("() => API.play()")
+
+
 async def scenario(br, theme, w):
     ctx = await br.new_context(viewport={"width": w, "height": 900 if w > 600 else 844}, is_mobile=w < 600, has_touch=w < 600, color_scheme=theme)
     await ctx.add_init_script(f"try{{localStorage.setItem('theme','{theme}')}}catch(e){{}}")
@@ -361,6 +440,7 @@ async def scenario(br, theme, w):
         await pg.wait_for_timeout(800)
         if reqs["n"] == n0: R.bad("音量滑桿沒送出請求")
     await normalize_checks(R, pg, w)
+    await ui6_checks(R, pg, w)
     await R.J("() => closeNpView()"); await pg.wait_for_timeout(600)
     # 個人歌單：依登入身分（不用再貼金鑰）→ 新增 → 出現在清單
     tab = pg.locator('.tab-btn[data-tab="mylists"]:visible').first

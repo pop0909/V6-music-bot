@@ -225,7 +225,7 @@ function setPressed(node, on) {
 function setShuffleUI(on) {
     el.btnShuffle.classList.toggle('active', !!on);
     setPressed(el.btnShuffle, on);
-    setTip(el.btnShuffle, on ? '隨機播放：開' : '隨機播放：關', on ? '隨機播放：開' : '隨機播放：關');
+    setTip(el.btnShuffle, on ? '隨機播放：開（S）' : '隨機播放：關（S）', on ? '隨機播放：開' : '隨機播放：關');
 }
 const TOGGLE_TIPS = {
     autoplayToggle: ['自動推薦接歌', '佇列播完自動接相關歌曲'],
@@ -410,6 +410,7 @@ el.guildSelect.addEventListener('change', async (e) => {
         return; 
     }
     state.guildId = val;
+    resetListCaches();
     updateControlsState();
     // 記住選擇：下次開分頁免重選
     localStorage.setItem('mb_guild', val);
@@ -786,6 +787,57 @@ function measureBars(img) {
     } catch (_) { return 1; }   // 讀不到像素（CORS）就不裁
 }
 
+// ==================== 跑馬燈（歌名放不下才捲動） ====================
+// 量實際寬度：放得下就是普通文字；放不下才換成兩段相同文字無縫循環（translateX(-50%) 剛好一段）。
+// 速度固定約 38px/秒（長歌名不會飛很快）；滑鼠移上去暫停；系統「減少動態效果」時不捲動、用 … 截斷。
+// 元素大小改變（視窗縮放、展開畫面從隱藏變顯示）由 ResizeObserver 重新判斷。
+const MQ_SPEED = 38;
+const _mqReduce = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+const _mqRO = window.ResizeObserver ? new ResizeObserver((ents) => ents.forEach(en => checkMarquee(en.target))) : null;
+function setMarquee(node, text) {
+    if (!node) return;
+    text = String(text || '');
+    if (node._mqText === text) return;
+    node._mqText = text;
+    node.classList.remove('marquee');
+    node.style.removeProperty('--mq-dur');
+    node.textContent = text;
+    if (_mqRO && !node._mqObserved) { node._mqObserved = true; _mqRO.observe(node); }
+    checkMarquee(node);
+}
+function checkMarquee(node) {
+    const text = node._mqText;
+    if (text === undefined) return;
+    const w = node.clientWidth;
+    if (!w) return;   // 看不到（收合中）：之後變大小時 ResizeObserver 會再叫
+    const on = node.classList.contains('marquee');
+    const seg = on ? node.querySelector('.mq-seg') : null;
+    const need = on && seg ? seg.offsetWidth - mqGap(seg) : node.scrollWidth;   // 捲動中：量其中一段（扣掉段落間距）
+    const over = need > w + 1 && !_mqReduce.matches;
+    if (over && !on) {
+        node.classList.add('marquee');
+        node.textContent = '';
+        const inner = document.createElement('span');
+        inner.className = 'marquee-inner';
+        for (let k = 0; k < 2; k++) {
+            const sp = document.createElement('span');
+            sp.className = 'mq-seg';
+            sp.textContent = text;
+            if (k) sp.setAttribute('aria-hidden', 'true');
+            inner.appendChild(sp);
+        }
+        node.appendChild(inner);
+        const segW = inner.firstChild.offsetWidth || need;
+        node.style.setProperty('--mq-dur', `${Math.max(6, Math.min(60, segW / MQ_SPEED)).toFixed(1)}s`);
+    } else if (!over && on) {
+        node.classList.remove('marquee');
+        node.style.removeProperty('--mq-dur');
+        node.textContent = text;
+    }
+}
+function mqGap(seg) { return parseFloat(getComputedStyle(seg).paddingRight) || 0; }
+if (_mqReduce.addEventListener) _mqReduce.addEventListener('change', () => document.querySelectorAll('.song-title, .pb-title').forEach(n => { const t = n._mqText; n._mqText = undefined; setMarquee(n, t); }));
+
 let _songInfoKey = null;
 function updateSongInfo(title, url, thumbnail) {
     // 內容沒變就什麼都不做：舊版每秒重設 innerHTML，會讓跑馬燈每秒跳回開頭、封面與模糊背景重繪
@@ -794,15 +846,9 @@ function updateSongInfo(title, url, thumbnail) {
     const prevKey = _songInfoKey;
     _songInfoKey = key;
     if (prevKey !== null && title) fxSongSwap();
-    // 跑馬燈：長標題自動觸發
+    // 跑馬燈：只有歌名真的放不下（量實際寬度）才捲動
     const titleEl = el.songTitle;
-    if (title && title.length > 20) {
-        titleEl.className = 'song-title marquee';
-        titleEl.innerHTML = `<span class="marquee-inner">${escapeHtml(title)}  •  ${escapeHtml(title)}</span>`;
-    } else {
-        titleEl.className = 'song-title';
-        titleEl.textContent = title || '尚未播放';
-    }
+    setMarquee(titleEl, title || '尚未播放');
     titleEl.title = title || '';
     el.songUrl.textContent = url || '';
     el.songUrl.title = url || '';
@@ -841,7 +887,7 @@ function updateSongInfo(title, url, thumbnail) {
 let _barArtSrc = null;
 function updateBarSong(title, thumbnail, url) {
     if (!el.barTitle) return;
-    setText(el.barTitle, title || '尚未播放');
+    setMarquee(el.barTitle, title || '尚未播放');
     el.barTitle.title = title || '';
     if (el.playerBar) el.playerBar.classList.toggle('has-song', !!title);
     const list = thumbCandidates(url, thumbnail, thumbNeed(el.barArt));   // 小圖：50~76px 方塊，mqdefault（320x180）就夠
@@ -873,13 +919,14 @@ function updateNowPlayingBackdrop(thumbnail, url) {
     card.classList.remove('np-preblur');
     card.style.setProperty('--np-art', safe ? `url("${safe}")` : 'none');
     card.style.setProperty('--np-glow', 'none');
-    if (!safe) return;
+    if (!safe) { applyCoverTint(null); return; }
     // 效能：把封面「預先模糊」成一張小圖（只算一次），取代每幀由 GPU 重算的 filter: blur(50px)
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.decoding = 'async';
     img.onload = () => {
         if (_npArtSrc !== thumbnail) return;
+        applyCoverTint(sampleCoverTint(img));
         const data = preblurImage(img);
         if (!data) return;
         card.style.setProperty('--np-art', `url("${data}")`);
@@ -887,9 +934,88 @@ function updateNowPlayingBackdrop(thumbnail, url) {
         const glow = makeGlowImage(img);
         if (glow) card.style.setProperty('--np-glow', `url("${glow}")`);
     };
+    img.onerror = () => { if (_npArtSrc === thumbnail) applyCoverTint(null); };
     img.src = thumbnail;
 }
 let _npArtSrc;
+
+// ==================== 封面主色 → 播放器強調色（輕微） ====================
+// 把封面縮成 32x18 取樣，找「最多、又夠鮮豔」的色相；灰階 / 太暗太亮的封面就用主題原本的顏色。
+// 深色、淺色主題各算一個亮度（跟播放鍵圖示的對比都 ≥ 4.5），CSS 再跟主題色混合，只是輕輕帶一點封面的味道。
+function sampleCoverTint(img) {
+    try {
+        const W = 32, H = 18;
+        const c = document.createElement('canvas'); c.width = W; c.height = H;
+        const ctx = c.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0, W, H);
+        return pickTint(ctx.getImageData(0, 0, W, H).data);
+    } catch (_) { return null; }   // 沒有 CORS → 不上色
+}
+function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+    if (!d) return [0, 0, l];
+    const s = d / (1 - Math.abs(2 * l - 1));
+    let h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    h *= 60; if (h < 0) h += 360;
+    return [h, s, l];
+}
+function hslToRgb(h, s, l) {
+    const k = (n) => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
+    const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)];
+}
+function relLum([r, g, b]) {
+    const ch = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b);
+}
+// 在固定色相 / 飽和度下找「最亮、但白色播放鍵圖示還看得清楚」的亮度：
+// 深色主題比照原本的粉紅（白字對比約 3.3，圖示屬大型元件 ≥ 3:1），淺色主題要 ≥ 4.6（跟原本的 #d6006f 一樣清楚）
+function tintForTheme(h, s, theme) {
+    const need = theme === 'light' ? 4.6 : 3.3;
+    const ok = (l) => 1.05 / (relLum(hslToRgb(h, s, l)) + 0.05) >= need;
+    let lo = 0.22, hi = 0.8;
+    if (!ok(lo)) return hslToRgb(h, s, lo);
+    for (let i = 0; i < 18; i++) { const mid = (lo + hi) / 2; if (ok(mid)) lo = mid; else hi = mid; }
+    return hslToRgb(h, s, lo);
+}
+// data：RGBA 位元組。回傳 { h, s, dark: [r,g,b], light: [r,g,b] } 或 null（封面太灰 / 色彩太雜）
+function pickTint(data) {
+    const BINS = 24, bins = new Array(BINS).fill(0), hx = new Array(BINS).fill(0), hy = new Array(BINS).fill(0), sat = new Array(BINS).fill(0);
+    let n = 0;
+    for (let i = 0; i + 3 < data.length; i += 4) {
+        if (data[i + 3] < 128) continue;
+        n++;
+        const [h, s, l] = rgbToHsl(data[i], data[i + 1], data[i + 2]);
+        if (s < 0.22 || l < 0.12 || l > 0.9) continue;
+        const w = s * (1 - Math.abs(l - 0.5) * 1.4);
+        if (w <= 0) continue;
+        const b = Math.floor(h / (360 / BINS)) % BINS;
+        bins[b] += w; sat[b] += s * w;
+        hx[b] += Math.cos(h * Math.PI / 180) * w; hy[b] += Math.sin(h * Math.PI / 180) * w;
+    }
+    if (!n) return null;
+    // 相鄰三格一起算（色相落在格線上不會被拆散）
+    let best = -1, bestW = 0;
+    for (let b = 0; b < BINS; b++) {
+        const w = bins[b] + 0.5 * (bins[(b + 1) % BINS] + bins[(b + BINS - 1) % BINS]);
+        if (w > bestW) { bestW = w; best = b; }
+    }
+    if (best < 0 || bestW / n < 0.06) return null;   // 鮮豔的像素太少：灰階 / 黑白封面
+    const ids = [(best + BINS - 1) % BINS, best, (best + 1) % BINS];
+    let x = 0, y = 0, ws = 0, ss = 0;
+    ids.forEach(b => { x += hx[b]; y += hy[b]; ws += bins[b]; ss += sat[b]; });
+    let h = Math.atan2(y, x) * 180 / Math.PI; if (h < 0) h += 360;
+    const s = Math.max(0.45, Math.min(0.85, ss / ws));
+    return { h: Math.round(h), s: +s.toFixed(2), dark: tintForTheme(h, s, 'dark'), light: tintForTheme(h, s, 'light') };
+}
+function applyCoverTint(t) {
+    const root = document.documentElement;
+    if (!t) { root.classList.remove('has-tint'); return; }
+    root.style.setProperty('--tint-dark', `rgb(${t.dark.join(' ')})`);
+    root.style.setProperty('--tint-light', `rgb(${t.light.join(' ')})`);
+    root.classList.add('has-tint');
+}
 // 封面光暈：中間是模糊的封面、四周自然淡出成透明的小圖（只算一次，之後只用 transform/opacity 做呼吸動畫）
 function makeGlowImage(img) {
     try {
@@ -1125,7 +1251,8 @@ function applyLiveState(data) {
         // 長度（duration）不算在內：背景解析到某首的長度時只更新標頭的總長度，不重建清單
         const queueKey = JSON.stringify(data.queue.map(s => [s.url, s.title]));
         setText(QV.np.count, queueSummary(data.queue));
-        if (queueKey !== state._queueKey) {
+        // 排序請求還沒回來時，SSE 可能還帶著舊順序：先不理，等請求回來再照下一次推送比對（不然會閃回舊順序、鍵盤焦點也會掉）
+        if (queueKey !== state._queueKey && !_qMoving) {
             state._queueKey = queueKey;
             state.queue = data.queue;
             if (npOpen) {
@@ -1333,6 +1460,7 @@ async function handleGuildAutoSwitch(newGuildId, guildName) {
     
     sel.value = newId;
     state.guildId = newId;
+    resetListCaches();
     updateControlsState();
     connectProgressStream(newId);
     await loadVoiceChannels();
@@ -1383,10 +1511,42 @@ async function pollStatus() {
     updateVoiceChannelStatus(data);
 }
 
+// ==================== 載入中骨架畫面 ====================
+// 資料還沒到之前先畫灰色佔位框（跟真的列表 / 卡片同大小），資料到了直接換掉，不會先閃「清單為空」。
+// 外層 .skel-wrap 用 display: contents，放進 grid（再聽一次）也不影響排版；讀屏只會念一次「載入中」。
+const SKEL_W = [72, 54, 86, 61, 47, 79, 58, 67];
+function skelHTML(kind, n) {
+    let h = '';
+    for (let i = 0; i < n; i++) {
+        const w = SKEL_W[i % SKEL_W.length];
+        if (kind === 'card') h += `<div class="skel-card"><span class="skel skel-art"></span><span class="skel skel-line" style="width:${w}%"></span><span class="skel skel-line skel-sm" style="width:38%"></span></div>`;
+        else if (kind === 'result') h += `<div class="skel-result"><span class="skel skel-thumb"></span><span class="skel skel-line" style="width:${w}%"></span><span class="skel skel-dot"></span></div>`;
+        else h += `<div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:${w}%"></span></div>`;
+    }
+    return `<div class="skel-wrap" role="status" aria-busy="true" aria-label="載入中">${h}</div>`;
+}
+function showSkeleton(container, kind, n) {
+    if (!container) return;
+    if (container.firstElementChild && container.firstElementChild.classList.contains('skel-wrap')) return;   // 已經在轉：不重來
+    if (typeof cancelChunks === 'function') cancelChunks(container);
+    container.innerHTML = skelHTML(kind, n);
+}
+// 換伺服器 / 剛打開：SSE 第一次推送前（最多 8 秒）清單顯示骨架；逾時就照現有資料畫（避免永遠在轉）
+state._skelUntil = performance.now() + 8000;
+function stillLoading(key) { return state[key] === undefined && performance.now() < state._skelUntil; }
+let _skelTimer = 0;
+function resetListCaches() {
+    state._plKey = state._favKey = state._queueKey = undefined;
+    state._skelUntil = performance.now() + 8000;
+    clearTimeout(_skelTimer);
+    _skelTimer = setTimeout(() => { renderPlaylistFromCache(); renderFavoritesFromCache(); renderQueueFromCache(); }, 8100);
+}
+
 // ==================== 佇列 UI（含拖曳排序） ====================
 // 佇列只在展開畫面：開著 → 立即重畫；收合中 → 標記待更新，閒置時補建（開啟時就不必現畫）
 function renderQueueFromCache() {
     if (!state.guildId) { QV.np.list.innerHTML = '<div class="empty-state"><i class="fas fa-list"></i><p>選擇伺服器以檢視佇列</p></div>'; return; }
+    if (stillLoading('_queueKey') && !(state.queue || []).length) { showSkeleton(QV.np.list, 'row', 6); return; }
     if (npOpen) {
         renderQueueList(state.queue || [], QV.np); npDirty.queue = false;
     } else {
@@ -1412,6 +1572,7 @@ function bindQueueDrag(list, div) {
         _qDrag = { list, div, items, rects, from, to: from, startY: e.clientY, step, id: e.pointerId,
                    scrollTop: list.scrollTop, raf: 0, y: e.clientY };
         try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+        if (e.pointerType === 'touch' && navigator.vibrate) { try { navigator.vibrate(8); } catch (_) {} }   // 手機：拿起來時輕震一下
         div.classList.add('q-lift');
         list.classList.add('q-dragging');
         items.forEach(it => { if (it !== div) it.classList.add('q-shift'); });
@@ -1432,12 +1593,33 @@ function bindQueueDrag(list, div) {
     handle.addEventListener('pointermove', move);
     handle.addEventListener('pointerup', end);
     handle.addEventListener('pointercancel', end);
+    // 鍵盤：把手有焦點時 ↑ ↓ 上下移一格（Home / End 移到最前 / 最後）；不會觸發全域的音量快捷鍵
+    handle.addEventListener('keydown', (e) => {
+        if (_qDrag || e.altKey || e.ctrlKey || e.metaKey) return;
+        const items = [...list.querySelectorAll('.list-item')];
+        const from = items.indexOf(div);
+        if (from < 0) return;
+        const to = e.key === 'ArrowUp' ? from - 1 : e.key === 'ArrowDown' ? from + 1
+                 : e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1 : null;
+        if (to === null) return;
+        e.preventDefault(); e.stopPropagation();
+        if (to < 0 || to >= items.length || to === from || e.repeat && _qKeyBusy) return;
+        commitQueueMove(list, div, items, from, to, true);
+    });
 }
+let _qKeyBusy = false, _qMoving = 0;
 function dragFrame(d) {
     // 靠近清單上下緣時自動捲動
-    const lr = d.list.getBoundingClientRect();
-    if (d.y < lr.top + 36) d.list.scrollTop -= 10;
-    else if (d.y > lr.bottom - 36) d.list.scrollTop += 10;
+    // 手指停在邊緣不動也會一直捲（越靠邊越快）
+    const lr = d.list.getBoundingClientRect(), EDGE = 48;
+    let speed = 0;
+    if (d.y < lr.top + EDGE) speed = -Math.ceil((lr.top + EDGE - d.y) / 4);
+    else if (d.y > lr.bottom - EDGE) speed = Math.ceil((d.y - (lr.bottom - EDGE)) / 4);
+    if (speed) {
+        const before = d.list.scrollTop;
+        d.list.scrollTop += Math.max(-18, Math.min(18, speed));
+        if (d.list.scrollTop !== before && !d.raf) d.raf = requestAnimationFrame(() => { d.raf = 0; if (_qDrag === d) dragFrame(d); });
+    }
     const scrollDy = d.list.scrollTop - d.scrollTop;
     const dy = d.y - d.startY + scrollDy;
     d.div.style.transform = `translate3d(0, ${dy}px, 0)`;
@@ -1464,7 +1646,12 @@ async function finishQueueDrag(d, cancelled) {
     items.forEach(it => { it.classList.remove('q-shift', 'q-lift'); it.style.transform = ''; });
     list.classList.remove('q-dragging');
     if (to === from) { if (_qRenderPending) { _qRenderPending = false; renderQueueFromCache(); } return; }
+    await commitQueueMove(list, div, items, from, to, false);
+}
+// 真正搬移：先在畫面上搬（樂觀更新），再送 API（帶上原本那首的網址，佇列被別人改過就 409 → 重畫成伺服器的版本）
+async function commitQueueMove(list, div, items, from, to, byKey) {
     const song = (state.queue || [])[from];
+    if (byKey) _qKeyBusy = true;
     // 搬 DOM（transform 已清掉，畫面直接落在新位置）＋重新編號
     if (to > from) list.insertBefore(div, items[to].nextSibling); else list.insertBefore(div, items[to]);
     list.querySelectorAll('.list-item').forEach((it, idx) => {
@@ -1473,11 +1660,17 @@ async function finishQueueDrag(d, cancelled) {
     });
     div.classList.add('fx-dropped');
     setTimeout(() => div.classList.remove('fx-dropped'), 450);
+    if (byKey) { const h = div.querySelector('.drag-handle'); if (h) h.focus({ preventScroll: false }); }
     if (state.queue && song) { state.queue.splice(from, 1); state.queue.splice(to, 0, song); }
-    const r = await API.queueReorder(from, to, undefined, song && song.url);
+    state._queueKey = JSON.stringify((state.queue || []).map(s => [s.url, s.title]));   // SSE 帶回同樣順序時不再重畫
+    _qMoving++;
+    let r;
+    try { r = await API.queueReorder(from, to, undefined, song && song.url); } finally { _qMoving--; }
+    if (byKey) _qKeyBusy = false;
     if (!r || r.status !== 'ok') {
         showToast((r && r.message) || '排序失敗', 'error', { key: 'reorder' });
         if (state.queue && song) { state.queue.splice(to, 1); state.queue.splice(from, 0, song); }
+        state._queueKey = undefined;   // 下一次 SSE 一定照伺服器的順序重畫（可能是別人改過佇列）
         renderQueueFromCache();
     } else if (_qRenderPending) { _qRenderPending = false; renderQueueFromCache(); }
 }
@@ -1506,7 +1699,7 @@ function renderQueueList(q, view = QV.np) {
         div.className = 'list-item';
         div.dataset.index = i;
         div.innerHTML = `
-            <span class="drag-handle"><i class="fas fa-grip-vertical"></i></span>
+            <span class="drag-handle" tabindex="0" role="button" aria-roledescription="拖曳把手" aria-label="移動（拖曳，或按 ↑ ↓）"><i class="fas fa-grip-vertical" aria-hidden="true"></i></span>
             <span class="item-index-num">${i + 1}</span>
             <span class="item-title">${escapeHtml(song.title)}${song.by ? `<span class="item-by">👤 ${escapeHtml(song.by)}</span>` : ''}</span>
             <div class="item-actions">
@@ -1522,10 +1715,10 @@ function renderQueueList(q, view = QV.np) {
             showToast(`▶ 播放：${song.title}`, 'success');
             setProgress(0);
             setText(el.currentTime, '0:00');
-            API.queuePlay(i).then(reportActionResult);
+            API.queuePlay(+div.dataset.index).then(reportActionResult);   // 用目前位置（拖曳 / 鍵盤移動後會變）
         });
         div.querySelector('[data-action="remove"]').addEventListener('click', async () => {
-            await API.queueRemove(i);
+            await API.queueRemove(+div.dataset.index);
             renderQueueFromCache();
         });
         return div;
@@ -1621,6 +1814,7 @@ function renderFavList(favs, view = FV.home) {
 function renderFavoritesFromCache() {
     if (!state.guildId) { el.favList.innerHTML = '<div class="empty-state"><i class="fas fa-heart"></i><p>選擇伺服器以檢視最愛</p></div>'; return; }
     if (npOpen) { homeDirty.favorites = true; return; }   // 主畫面被蓋住：收合後再補畫
+    if (stillLoading('_favKey')) { showSkeleton(el.favList, 'row', 6); return; }
     renderFavList(state.favorites || [], FV.home); homeDirty.favorites = false;
 }
 
@@ -1633,6 +1827,7 @@ async function renderFavorites() {
 
 function renderPlaylistFromCache() {
     if (!state.guildId) { el.playlistList.innerHTML = '<div class="empty-state"><i class="fas fa-book"></i><p>選擇伺服器以檢視歌單</p></div>'; return; }
+    if (stillLoading('_plKey')) { showSkeleton(el.playlistList, 'row', 6); return; }
     const pl = state.playlist || [];
     renderPlaylistList(pl);
 }
@@ -1755,7 +1950,7 @@ async function doSearch() {
     }
 
     // === 關鍵字搜尋 ===
-    el.searchResults.innerHTML = '<div style="padding:12px;text-align:center;color:var(--sub)"><i class="fas fa-spinner fa-pulse"></i> 搜尋中...</div>';
+    el.searchResults.innerHTML = skelHTML('result', 5).replace('aria-label="載入中"', 'aria-label="搜尋中"');
     el.btnSearch.disabled = true;
     const data = await API.search(query);
     el.btnSearch.disabled = false;
@@ -1811,7 +2006,7 @@ function updateLoopButton() {
     el.btnLoop.classList.remove('loop-one', 'loop-all');
     const name = mode === 'one' ? '單曲' : mode === 'all' ? '全部' : '關';
     const nextName = mode === 'one' ? '全部' : mode === 'all' ? '關' : '單曲';
-    setTip(el.btnLoop, `循環：${name}（點一下切換：${nextName}）`, `循環：${name}`);
+    setTip(el.btnLoop, `循環：${name}（點一下切換：${nextName}・L）`, `循環：${name}`);
     setPressed(el.btnLoop, mode === 'one' || mode === 'all');
     el.loopIndicator.textContent = '';
 
@@ -1936,6 +2131,7 @@ async function loadHistory() {
     if (!state.guildId) { list.innerHTML = '<div class="empty-state"><i class="fas fa-clock-rotate-left"></i><p>選擇伺服器以檢視播放紀錄</p></div>'; return; }
     const seq = ++histState.seq;
     const mode = histState.mode;
+    if (!list.querySelector('.list-item')) showSkeleton(list, 'row', 7);
     const res = mode === 'top' ? await API.historyTop(histState.range) : await API.history();
     if (seq !== histState.seq) return;   // 期間又切換了模式 / 範圍
     renderHistoryList(res && res.items ? res.items : [], mode, res && res.status !== 'ok', list);
@@ -2044,6 +2240,7 @@ async function loadActions() {
     npDirty.actions = false;
     if (!state.guildId) { list.innerHTML = '<div class="empty-state"><i class="fas fa-list-check"></i><p>選擇伺服器以檢視操作紀錄</p></div>'; return; }
     const seq = ++actState.seq;
+    if (!list.querySelector('.list-item')) showSkeleton(list, 'row', 7);
     const res = await API.actions();
     if (seq !== actState.seq) return;
     actState.failed = !res || res.status !== 'ok';
@@ -2938,16 +3135,37 @@ document.addEventListener('keydown', (e) => {
     else if (k === 'n' || k === 'N') { if (!e.repeat) skipSong(); }
     else if (k === 'm' || k === 'M') { if (!e.repeat) toggleMute(); }
     else if (k === 'f' || k === 'F' || k === 'e' || k === 'E') { if (!e.repeat) setNpOpen(!npOpen); }
+    else if (k === 'l' || k === 'L') { if (!e.repeat && el.btnLoop) el.btnLoop.click(); }          // 循環：關 → 單曲 → 全部
+    else if (k === 's' || k === 'S') { if (!e.repeat && el.btnShuffle) el.btnShuffle.click(); }    // 隨機播放 開 / 關
     else if (k === '?') { if (!e.repeat) setKbdHelp(kbdHelp ? kbdHelp.hidden : false); }
     else handled = false;
     if (handled) e.preventDefault();
 });
 if (el.btnExpand) el.btnExpand.addEventListener('click', (e) => { e.stopPropagation(); setNpOpen(!npOpen); });
+// 手機單手操作：在播放列上往上滑 → 展開播放畫面（往下滑 → 收合）。只認觸控、只在空白處 / 封面 / 歌名起手
+if (el.playerBar) {
+    let sw = null;
+    el.playerBar.addEventListener('pointerdown', (e) => {
+        if (e.pointerType !== 'touch' || e.target.closest('button, input, label, .progress-bar, .volume-row, .pb-extras')) { sw = null; return; }
+        sw = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId };
+    }, { passive: true });
+    const endSwipe = (e) => {
+        if (!sw || e.pointerId !== sw.id) return;
+        const dx = e.clientX - sw.x, dy = e.clientY - sw.y, dt = performance.now() - sw.t;
+        sw = null;
+        if (dt > 700 || Math.abs(dy) < 36 || Math.abs(dx) > Math.abs(dy)) return;
+        el.playerBar._swiped = performance.now();   // 擋掉接著來的 click（不要又切一次）
+        setNpOpen(dy < 0);
+    };
+    el.playerBar.addEventListener('pointerup', endSwipe, { passive: true });
+    el.playerBar.addEventListener('pointercancel', () => { sw = null; }, { passive: true });
+}
 if (el.btnCollapse) el.btnCollapse.addEventListener('click', closeNpView);
 if (el.playerBar) {
     el.playerBar.addEventListener('click', (e) => {
         // 只有點在播放列「空白處 / 封面 / 標題」才展開；按鈕、滑桿、開關照常運作
         if (e.target.closest('button, input, label, select, a, .progress-bar, .volume-row, .pb-extras')) return;
+        if (el.playerBar._swiped && performance.now() - el.playerBar._swiped < 400) return;   // 剛剛是滑動手勢
         setNpOpen(!npOpen);
     });
 }
@@ -3025,6 +3243,7 @@ async function loadShelf() {
     if (!state.guildId) { renderShelf([]); return; }
     const seq = ++shelfState.seq;
     shelfState.last = Date.now();
+    if (!el.shelfRow.querySelector('.shelf-card')) showSkeleton(el.shelfRow, 'card', 6);
     let res = await API.historyTop('30d');
     let items = (res && res.items) || [];
     if (items.length < 4) {
@@ -3578,7 +3797,7 @@ const ML = (() => {
     }
     function render() {
         $('mlActions').hidden = false;
-        if (!loaded) { $('mlList').innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-pulse"></i></div>'; }
+        if (!loaded) showSkeleton($('mlList'), 'row', 4);
         refresh();
     }
     function draw() {
