@@ -214,7 +214,7 @@ class Frontend(unittest.TestCase):
         html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
         self.assertIn('data-tab="mylists"', html)
         self.assertIn('id="tabMylists"', html)
-        self.assertIn("app.js?v=20261114menu", html)
+        self.assertIn("app.js?v=20261114fly", html)
         js = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
         self.assertIn("'/api/ext/lists'", js)
 
@@ -420,7 +420,7 @@ class PopoverLayering(unittest.TestCase):
     def test_popovers_exclusive_and_tip_hidden(self):
         js = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
         css = open(os.path.join(ROOT, "static", "css", "style.css"), encoding="utf-8").read()
-        self.assertIn("if (sp && !sp.hidden) $('statusClose').click();", js)
+        self.assertIn("if (window.setStatusOpen) window.setStatusOpen(false);", js)   # 開快捷鍵 → 收起狀態
         self.assertIn("if (o) { setKbdHelp(false);", js)
         self.assertIn('.has-tip[aria-expanded="true"]::after { display: none !important; }', css)
         self.assertIn("--pop-border:", css)
@@ -482,6 +482,29 @@ class MembersButton(unittest.TestCase):
         for frag in ["function settingsMenu()", "'ArrowDown'", "'Home'", "'End'", "'Escape'", "window.closeSettingsMenu",
                      "!wrap.contains(e.target)"]:
             self.assertIn(frag, js)
+
+    def test_status_and_shortcuts_are_flyout_submenus(self):
+        html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
+        js = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
+        css = open(os.path.join(ROOT, "static", "css", "style.css"), encoding="utf-8").read()
+        wrap = html[html.index('id="setWrap"'):html.index('<div class="live-pill"')]
+        # 兩個子選單放在齒輪選單旁（同一個 wrap 裡），只有這兩列有 ›
+        self.assertIn('id="statusPop"', wrap)
+        self.assertIn('id="kbdHelp"', wrap)
+        self.assertEqual(wrap.count("set-chev"), 2)
+        for bid in ("btnStatus", "btnShortcuts"):
+            i = wrap.index(f'id="{bid}"')
+            self.assertIn("set-chev", wrap[i:wrap.index("</button>", i)])
+        for bid in ("btnTheme", "btnMembers", "btnLogout"):
+            i = wrap.index(f'id="{bid}"')
+            self.assertNotIn("set-chev", wrap[i:wrap.index("</", wrap.index('class="set-label"', i))])
+        # 手機換頁用的「返回」、更新按鈕仍只給擁有者
+        self.assertEqual(wrap.count('class="kbd-close set-back"'), 2)
+        self.assertIn('{% if me.owner %}<button class="btn-sm update-btn" id="btnUpdate"', wrap)
+        # 左右自動選邊、放不下就在選單內換頁；← / → / 滑過去
+        for frag in ["'fly-right'", "'fly-left'", "'fly-inplace'", "'ArrowRight'", "'ArrowLeft'", "pointerover", "window.setFlyPlace"]:
+            self.assertIn(frag, js)
+        self.assertIn(".set-menu.sub-open { visibility: hidden; }", css)
 
 
 class BugHuntRegressionTest(unittest.TestCase):

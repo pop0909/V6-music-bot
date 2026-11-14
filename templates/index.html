@@ -17,7 +17,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700&display=swap">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <link rel="stylesheet" href="/static/css/style.css?v=20261114menu">
+    <link rel="stylesheet" href="/static/css/style.css?v=20261114fly">
 </head>
 <body>
     <div class="stroke-bg" aria-hidden="true"><svg viewBox="0 0 1400 900" fill="none" preserveAspectRatio="xMidYMid slice">
@@ -70,11 +70,45 @@
                     <div class="set-menu" id="setMenu" role="menu" aria-label="設定" hidden>
                         <div class="set-who" aria-hidden="true"><i class="fas fa-key"></i><span class="set-who-name">{{ me.name }}</span><svg class="stroke-ico set-stroke" viewBox="0 0 48 12" fill="none"><path class="s-pink" d="M2 8.2c5.4-4.6 9.6 2.8 15.2-1.4 4.4-3.3 7.9 2.6 13 .2 4.1-1.9 6.8-3.7 15.8-2.6" stroke-width="1.6" stroke-linecap="round"/><path class="s-cyan" d="M9 10.6c6.8-1.3 15.4-1.6 26-.8" stroke-width="1.3" stroke-linecap="round"/></svg></div>
                         <button class="set-item" id="btnTheme" type="button" role="menuitem" tabindex="-1"><i class="fas fa-circle-half-stroke" aria-hidden="true"></i><span class="set-label">切換主題</span></button>
-                        <button class="set-item" id="btnStatus" type="button" role="menuitem" tabindex="-1" aria-haspopup="dialog" aria-controls="statusPop"><i class="fas fa-gauge-high" aria-hidden="true"></i><span class="set-label">機器人狀態</span></button>
+                        <button class="set-item" id="btnStatus" type="button" role="menuitem" tabindex="-1" aria-haspopup="dialog" aria-expanded="false" aria-controls="statusPop"><i class="fas fa-gauge-high" aria-hidden="true"></i><span class="set-label">機器人狀態</span><i class="fas fa-chevron-right set-chev" aria-hidden="true"></i></button>
                         {% if me.owner %}<a class="set-item" id="btnMembers" href="/members" target="_blank" rel="noopener" role="menuitem" tabindex="-1"><i class="fas fa-users" aria-hidden="true"></i><span class="set-label">成員管理</span><i class="fas fa-arrow-up-right-from-square set-ext" aria-hidden="true"></i></a>{% endif %}
-                        <button class="set-item set-kbd" id="btnShortcuts" type="button" role="menuitem" tabindex="-1" aria-haspopup="dialog" aria-controls="kbdHelp"><i class="fas fa-keyboard" aria-hidden="true"></i><span class="set-label">鍵盤快捷鍵</span><kbd>?</kbd></button>
+                        <button class="set-item set-kbd" id="btnShortcuts" type="button" role="menuitem" tabindex="-1" aria-haspopup="dialog" aria-expanded="false" aria-controls="kbdHelp"><i class="fas fa-keyboard" aria-hidden="true"></i><span class="set-label">鍵盤快捷鍵</span><i class="fas fa-chevron-right set-chev" aria-hidden="true"></i></button>
                         <div class="set-sep" role="separator"></div>
                         <form class="logout-form" method="post" action="/logout"><button class="set-item set-danger" id="btnLogout" type="submit" role="menuitem" tabindex="-1" aria-label="登出（目前身分：{{ me.name }}）"><i class="fas fa-right-from-bracket" aria-hidden="true"></i><span class="set-label">登出</span></button></form>
+                    </div>
+                    <!-- 子選單（像 Chrome 選單的 ›）：桌面從齒輪選單旁邊展開，手機在選單內換頁；快捷鍵也能按 ? 開 -->
+                    <div class="kbd-help status-pop set-fly" id="statusPop" role="dialog" aria-label="機器人狀態" tabindex="-1" hidden>
+                        <div class="kbd-head"><button class="kbd-close set-back" id="statusClose" type="button" aria-label="返回設定選單"><i class="fas fa-chevron-left"></i></button><span>機器人狀態</span></div>
+                        <dl class="kbd-list st-list">
+                            <dt>Discord</dt><dd data-k="ready">…</dd>
+                            <dt>主連線延遲</dt><dd data-k="latency">…</dd>
+                            <dt>語音延遲</dt><dd data-k="vlatency">…</dd>
+                            <dt>已執行</dt><dd data-k="uptime">…</dd>
+                            <dt>CPU</dt><dd data-k="cpu">…</dd>
+                            <dt>記憶體</dt><dd data-k="mem">…</dd>
+                            <dt>連線</dt><dd data-k="guilds">…</dd>
+                            <dt>yt-dlp</dt><dd data-k="ytdlp">…</dd>
+                            <dt>Cookies</dt><dd data-k="cookies">…</dd>
+                            <dt>音質</dt><dd data-k="bitrate">…</dd>
+                            <dt>ffmpeg</dt><dd data-k="ffmpeg">…</dd>
+                        </dl>
+                        {% if me.owner %}<button class="btn-sm update-btn" id="btnUpdate" type="button"><i class="fas fa-arrows-rotate"></i> 更新 yt-dlp 並重啟</button>
+                        <p class="update-msg" id="updateMsg"></p>{% endif %}
+                        <p class="update-msg cookie-warn" id="cookieWarn"></p>
+                    </div>
+                    <div class="kbd-help set-fly" id="kbdHelp" role="dialog" aria-label="鍵盤快捷鍵" tabindex="-1" hidden>
+                        <div class="kbd-head"><button class="kbd-close set-back" id="kbdHelpClose" type="button" aria-label="返回設定選單"><i class="fas fa-chevron-left"></i></button><span>鍵盤快捷鍵</span></div>
+                        <dl class="kbd-list">
+                            <dt><kbd>Space</kbd></dt><dd>播放 / 暫停</dd>
+                            <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>倒退 / 快轉 10 秒</dd>
+                            <dt><kbd>Shift</kbd>+<kbd>→</kbd> 或 <kbd>N</kbd></dt><dd>下一首</dd>
+                            <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>音量 +5% / −5%</dd>
+                            <dt><kbd>M</kbd></dt><dd>靜音 / 取消靜音</dd>
+                            <dt><kbd>F</kbd> 或 <kbd>E</kbd></dt><dd>展開 / 收合播放畫面</dd>
+                            <dt><kbd>Esc</kbd></dt><dd>收合播放畫面 / 關閉說明</dd>
+                            <dt><kbd>?</kbd></dt><dd>顯示 / 隱藏這個說明</dd>
+                        </dl>
+                        <p class="kbd-note">在輸入框打字時不會觸發。進度條可點擊或拖曳跳轉。</p>
                     </div>
                 </div>
                 <div class="live-pill" id="statusPill">
@@ -310,40 +344,6 @@
         </div>
     </footer>
 
-    <!-- 機器人狀態 / 鍵盤快捷鍵說明（從頂欄齒輪選單開啟；快捷鍵也能按 ?） -->
-    <div class="kbd-help status-pop" id="statusPop" role="dialog" aria-label="機器人狀態" hidden>
-        <div class="kbd-head"><span>機器人狀態</span><button class="kbd-close" id="statusClose" type="button" aria-label="關閉"><i class="fas fa-xmark"></i></button></div>
-        <dl class="kbd-list st-list">
-            <dt>Discord</dt><dd data-k="ready">…</dd>
-            <dt>主連線延遲</dt><dd data-k="latency">…</dd>
-            <dt>語音延遲</dt><dd data-k="vlatency">…</dd>
-            <dt>已執行</dt><dd data-k="uptime">…</dd>
-            <dt>CPU</dt><dd data-k="cpu">…</dd>
-            <dt>記憶體</dt><dd data-k="mem">…</dd>
-            <dt>連線</dt><dd data-k="guilds">…</dd>
-            <dt>yt-dlp</dt><dd data-k="ytdlp">…</dd>
-            <dt>Cookies</dt><dd data-k="cookies">…</dd>
-            <dt>音質</dt><dd data-k="bitrate">…</dd>
-            <dt>ffmpeg</dt><dd data-k="ffmpeg">…</dd>
-        </dl>
-        {% if me.owner %}<button class="btn-sm update-btn" id="btnUpdate" type="button"><i class="fas fa-arrows-rotate"></i> 更新 yt-dlp 並重啟</button>
-        <p class="update-msg" id="updateMsg"></p>{% endif %}
-        <p class="update-msg cookie-warn" id="cookieWarn"></p>
-    </div>
-    <div class="kbd-help" id="kbdHelp" role="dialog" aria-label="鍵盤快捷鍵" hidden>
-        <div class="kbd-head"><span>鍵盤快捷鍵</span><button class="kbd-close" id="kbdHelpClose" type="button" aria-label="關閉"><i class="fas fa-xmark"></i></button></div>
-        <dl class="kbd-list">
-            <dt><kbd>Space</kbd></dt><dd>播放 / 暫停</dd>
-            <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>倒退 / 快轉 10 秒</dd>
-            <dt><kbd>Shift</kbd>+<kbd>→</kbd> 或 <kbd>N</kbd></dt><dd>下一首</dd>
-            <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>音量 +5% / −5%</dd>
-            <dt><kbd>M</kbd></dt><dd>靜音 / 取消靜音</dd>
-            <dt><kbd>F</kbd> 或 <kbd>E</kbd></dt><dd>展開 / 收合播放畫面</dd>
-            <dt><kbd>Esc</kbd></dt><dd>收合播放畫面 / 關閉說明</dd>
-            <dt><kbd>?</kbd></dt><dd>顯示 / 隱藏這個說明</dd>
-        </dl>
-        <p class="kbd-note">在輸入框打字時不會觸發。進度條可點擊或拖曳跳轉。</p>
-    </div>
 
     <!-- 視覺化等化器（固定右下角小裝飾） -->
     <audio id="audioPlayer" preload="none"></audio>
@@ -372,6 +372,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=20261114menu"></script>
+    <script src="/static/js/app.js?v=20261114fly"></script>
 </body>
 </html>

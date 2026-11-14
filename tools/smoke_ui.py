@@ -93,8 +93,12 @@ class Run:
         if await self.hidden("#setMenu"):
             await self.pg.click("#btnSettings"); await self.pg.wait_for_timeout(150)
         if await self.hidden("#setMenu"): self.bad("齒輪選單點了沒打開"); return
+        sub = await self.J("s => document.querySelector(s).getAttribute('aria-controls')", item_sel)   # 點之前讀（登出會換頁）
         await self.pg.click(item_sel); await self.pg.wait_for_timeout(150)
-        if not await self.hidden("#setMenu"): self.bad(f"選了 {item_sel} 後齒輪選單沒收起")
+        if item_sel == "#btnLogout": return
+        if sub in ("statusPop", "kbdHelp"):      # 子選單列：選單留著、子選單打開
+            if await self.hidden("#" + sub): self.bad(f"點 {item_sel} 子選單沒打開")
+        elif not await self.hidden("#setMenu"): self.bad(f"選了 {item_sel} 後齒輪選單沒收起")
 
     async def click_or_menu(self, sel):
         if sel.startswith("@"):
@@ -126,6 +130,8 @@ async def settings_menu_checks(R, pg, w):
     await R.esc_and_outside("#btnSettings", "#setMenu", "齒輪選單")
     await pg.click("#btnSettings"); await pg.wait_for_timeout(200)
     labels = await R.J("() => [...document.querySelectorAll('#setMenu .set-item')].filter(e => e.offsetParent).map(e => e.innerText.trim())")
+    chev = await R.J("() => [...document.querySelectorAll('#setMenu .set-item')].filter(e => e.querySelector('.set-chev')).map(e => e.id)")
+    if sorted(chev) != ["btnShortcuts", "btnStatus"]: R.bad(f"只有狀態 / 快捷鍵應該有 ›：{chev}")
     want = ["機器人狀態", "成員管理", "登出"] + ([] if w < 600 else ["鍵盤快捷鍵"])
     if not any("切換成" in t for t in labels): R.bad(f"齒輪選單少了主題切換 {labels}")
     for t in want:
@@ -157,13 +163,61 @@ async def settings_menu_checks(R, pg, w):
         if not await R.hidden("#setMenu"): R.bad("鍵盤 Esc 沒關齒輪選單")
         if await R.J("() => document.activeElement && document.activeElement.id") != "btnSettings": R.bad("Esc 後焦點沒回到齒輪")
         if await R.J("() => npOpen") != np_before: R.bad("在齒輪選單按 Esc 卻收合 / 影響了播放畫面")
-        # 鍵盤選「機器人狀態」：選單收起、狀態框打開、焦點進到狀態框
+        # 鍵盤：狀態列按 → 打開子選單（選單留著、焦點進子選單）；← 回到那一列；Enter 也能開；Esc 回選單、再 Esc 關選單
         await pg.keyboard.press("Enter"); await pg.wait_for_timeout(100)
-        await pg.keyboard.press("ArrowDown"); await pg.keyboard.press("Enter"); await pg.wait_for_timeout(300)
-        if await R.hidden("#statusPop") or not await R.hidden("#setMenu"): R.bad("鍵盤從齒輪選單開狀態框失敗")
-        if await R.J("() => document.activeElement && document.activeElement.id") != "statusClose": R.bad("鍵盤開狀態框後焦點沒進去")
+        await pg.keyboard.press("ArrowDown"); await pg.keyboard.press("ArrowRight"); await pg.wait_for_timeout(300)
+        if await R.hidden("#statusPop") or await R.hidden("#setMenu"): R.bad("鍵盤 → 開狀態子選單失敗（或選單被收起）")
+        if await R.J("() => document.activeElement && document.activeElement.id") != "statusPop": R.bad("鍵盤開狀態子選單後焦點沒進去")
+        await pg.keyboard.press("ArrowLeft"); await pg.wait_for_timeout(150)
+        if not await R.hidden("#statusPop"): R.bad("← 沒關狀態子選單")
+        if await R.J("() => document.activeElement && document.activeElement.id") != "btnStatus": R.bad("← 後焦點沒回到「機器人狀態」")
+        await pg.keyboard.press("End"); await pg.keyboard.press("ArrowUp"); await pg.wait_for_timeout(50)
+        if await R.J("() => document.activeElement && document.activeElement.id") == "btnShortcuts":
+            await pg.keyboard.press("Enter"); await pg.wait_for_timeout(250)
+            if await R.hidden("#kbdHelp"): R.bad("快捷鍵列按 Enter 沒開子選單")
+            await pg.keyboard.press("Escape"); await pg.wait_for_timeout(150)
+            if not await R.hidden("#kbdHelp") or await R.hidden("#setMenu"): R.bad("子選單 Esc 應該只回到選單")
+            if await R.J("() => document.activeElement && document.activeElement.id") != "btnShortcuts": R.bad("Esc 後焦點沒回到「鍵盤快捷鍵」")
         await pg.keyboard.press("Escape"); await pg.wait_for_timeout(150)
-        if not await R.hidden("#statusPop"): R.bad("狀態框 Esc 沒關")
+        if not await R.hidden("#setMenu"): R.bad("第二次 Esc 沒關齒輪選單")
+        if await R.J("() => npOpen") != np_before: R.bad("子選單的 Esc 影響了播放畫面")
+        # 滑鼠：滑到「機器人狀態」自動展開、滑到「切換主題」收起；子選單貼在選單旁邊（放不下右邊就放左邊），不重疊、不超出畫面
+        await pg.click("#btnSettings"); await pg.wait_for_timeout(150)
+        await pg.hover("#btnStatus"); await pg.wait_for_timeout(500)
+        if await R.hidden("#statusPop"): R.bad("滑到「機器人狀態」沒展開")
+        g = await R.J("""() => { const m = document.getElementById('setMenu').getBoundingClientRect(), f = document.getElementById('statusPop').getBoundingClientRect();
+            return [m.left, m.right, f.left, f.right, f.top, f.bottom, innerWidth, innerHeight, document.getElementById('statusPop').className]; }""")
+        side_ok = g[3] <= g[0] + 1 or g[2] >= g[1] - 1
+        if not side_ok: R.bad(f"狀態子選單沒有貼在選單旁邊（重疊）{g}")
+        if g[2] < 0 or g[3] > g[6] or g[4] < 0 or g[5] > g[7] + 1: R.bad(f"狀態子選單超出畫面 {g}")
+        await R.audit("19_status_flyout")
+        await pg.hover("#btnShortcuts"); await pg.wait_for_timeout(500)
+        if await R.hidden("#kbdHelp") or not await R.hidden("#statusPop"): R.bad("滑到快捷鍵：應該換成快捷鍵子選單")
+        await R.audit("20_kbd_flyout")
+        await pg.hover("#btnTheme"); await pg.wait_for_timeout(600)
+        if not await R.hidden("#kbdHelp"): R.bad("滑到別的列子選單沒收起")
+        # 按 ? 直接打開快捷鍵（連選單一起），Esc 收起
+        await pg.mouse.click(w // 2, 600); await pg.wait_for_timeout(150)
+        await R.J("() => document.activeElement && document.activeElement.blur()")
+        await pg.keyboard.press("?"); await pg.wait_for_timeout(250)
+        if await R.hidden("#kbdHelp"): R.bad("按 ? 沒打開快捷鍵")
+        await pg.keyboard.press("Escape"); await pg.keyboard.press("Escape"); await pg.wait_for_timeout(150)
+        if not await R.hidden("#kbdHelp") or not await R.hidden("#setMenu"): R.bad("按 ? 打開後 Esc 收不起來")
+    else:
+        # 手機：沒有旁邊的空間 → 在選單裡換頁，上面有「‹ 返回」；返回後選單項目又看得到
+        await pg.click("#btnSettings"); await pg.wait_for_timeout(150)
+        await pg.click("#btnStatus"); await pg.wait_for_timeout(400)
+        if await R.hidden("#statusPop"): R.bad("手機點「機器人狀態」沒換頁")
+        g = await R.J("""() => { const m = document.getElementById('setMenu'), f = document.getElementById('statusPop'), r = f.getBoundingClientRect();
+            return [f.classList.contains('fly-inplace'), getComputedStyle(m).visibility, getComputedStyle(document.getElementById('statusClose')).display, r.left, r.right, innerWidth]; }""")
+        if not g[0] or g[1] != "hidden" or g[2] == "none": R.bad(f"手機子選單不是在選單內換頁 {g}")
+        if g[3] < 0 or g[4] > g[5]: R.bad(f"手機子選單超出畫面 {g}")
+        await R.audit("19_status_submenu")
+        await pg.click("#statusClose"); await pg.wait_for_timeout(200)
+        if not await R.hidden("#statusPop") or await R.hidden("#setMenu"): R.bad("手機子選單按返回沒回到選單")
+        if await R.J("() => getComputedStyle(document.getElementById('setMenu')).visibility") != "visible": R.bad("返回後選單內容沒顯示")
+        await pg.mouse.click(w // 2, 780); await pg.wait_for_timeout(200)
+        if not await R.hidden("#setMenu"): R.bad("手機點外面沒關齒輪選單")
     # 跟語音下拉互斥
     await pg.click("#btnSettings"); await pg.wait_for_timeout(150)
     await pg.click(".sel-wrap.cdd:has(#voiceChannelSelect) .cdd-btn"); await pg.wait_for_timeout(150)
@@ -326,12 +380,13 @@ async def scenario(br, theme, w):
         await R.esc_and_outside(".sel-wrap.cdd:has(#voiceChannelSelect) .cdd-btn", "#voiceChannelSelectList", "語音下拉")
         await R.menu("#btnStatus"); await R.menu("#btnShortcuts")
         if not await R.hidden("#statusPop"): R.bad("狀態框與快捷鍵同時開著")
+        if await R.hidden("#setMenu"): R.bad("開子選單時齒輪選單被收起")
         await R.audit("12_kbd")
         await R.menu("#btnStatus"); await pg.wait_for_timeout(350); await R.audit("13_status")
-        await pg.keyboard.press("Escape")
+        await pg.keyboard.press("Escape"); await pg.keyboard.press("Escape")
     else:
         await R.menu("#btnStatus"); await pg.wait_for_timeout(350); await R.audit("13_status")
-        await pg.keyboard.press("Escape")
+        await pg.keyboard.press("Escape"); await pg.keyboard.press("Escape")
     # 語音下拉：人數變化 / 新頻道（長名稱）/ 機器人移動 / 很多頻道捲動
     if w > 600 or True:
         post = lambda d: pg.evaluate("d => fetch('/sim/channel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).then(r=>r.json())", d)

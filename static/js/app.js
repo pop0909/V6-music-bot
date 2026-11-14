@@ -2839,17 +2839,17 @@ function setKbdHelp(open) {
     if (kbdHelp.hidden === !open) return;
     kbdHelp.hidden = !open;
     if (btnShortcuts) btnShortcuts.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open) {   // 同一時間只開一個彈出框：開快捷鍵就收起狀態框
+    if (open) {   // 同一時間只開一個子選單：開快捷鍵就收起狀態
         if (window.closeDropdowns) window.closeDropdowns();
-        const sp = $('statusPop');
-        if (sp && !sp.hidden) $('statusClose').click();
-        if (btnShortcuts) btnShortcuts.classList.remove('tip-show');
-    }
+        if (window.setStatusOpen) window.setStatusOpen(false);
+        if (window.setFlyPlace) window.setFlyPlace('kbdHelp');   // 齒輪選單旁邊展開（按 ? 時連選單一起打開）
+    } else if (window.setFlyDone) window.setFlyDone('kbdHelp');
 }
-if (btnShortcuts) btnShortcuts.addEventListener('click', (e) => { e.stopPropagation(); setKbdHelp(kbdHelp.hidden); });
 if ($('kbdHelpClose')) $('kbdHelpClose').addEventListener('click', () => setKbdHelp(false));
+// 點外面：子選單在齒輪選單裡，點選單本身（例如別的列）不算外面；整個收起由 settingsMenu 處理
 document.addEventListener('pointerdown', (e) => {
-    if (kbdHelp && !kbdHelp.hidden && !kbdHelp.contains(e.target) && !(btnShortcuts && btnShortcuts.contains(e.target))) setKbdHelp(false);
+    const wrap = $('setWrap');
+    if (kbdHelp && !kbdHelp.hidden && !(wrap && wrap.contains(e.target))) setKbdHelp(false);
 }, { capture: true, passive: true });
 // 焦點是滑鼠/觸控點出來的，還是鍵盤移過來的？（keydown 當下 :focus-visible 一律會變成 true，不能用）
 let _lastPointerDown = 0;
@@ -3225,69 +3225,184 @@ setShuffleUI(!!state.shuffleMode);
     });
 })();
 
-// ==================== 頂欄齒輪設定選單（主題 / 狀態 / 成員管理 / 快捷鍵 / 登出） ====================
-// 點齒輪開關；點外面或 Esc 關；鍵盤：↑↓ / Home / End 移動、Enter / 空白選、Tab 離開；選了會開的彈出框照原本邏輯
+// ==================== 頂欄齒輪設定選單（主題 / 狀態 › / 成員管理 / 快捷鍵 › / 登出） ====================
+// 點齒輪開關；點外面或 Esc 關；鍵盤：↑↓ / Home / End 移動、Enter / 空白選、Tab 離開。
+// 「機器人狀態」「鍵盤快捷鍵」是子選單（像 Chrome 選單的 ›）：滑過去（桌面）或點 / Enter / → 打開，
+// 旁邊放得下就貼著選單右邊展開，放不下改左邊；兩邊都放不下（手機）就在選單裡換頁、上面有「‹ 返回」。← / Esc 回到選單。
 (function settingsMenu() {
     const btn = $('btnSettings'), menu = $('setMenu'), wrap = $('setWrap');
     if (!btn || !menu || !wrap) return;
+    const FLY = { statusPop: 'btnStatus', kbdHelp: 'btnShortcuts' };
+    const GAP = 6, EDGE = 8;
     const items = () => Array.from(menu.querySelectorAll('.set-item')).filter(x => x.offsetParent !== null);
+    const openFly = () => Object.keys(FLY).map($).find(p => p && !p.hidden) || null;
     function focusItem(i) {
         const list = items(); if (!list.length) return;
         const k = (i + list.length) % list.length;
         list.forEach((x, j) => x.tabIndex = j === k ? 0 : -1);
         list[k].focus();
     }
-    function open(viaKey) {
+    function focusRow(row) {
+        const list = items(), k = list.indexOf(row);
+        if (k >= 0) focusItem(k);
+    }
+    function showMenu() {
         if (!menu.hidden) return;
         if (window.closeDropdowns) window.closeDropdowns();
-        if (typeof setKbdHelp === 'function') setKbdHelp(false);
-        const sp = $('statusPop'); if (sp && !sp.hidden && $('statusClose')) $('statusClose').click();
         menu.hidden = false;
         btn.setAttribute('aria-expanded', 'true');
         btn.classList.remove('tip-show');
+    }
+    function open(viaKey) {
+        if (!menu.hidden) return;
+        showMenu();
         if (viaKey) focusItem(0);
+    }
+    function closeFlys() {
+        if (typeof setKbdHelp === 'function') setKbdHelp(false);
+        if (window.setStatusOpen) window.setStatusOpen(false);
     }
     function close(focusBtn) {
         if (menu.hidden) return;
-        const had = menu.contains(document.activeElement);
+        const had = wrap.contains(document.activeElement) && document.activeElement !== btn;
+        closeFlys();
         menu.hidden = true;
+        menu.classList.remove('sub-open');
         btn.setAttribute('aria-expanded', 'false');
         if (focusBtn || had) btn.focus({ preventScroll: true });
     }
     window.closeSettingsMenu = () => close(false);
+
+    // 子選單定位：由狀態框 / 快捷鍵自己開關時呼叫（含按 ? 打開快捷鍵 → 連選單一起打開）
+    function place(id) {
+        const pop = $(id), row = $(FLY[id]);
+        if (!pop || pop.hidden) return;
+        showMenu();
+        if (row) row.setAttribute('aria-expanded', 'true');
+        pop.classList.remove('fly-left', 'fly-right', 'fly-inplace');
+        menu.classList.remove('sub-open');
+        pop.style.left = pop.style.top = pop.style.width = pop.style.maxHeight = '';
+        const m = menu.getBoundingClientRect(), w = wrap.getBoundingClientRect();
+        const vw = document.documentElement.clientWidth, vh = window.innerHeight;
+        const fw = Math.min(340, vw - 2 * EDGE);
+        let left = null, side = '';
+        if (m.right + GAP + fw <= vw - EDGE) { left = m.right + GAP; side = 'fly-right'; }
+        else if (m.left - GAP - fw >= EDGE) { left = m.left - GAP - fw; side = 'fly-left'; }
+        if (left === null) {
+            // 手機：在選單的位置換頁（蓋住選單、寬度至少跟選單一樣，不超出畫面）
+            const width = Math.min(Math.max(m.width, fw), vw - 2 * EDGE);
+            const l = Math.max(EDGE, Math.min(m.right - width, vw - EDGE - width));
+            pop.classList.add('fly-inplace'); menu.classList.add('sub-open');
+            pop.style.width = width + 'px';
+            pop.style.left = (l - w.left) + 'px';
+            pop.style.top = (m.top - w.top) + 'px';
+            pop.style.maxHeight = Math.max(160, vh - m.top - EDGE) + 'px';
+            return;
+        }
+        pop.classList.add(side);
+        pop.style.width = fw + 'px';
+        pop.style.left = (left - w.left) + 'px';
+        const rr = (row || menu).getBoundingClientRect();
+        let top = rr.top - 7;                      // 跟那一列對齊（扣掉子選單的上內距）
+        pop.style.maxHeight = (vh - 2 * EDGE) + 'px';
+        const h = pop.getBoundingClientRect().height;
+        top = Math.max(EDGE, Math.min(top, vh - EDGE - h));
+        pop.style.top = (top - w.top) + 'px';
+    }
+    function unplace(id) {
+        const pop = $(id), row = $(FLY[id]);
+        if (row) row.setAttribute('aria-expanded', 'false');
+        if (pop) pop.classList.remove('fly-left', 'fly-right', 'fly-inplace');
+        if (!openFly()) menu.classList.remove('sub-open');
+    }
+    window.setFlyPlace = place;
+    window.setFlyDone = unplace;
+    window.addEventListener('resize', () => { const p = openFly(); if (p) place(p.id); }, { passive: true });
+
+    // 從某一列打開它的子選單；viaKey → 焦點移進子選單（手機換頁時放在「返回」）
+    function openSub(row, viaKey) {
+        const id = row.getAttribute('aria-controls');
+        const pop = $(id); if (!pop) return;
+        if (pop.hidden) {
+            if (id === 'kbdHelp') setKbdHelp(true);
+            else if (window.setStatusOpen) window.setStatusOpen(true);
+        }
+        if (viaKey) {
+            const back = pop.querySelector('.set-back');
+            (pop.classList.contains('fly-inplace') && back ? back : pop).focus({ preventScroll: true });
+        }
+    }
+    function closeSub(focus) {
+        const pop = openFly(); if (!pop) return;
+        const row = $(FLY[pop.id]);
+        closeFlys();
+        if (focus && row && !menu.hidden) focusRow(row);
+    }
+
     btn.addEventListener('click', (e) => { e.stopPropagation(); menu.hidden ? open(e.detail === 0) : close(false); });
     btn.addEventListener('keydown', (e) => {
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); open(true); if (e.key === 'ArrowUp') focusItem(-1); }
-        else if (e.key === 'Escape' && !menu.hidden) { e.preventDefault(); close(true); }
     });
     menu.addEventListener('keydown', (e) => {
         const list = items(), i = list.indexOf(document.activeElement);
-        if (e.key === 'ArrowDown') focusItem(i + 1);
-        else if (e.key === 'ArrowUp') focusItem(i - 1);
-        else if (e.key === 'Home') focusItem(0);
-        else if (e.key === 'End') focusItem(-1);
-        else if (e.key === 'Escape') close(true);
+        const row = document.activeElement && document.activeElement.closest && document.activeElement.closest('.set-item');
+        const sub = row && row.getAttribute('aria-controls') in FLY;
+        if (e.key === 'ArrowDown') { closeFlys(); focusItem(i + 1); }
+        else if (e.key === 'ArrowUp') { closeFlys(); focusItem(i - 1); }
+        else if (e.key === 'Home') { closeFlys(); focusItem(0); }
+        else if (e.key === 'End') { closeFlys(); focusItem(-1); }
+        else if (sub && (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ')) openSub(row, true);
         else if (e.key === 'Tab') { close(false); return; }
         else return;
         e.preventDefault(); e.stopPropagation();
     });
-    // 選了一項就收起選單；會開彈出框的（狀態 / 快捷鍵）由它們自己的 click 處理接著打開
+    // 點一列：子選單列 → 打開子選單、選單留著；其他列 → 照常執行並收起選單（捕獲階段，搶在各按鈕自己的 click 之前）
     menu.addEventListener('click', (e) => {
         const it = e.target.closest('.set-item'); if (!it) return;
         const viaKey = e.detail === 0;
-        menu.hidden = true; btn.setAttribute('aria-expanded', 'false');
-        if (it.id === 'btnTheme') { if (viaKey) btn.focus({ preventScroll: true }); return; }
-        if (viaKey && (it.id === 'btnStatus' || it.id === 'btnShortcuts')) {
-            const closeId = it.id === 'btnStatus' ? 'statusClose' : 'kbdHelpClose';
-            setTimeout(() => { const c = $(closeId); if (c && c.offsetParent !== null) c.focus({ preventScroll: true }); }, 0);
+        if (it.getAttribute('aria-controls') in FLY) {
+            e.stopPropagation(); e.preventDefault();          // 不交給原本的開關（會變成按一下又關掉）
+            openSub(it, viaKey);
+            return;
         }
-    }, true);   // 捕獲階段：狀態 / 快捷鍵的 click 會 stopPropagation，冒泡到這裡就收不到了
-    document.addEventListener('pointerdown', (e) => { if (!menu.hidden && !wrap.contains(e.target)) close(false); }, { capture: true, passive: true });
-    // 彈出框用 Esc 關掉時，焦點回到齒輪（鍵盤使用者不會掉到頁首）
-    ['statusPop', 'kbdHelp'].forEach(id => {
-        const pop = $(id); if (!pop) return;
-        pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') setTimeout(() => { if (pop.hidden) btn.focus({ preventScroll: true }); }, 0); });
+        closeFlys();
+        menu.hidden = true; menu.classList.remove('sub-open'); btn.setAttribute('aria-expanded', 'false');
+        if (it.id === 'btnTheme' && viaKey) btn.focus({ preventScroll: true });
+    }, true);
+    // 桌面滑鼠：滑到子選單列就打開（稍微延遲，斜著移過其他列時不閃），滑到其他列就收起
+    let hoverT = 0;
+    menu.addEventListener('pointerover', (e) => {
+        if (e.pointerType !== 'mouse') return;
+        const it = e.target.closest('.set-item'); if (!it) return;
+        clearTimeout(hoverT);
+        const id = it.getAttribute('aria-controls');
+        if (id in FLY) { if ($(id).hidden) hoverT = setTimeout(() => { if (!menu.hidden) openSub(it, false); }, 140); }
+        else if (openFly()) hoverT = setTimeout(() => { if (!openFly() || openFly().classList.contains('fly-inplace')) return; closeFlys(); }, 260);
     });
+    Object.keys(FLY).forEach(id => {
+        const pop = $(id); if (!pop) return;
+        pop.addEventListener('pointerenter', () => clearTimeout(hoverT));
+        const back = pop.querySelector('.set-back');
+        if (back) back.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeSub(true);
+        }, true);
+    });
+    // 點外面：整個收起（子選單也在 wrap 裡）
+    document.addEventListener('pointerdown', (e) => { if (!menu.hidden && !wrap.contains(e.target)) close(false); }, { capture: true, passive: true });
+    // Esc / ←：子選單開著 → 回到選單；否則 Esc 關掉選單。捕獲階段處理，不讓 Esc 順便收合播放畫面
+    document.addEventListener('keydown', (e) => {
+        if (menu.hidden || e.isComposing) return;
+        const ae = document.activeElement, inWrap = wrap.contains(ae);
+        const fly = openFly();
+        if (e.key === 'Escape') {
+            if (fly) closeSub(inWrap || ae === document.body);
+            else close(inWrap);
+        } else if (e.key === 'ArrowLeft' && fly && fly.contains(ae) && ae.tagName !== 'INPUT') {
+            closeSub(true);
+        } else return;
+        e.preventDefault(); e.stopImmediatePropagation();
+    }, true);
 })();
 
 // ==================== 狀態頁 + 一鍵更新 ====================
@@ -3325,6 +3440,7 @@ setShuffleUI(!!state.shuffleMode);
             cw.textContent = (ck.configured && !ck.session_ok) ? (ck.warning || '') : '';
             cw.className = 'update-msg cookie-warn' + (ck.configured && !ck.session_ok ? ' st-warn' : '');
         }
+        if (window.setFlyPlace) requestAnimationFrame(() => window.setFlyPlace('statusPop'));   // 內容高度變了 → 重新貼齊、不超出畫面
         set('ffmpeg', r.ffmpeg && r.ffmpeg.ok ? ('有' + (r.ffmpeg.version ? `（${r.ffmpeg.version}）` : '')) : '找不到！', r.ffmpeg && r.ffmpeg.ok ? '' : 'st-bad');
         const u = r.update || {};
         if (upBtn) {
@@ -3342,16 +3458,17 @@ setShuffleUI(!!state.shuffleMode);
     function open(o) {
         if (pop.hidden === !o) return;
         pop.hidden = !o;
-        if (o) { setKbdHelp(false); btn.classList.remove('tip-show'); if (window.closeDropdowns) window.closeDropdowns(); }   // 跟快捷鍵說明互斥
+        if (o) { setKbdHelp(false); if (window.closeDropdowns) window.closeDropdowns(); }   // 跟快捷鍵說明互斥
         btn.setAttribute('aria-expanded', String(o));
+        if (o) { if (window.setFlyPlace) window.setFlyPlace('statusPop'); }   // 齒輪選單旁邊展開
+        else if (window.setFlyDone) window.setFlyDone('statusPop');
         clearInterval(timer);
         if (o) { refresh(); timer = setInterval(() => { if (!document.hidden) refresh(); }, 3000); }
     }
-    btn.addEventListener('click', (e) => { e.stopPropagation(); open(pop.hidden); });
+    window.setStatusOpen = open;
     $('statusClose') && $('statusClose').addEventListener('click', () => open(false));
-    // 點外面就收起：用捕獲階段的 pointerdown，其他按鈕的 stopPropagation 擋不住
-    document.addEventListener('pointerdown', (e) => { if (!pop.hidden && !pop.contains(e.target) && !btn.contains(e.target)) open(false); }, { capture: true, passive: true });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pop.hidden) open(false); });
+    // 點外面就收起（齒輪選單本身不算外面；整個收起由 settingsMenu 處理）
+    document.addEventListener('pointerdown', (e) => { const w = $('setWrap'); if (!pop.hidden && !(w && w.contains(e.target))) open(false); }, { capture: true, passive: true });
     upBtn && upBtn.addEventListener('click', async () => {
         if (!confirm('要更新 yt-dlp 並重新啟動機器人嗎？\n播放中的音樂會中斷幾秒鐘。')) return;
         upBtn.disabled = true;
@@ -3611,7 +3728,7 @@ const ML = (() => {
     function closeOthers(except) {
         all.forEach(d => { if (d !== except) d.close(false); });
         if (typeof setKbdHelp === 'function') setKbdHelp(false);
-        const sp = $('statusPop'); if (sp && !sp.hidden && $('statusClose')) $('statusClose').click();
+        if (window.setStatusOpen) window.setStatusOpen(false);
         if (window.closeSettingsMenu) window.closeSettingsMenu();
         document.querySelectorAll('#mlList .ml-item.menu-open').forEach(x => x.classList.remove('menu-open'));
     }
