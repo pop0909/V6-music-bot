@@ -214,7 +214,7 @@ class Frontend(unittest.TestCase):
         html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
         self.assertIn('data-tab="mylists"', html)
         self.assertIn('id="tabMylists"', html)
-        self.assertIn("app.js?v=20261114perf", html)
+        self.assertIn("app.js?v=20261114menu", html)
         js = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
         self.assertIn("'/api/ext/lists'", js)
 
@@ -449,13 +449,39 @@ class CustomDropdown(unittest.TestCase):
 
 
 class MembersButton(unittest.TestCase):
-    def test_members_in_topbar(self):
+    def test_members_in_settings_menu(self):
         html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
-        css = open(os.path.join(ROOT, "static", "css", "style.css"), encoding="utf-8").read()
         self.assertIn('id="btnMembers" href="/members"', html)
-        self.assertIn('data-tip="成員管理"', html)
         self.assertNotIn("👥 擴充功能成員管理", html)
-        self.assertIn("@media (max-width: 760px) { .members-link { display: block; } }", css)
+        # 成員管理只給擁有者，而且在齒輪選單裡
+        menu = html[html.index('id="setMenu"'):html.index('<div class="live-pill"')]
+        self.assertIn('{% if me.owner %}<a class="set-item" id="btnMembers"', menu)
+
+    def test_topbar_buttons_all_in_one_gear_menu(self):
+        html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
+        js = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
+        header = html[html.index('<header class="app-header">'):html.index("</header>")]
+        menu = header[header.index('id="setMenu"'):]
+        # 頂欄只剩一顆圓形按鈕（齒輪），五個功能都在選單裡、每項有圖示 + 中文
+        self.assertEqual(header.count('class="hdr-btn'), 1)
+        self.assertIn('id="btnSettings"', header)
+        self.assertIn('fa-gear', header)
+        self.assertIn('aria-haspopup="menu"', header)
+        for bid, label in [("btnTheme", "切換主題"), ("btnStatus", "機器人狀態"), ("btnMembers", "成員管理"),
+                           ("btnShortcuts", "鍵盤快捷鍵"), ("btnLogout", "登出")]:
+            i = menu.index(f'id="{bid}"')
+            item = menu[i:menu.index("</", menu.index('class="set-label"', i))]
+            self.assertIn('role="menuitem"', menu[menu.rindex("<", 0, i):i + 400])
+            self.assertIn("<i class=\"fas ", item)
+            self.assertIn(label, item)
+        # 狀態框裡不再重複放登出 / 成員管理
+        pop = html[html.index('id="statusPop"'):html.index('id="kbdHelp"')]
+        self.assertNotIn("/logout", pop)
+        self.assertNotIn("/members", pop)
+        # 鍵盤 / 點外面 / Esc
+        for frag in ["function settingsMenu()", "'ArrowDown'", "'Home'", "'End'", "'Escape'", "window.closeSettingsMenu",
+                     "!wrap.contains(e.target)"]:
+            self.assertIn(frag, js)
 
 
 class BugHuntRegressionTest(unittest.TestCase):

@@ -1805,19 +1805,6 @@ html.bot-asleep .fx-particles, html.bot-asleep .album-art::before, html.bot-asle
 
 /* 佇列：誰點的歌 */
 .item-by { margin-left: 8px; font-size: .78em; opacity: .6; white-space: nowrap; }
-.members-link { display: none; margin-top: 8px; font-size: 12px; opacity: .8; }
-/* 成員管理：桌面在頂欄（#btnMembers）；手機頂欄放不下，留在狀態框內當溢位入口 */
-@media (max-width: 760px) { .members-link { display: block; } }
-a.hdr-btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
-@media (max-width: 760px) { a.hdr-btn:not(.hdr-btn-keep) { display: none; } }
-
-/* 登入身分 / 登出：頂欄一顆按鈕（手機也留著），狀態框底部再一列 */
-.logout-form { display: contents; }
-.who-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding-top: 10px;
-  border-top: 1px solid var(--pop-border); font-size: 13px; }
-.who-name { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-.who-name i { color: var(--accent-2); font-size: 12px; }
-.who-row .btn-sm { flex: none; }
 
 /* ===== 我的歌單（個人歌單）：無動畫、輕量 ===== */
 .ml-item .list-item { animation: none; cursor: pointer; }
@@ -1982,4 +1969,53 @@ html[data-theme="light"] .act-remove .act-ico, html[data-theme="light"] .act-rem
     #npActFilter .seg-btn i { display: none; }
     .act-keep { display: none; }
     .act-meta { gap: 6px; }
+}
+
+/* ===== 頂欄齒輪設定選單（主題 / 機器人狀態 / 成員管理 / 快捷鍵 / 登出 收在一起） ===== */
+.set-wrap { position: relative; flex-shrink: 0; }
+.set-btn .fa-gear { transition: transform .25s var(--ease-out, ease); }
+.set-btn[aria-expanded="true"] .fa-gear { transform: rotate(60deg); }
+.set-btn[aria-expanded="true"] { border-color: var(--accent); color: var(--text); }
+.set-menu {
+    position: absolute; top: calc(100% + 8px); right: 0; z-index: 360;
+    width: max-content; min-width: 216px; max-width: min(280px, calc(100vw - 24px));
+    padding: 6px; border-radius: 14px;
+    background: var(--pop-bg); border: 1px solid var(--pop-border); box-shadow: none;
+    display: flex; flex-direction: column; gap: 2px;
+}
+.set-who {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px 10px; margin-bottom: 2px;
+    color: var(--text); font-size: 13px; font-weight: 600;
+    border-bottom: 1px solid var(--pop-border);
+}
+.set-who > i { color: var(--accent-2); font-size: 12px; }
+.set-who-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.set-stroke { width: 40px; height: 10px; margin-left: auto; flex: none; opacity: .85; }
+.set-item {
+    display: flex; align-items: center; gap: 12px; width: 100%;
+    min-height: 40px; padding: 0 10px; border: 0; border-radius: 9px;
+    background: transparent; color: var(--sub); text-align: left; text-decoration: none;
+    font: inherit; font-size: 13.5px; cursor: pointer; white-space: nowrap;
+}
+.set-item > i:first-child { width: 18px; text-align: center; font-size: 14px; color: var(--faint); flex: none; }
+.set-item .set-label { flex: 1; }
+.set-item .set-ext { font-size: 10px; color: var(--faint); }
+.set-item kbd {
+    display: inline-block; min-width: 20px; padding: 0 5px; border-radius: 5px;
+    border: 1px solid var(--pop-border); border-bottom-width: 2px;
+    color: var(--sub); font: 600 11px/1.6 Inter, system-ui, sans-serif; text-align: center;
+}
+.set-item:hover, .set-item:focus-visible { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--text); }
+.set-item:hover > i:first-child, .set-item:focus-visible > i:first-child { color: var(--accent); }
+.set-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.set-sep { height: 1px; margin: 4px 6px; background: var(--pop-border); }
+.set-danger:hover, .set-danger:focus-visible { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.set-danger:hover > i:first-child, .set-danger:focus-visible > i:first-child { color: var(--danger); }
+.set-menu .logout-form { display: block; margin: 0; }
+/* 觸控裝置沒有鍵盤：不列快捷鍵；點擊區加大 */
+@media (hover: none) and (pointer: coarse) { .set-kbd { display: none; } }
+@media (max-width: 760px) {
+    .set-item { min-height: 44px; font-size: 14px; }
+    .set-menu { min-width: 220px; }
 }

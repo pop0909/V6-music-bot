@@ -88,17 +88,87 @@ class Run:
     async def hidden(self, sel):
         return await self.J("s => { const e = document.querySelector(s); return !e || e.hidden || getComputedStyle(e).display === 'none'; }", sel)
 
+    async def menu(self, item_sel):
+        """頂欄齒輪設定選單：打開選單再點其中一項（主題 / 狀態 / 成員 / 快捷鍵 / 登出都收在這裡）"""
+        if await self.hidden("#setMenu"):
+            await self.pg.click("#btnSettings"); await self.pg.wait_for_timeout(150)
+        if await self.hidden("#setMenu"): self.bad("齒輪選單點了沒打開"); return
+        await self.pg.click(item_sel); await self.pg.wait_for_timeout(150)
+        if not await self.hidden("#setMenu"): self.bad(f"選了 {item_sel} 後齒輪選單沒收起")
+
+    async def click_or_menu(self, sel):
+        if sel.startswith("@"):
+            await self.menu(sel[1:])
+        else:
+            await self.pg.click(sel)
+        await self.pg.wait_for_timeout(150)
+
     async def esc_and_outside(self, open_sel, pop_sel, tag):
-        if not await self.J("s => { const e=document.querySelector(s); return !!e && getComputedStyle(e).display!=='none' && !e.disabled; }", open_sel):
+        probe = open_sel[1:] if open_sel.startswith("@") else open_sel
+        if open_sel.startswith("@"):
+            if not await self.J("s => !!document.querySelector(s)", probe): return
+        elif not await self.J("s => { const e=document.querySelector(s); return !!e && getComputedStyle(e).display!=='none' && !e.disabled; }", open_sel):
             return
-        await self.pg.click(open_sel); await self.pg.wait_for_timeout(150)
+        await self.click_or_menu(open_sel)
         if await self.hidden(pop_sel): self.bad(f"{tag}: 點了沒打開"); return
         await self.pg.keyboard.press("Escape"); await self.pg.wait_for_timeout(150)
         if not await self.hidden(pop_sel): self.bad(f"{tag}: Esc 沒關")
-        await self.pg.click(open_sel); await self.pg.wait_for_timeout(150)
+        await self.click_or_menu(open_sel)
         await self.pg.mouse.click(self.w // 2, 600 if self.w > 600 else 700); await self.pg.wait_for_timeout(150)
         if not await self.hidden(pop_sel): self.bad(f"{tag}: 點外面沒關")
         await self.pg.keyboard.press("Escape")
+
+
+async def settings_menu_checks(R, pg, w):
+    """頂欄齒輪設定選單：五個項目都在、舊的獨立按鈕不在、Esc / 點外面關、鍵盤上下移動、主題切換、不超出畫面"""
+    if await R.J("() => [...document.querySelectorAll('.app-header .hdr-btn')].filter(e => getComputedStyle(e).display !== 'none').map(e => e.id).join(',')") != "btnSettings":
+        R.bad("頂欄除了齒輪還有其他圓形按鈕")
+    await R.esc_and_outside("#btnSettings", "#setMenu", "齒輪選單")
+    await pg.click("#btnSettings"); await pg.wait_for_timeout(200)
+    labels = await R.J("() => [...document.querySelectorAll('#setMenu .set-item')].filter(e => e.offsetParent).map(e => e.innerText.trim())")
+    want = ["機器人狀態", "成員管理", "登出"] + ([] if w < 600 else ["鍵盤快捷鍵"])
+    if not any("切換成" in t for t in labels): R.bad(f"齒輪選單少了主題切換 {labels}")
+    for t in want:
+        if not any(t in x for x in labels): R.bad(f"齒輪選單少了「{t}」{labels}")
+    box = await R.J("() => { const r = document.getElementById('setMenu').getBoundingClientRect(); return [r.left, r.right, r.bottom, innerWidth, innerHeight]; }")
+    if box[0] < 0 or box[1] > box[3] or box[2] > box[4]: R.bad(f"齒輪選單超出畫面 {box}")
+    await R.audit("18_settings_menu")
+    # 主題切換：選了會換主題、選單收起、文字跟著變；再切回來
+    before = await R.J("() => document.documentElement.dataset.theme")
+    await pg.click("#btnTheme"); await pg.wait_for_timeout(400)
+    after = await R.J("() => document.documentElement.dataset.theme")
+    if after == before: R.bad("齒輪選單的主題切換沒作用")
+    if not await R.hidden("#setMenu"): R.bad("切換主題後齒輪選單沒收起")
+    await R.menu("#btnTheme"); await pg.wait_for_timeout(400)
+    if await R.J("() => document.documentElement.dataset.theme") != before: R.bad("主題沒有切回來")
+    # 鍵盤：焦點在齒輪按 Enter → 第一項有焦點；↓ 移到下一項；End 到最後（登出）；Esc 關並回到齒輪
+    if w > 600:
+        np_before = await R.J("() => npOpen")
+        await R.J("() => document.getElementById('btnSettings').focus()")
+        await pg.keyboard.press("Enter"); await pg.wait_for_timeout(150)
+        if await R.hidden("#setMenu"): R.bad("鍵盤 Enter 打不開齒輪選單")
+        first = await R.J("() => document.activeElement && document.activeElement.id")
+        await pg.keyboard.press("ArrowDown")
+        second = await R.J("() => document.activeElement && document.activeElement.id")
+        await pg.keyboard.press("End")
+        last = await R.J("() => document.activeElement && document.activeElement.id")
+        if (first, second, last) != ("btnTheme", "btnStatus", "btnLogout"): R.bad(f"齒輪選單鍵盤移動不對 {first, second, last}")
+        await pg.keyboard.press("Escape"); await pg.wait_for_timeout(150)
+        if not await R.hidden("#setMenu"): R.bad("鍵盤 Esc 沒關齒輪選單")
+        if await R.J("() => document.activeElement && document.activeElement.id") != "btnSettings": R.bad("Esc 後焦點沒回到齒輪")
+        if await R.J("() => npOpen") != np_before: R.bad("在齒輪選單按 Esc 卻收合 / 影響了播放畫面")
+        # 鍵盤選「機器人狀態」：選單收起、狀態框打開、焦點進到狀態框
+        await pg.keyboard.press("Enter"); await pg.wait_for_timeout(100)
+        await pg.keyboard.press("ArrowDown"); await pg.keyboard.press("Enter"); await pg.wait_for_timeout(300)
+        if await R.hidden("#statusPop") or not await R.hidden("#setMenu"): R.bad("鍵盤從齒輪選單開狀態框失敗")
+        if await R.J("() => document.activeElement && document.activeElement.id") != "statusClose": R.bad("鍵盤開狀態框後焦點沒進去")
+        await pg.keyboard.press("Escape"); await pg.wait_for_timeout(150)
+        if not await R.hidden("#statusPop"): R.bad("狀態框 Esc 沒關")
+    # 跟語音下拉互斥
+    await pg.click("#btnSettings"); await pg.wait_for_timeout(150)
+    await pg.click(".sel-wrap.cdd:has(#voiceChannelSelect) .cdd-btn"); await pg.wait_for_timeout(150)
+    if not await R.hidden("#setMenu"): R.bad("開語音下拉時齒輪選單沒收起")
+    await pg.keyboard.press("Escape"); await pg.wait_for_timeout(100)
 
 
 async def normalize_checks(R, pg, w):
@@ -249,17 +319,18 @@ async def scenario(br, theme, w):
             if await R.J("() => !!document.querySelector('#mlList .menu-open')"): R.bad("⋯ 選單 Esc 沒關")
         await pg.keyboard.press("Escape")
     # 彈出框（桌面）
+    await settings_menu_checks(R, pg, w)
     if w > 600:
-        await R.esc_and_outside("#btnStatus", "#statusPop", "狀態框")
-        await R.esc_and_outside("#btnShortcuts", "#kbdHelp", "快捷鍵")
+        await R.esc_and_outside("@#btnStatus", "#statusPop", "狀態框")
+        await R.esc_and_outside("@#btnShortcuts", "#kbdHelp", "快捷鍵")
         await R.esc_and_outside(".sel-wrap.cdd:has(#voiceChannelSelect) .cdd-btn", "#voiceChannelSelectList", "語音下拉")
-        await pg.click("#btnStatus"); await pg.wait_for_timeout(150); await pg.click("#btnShortcuts"); await pg.wait_for_timeout(150)
+        await R.menu("#btnStatus"); await R.menu("#btnShortcuts")
         if not await R.hidden("#statusPop"): R.bad("狀態框與快捷鍵同時開著")
         await R.audit("12_kbd")
-        await pg.click("#btnStatus"); await pg.wait_for_timeout(500); await R.audit("13_status")
+        await R.menu("#btnStatus"); await pg.wait_for_timeout(350); await R.audit("13_status")
         await pg.keyboard.press("Escape")
     else:
-        await pg.click("#btnStatus"); await pg.wait_for_timeout(500); await R.audit("13_status")
+        await R.menu("#btnStatus"); await pg.wait_for_timeout(350); await R.audit("13_status")
         await pg.keyboard.press("Escape")
     # 語音下拉：人數變化 / 新頻道（長名稱）/ 機器人移動 / 很多頻道捲動
     if w > 600 or True:
@@ -324,13 +395,9 @@ async def scenario(br, theme, w):
     await R.audit("16_offline")
     await ctx.set_offline(False); await pg.wait_for_timeout(9000)
     if await R.J("() => document.getElementById('statusText').textContent") == "離線": R.bad("網路恢復後仍顯示「離線」")
-    # 登出：桌面用頂欄按鈕，手機用狀態框裡的「登出」；之後回到登入頁、再開面板也會被擋
+    # 登出：齒輪選單裡的「登出」；之後回到登入頁、再開面板也會被擋
     await pg.reload(); await pg.wait_for_timeout(1200)
-    if await pg.locator("#btnLogout:visible").count():
-        await pg.click("#btnLogout")
-    else:
-        await pg.click("#btnStatus"); await pg.wait_for_timeout(300)
-        await pg.click("#statusPop .who-row button[type=submit]")
+    await R.menu("#btnLogout")
     await pg.wait_for_timeout(1000)
     if "/login" not in pg.url: R.bad(f"按登出後沒有回到登入頁（{pg.url}）")
     await pg.goto(BASE + "/"); await pg.wait_for_timeout(500)

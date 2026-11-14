@@ -3205,10 +3205,10 @@ setShuffleUI(!!state.shuffleMode);
     const apply = (t) => {
         document.documentElement.dataset.theme = t;
         if (meta) meta.content = t === 'light' ? '#f7f6fb' : '#07060b';
-        if (btn) {
-            btn.innerHTML = t === 'light' ? '<i class="fas fa-moon"></i>' : '<i class="fas fa-sun"></i>';
-            btn.dataset.tip = t === 'light' ? '切換成深色' : '切換成淺色';
-            btn.setAttribute('aria-label', btn.dataset.tip);
+        if (btn) {   // 齒輪選單裡的一項：圖示 + 文字（顯示「按下去會變成什麼」）
+            const ic = btn.querySelector('i'), lb = btn.querySelector('.set-label');
+            if (ic) ic.className = t === 'light' ? 'fas fa-moon' : 'fas fa-sun';
+            if (lb) lb.textContent = t === 'light' ? '切換成深色' : '切換成淺色';
         }
     };
     apply(document.documentElement.dataset.theme || 'dark');
@@ -3222,6 +3222,71 @@ setShuffleUI(!!state.shuffleMode);
     if (mq && mq.addEventListener) mq.addEventListener('change', (e) => {
         let saved = null; try { saved = localStorage.getItem('theme'); } catch (_) {}
         if (!saved) apply(e.matches ? 'light' : 'dark');
+    });
+})();
+
+// ==================== 頂欄齒輪設定選單（主題 / 狀態 / 成員管理 / 快捷鍵 / 登出） ====================
+// 點齒輪開關；點外面或 Esc 關；鍵盤：↑↓ / Home / End 移動、Enter / 空白選、Tab 離開；選了會開的彈出框照原本邏輯
+(function settingsMenu() {
+    const btn = $('btnSettings'), menu = $('setMenu'), wrap = $('setWrap');
+    if (!btn || !menu || !wrap) return;
+    const items = () => Array.from(menu.querySelectorAll('.set-item')).filter(x => x.offsetParent !== null);
+    function focusItem(i) {
+        const list = items(); if (!list.length) return;
+        const k = (i + list.length) % list.length;
+        list.forEach((x, j) => x.tabIndex = j === k ? 0 : -1);
+        list[k].focus();
+    }
+    function open(viaKey) {
+        if (!menu.hidden) return;
+        if (window.closeDropdowns) window.closeDropdowns();
+        if (typeof setKbdHelp === 'function') setKbdHelp(false);
+        const sp = $('statusPop'); if (sp && !sp.hidden && $('statusClose')) $('statusClose').click();
+        menu.hidden = false;
+        btn.setAttribute('aria-expanded', 'true');
+        btn.classList.remove('tip-show');
+        if (viaKey) focusItem(0);
+    }
+    function close(focusBtn) {
+        if (menu.hidden) return;
+        const had = menu.contains(document.activeElement);
+        menu.hidden = true;
+        btn.setAttribute('aria-expanded', 'false');
+        if (focusBtn || had) btn.focus({ preventScroll: true });
+    }
+    window.closeSettingsMenu = () => close(false);
+    btn.addEventListener('click', (e) => { e.stopPropagation(); menu.hidden ? open(e.detail === 0) : close(false); });
+    btn.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); open(true); if (e.key === 'ArrowUp') focusItem(-1); }
+        else if (e.key === 'Escape' && !menu.hidden) { e.preventDefault(); close(true); }
+    });
+    menu.addEventListener('keydown', (e) => {
+        const list = items(), i = list.indexOf(document.activeElement);
+        if (e.key === 'ArrowDown') focusItem(i + 1);
+        else if (e.key === 'ArrowUp') focusItem(i - 1);
+        else if (e.key === 'Home') focusItem(0);
+        else if (e.key === 'End') focusItem(-1);
+        else if (e.key === 'Escape') close(true);
+        else if (e.key === 'Tab') { close(false); return; }
+        else return;
+        e.preventDefault(); e.stopPropagation();
+    });
+    // 選了一項就收起選單；會開彈出框的（狀態 / 快捷鍵）由它們自己的 click 處理接著打開
+    menu.addEventListener('click', (e) => {
+        const it = e.target.closest('.set-item'); if (!it) return;
+        const viaKey = e.detail === 0;
+        menu.hidden = true; btn.setAttribute('aria-expanded', 'false');
+        if (it.id === 'btnTheme') { if (viaKey) btn.focus({ preventScroll: true }); return; }
+        if (viaKey && (it.id === 'btnStatus' || it.id === 'btnShortcuts')) {
+            const closeId = it.id === 'btnStatus' ? 'statusClose' : 'kbdHelpClose';
+            setTimeout(() => { const c = $(closeId); if (c && c.offsetParent !== null) c.focus({ preventScroll: true }); }, 0);
+        }
+    }, true);   // 捕獲階段：狀態 / 快捷鍵的 click 會 stopPropagation，冒泡到這裡就收不到了
+    document.addEventListener('pointerdown', (e) => { if (!menu.hidden && !wrap.contains(e.target)) close(false); }, { capture: true, passive: true });
+    // 彈出框用 Esc 關掉時，焦點回到齒輪（鍵盤使用者不會掉到頁首）
+    ['statusPop', 'kbdHelp'].forEach(id => {
+        const pop = $(id); if (!pop) return;
+        pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') setTimeout(() => { if (pop.hidden) btn.focus({ preventScroll: true }); }, 0); });
     });
 })();
 
@@ -3547,6 +3612,7 @@ const ML = (() => {
         all.forEach(d => { if (d !== except) d.close(false); });
         if (typeof setKbdHelp === 'function') setKbdHelp(false);
         const sp = $('statusPop'); if (sp && !sp.hidden && $('statusClose')) $('statusClose').click();
+        if (window.closeSettingsMenu) window.closeSettingsMenu();
         document.querySelectorAll('#mlList .ml-item.menu-open').forEach(x => x.classList.remove('menu-open'));
     }
     window.closeDropdowns = () => all.forEach(d => d.close(false));
