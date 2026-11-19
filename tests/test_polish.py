@@ -143,6 +143,32 @@ class PanelSource(unittest.TestCase):
         self.assertIn("function httpErrorText(", js)
         self.assertIn("連不到機器人，請檢查網路後再試", js)
 
+    def test_queue_total_says_yishang(self):
+        js = src("static", "js", "app.js")
+        body = js[js.index("function queueSummary("):]
+        body = body[:body.index("\n}\n")]
+        self.assertIn("'以上'", body)
+        self.assertNotIn("'+'", body)
+
+    def test_queue_total_runs(self):
+        """真的跑 queueSummary（node）：有未知長度 →「以上」；全部已知 → 沒有尾巴"""
+        import shutil, subprocess
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("沒有 node")
+        js = src("static", "js", "app.js")
+        a = js.index("function fmtTotal("); b = js.index("\n}\n", js.index("function queueSummary(")) + 3
+        prog = js[a:b] + """
+console.log(JSON.stringify([
+  queueSummary([{duration: 600}, {duration: 780}, {duration: 0}]),
+  queueSummary([{duration: 600}, {duration: 780}]),
+  queueSummary([{duration: 0}]),
+  queueSummary([{duration: 3600}, {}]),
+]));"""
+        out = subprocess.run([node, "-e", prog], capture_output=True, text=True, encoding="utf-8", timeout=30)
+        import json
+        self.assertEqual(json.loads(out.stdout), ["3 首・23 分鐘以上", "2 首・23 分鐘", "1 首", "2 首・1 小時以上"])
+
     def test_kicker_chinese(self):
         self.assertNotIn("NOW PLAYING", src("templates", "index.html"))
         self.assertIn("正在播放", src("templates", "index.html"))

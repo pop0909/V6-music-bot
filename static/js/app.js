@@ -1078,7 +1078,7 @@ function updateDocTitle() {
     if (t !== _docTitle) { _docTitle = t; document.title = t; }
 }
 
-// 佇列標頭：「12 首・48 分鐘」（加總已知長度；有未知長度的歌 → 尾端加 +）
+// 佇列標頭：「12 首・48 分鐘」（加總已知長度；有未知長度的歌 → 尾端加「以上」）
 function fmtTotal(sec) {
     const m = Math.max(1, Math.round(sec / 60));
     if (m < 60) return `${m} 分鐘`;
@@ -1091,7 +1091,7 @@ function queueSummary(q) {
     let sum = 0, unknown = 0;
     for (const s of q) { const d = +s.duration || 0; if (d > 0) sum += d; else unknown++; }
     if (unknown === n) return `${n} 首`;
-    return `${n} 首・${fmtTotal(sum)}${unknown ? '+' : ''}`;
+    return `${n} 首・${fmtTotal(sum)}${unknown ? '以上' : ''}`;   // 有不知道長度的歌（直播等）→「23 分鐘以上」
 }
 
 // 總長度文字：直播沒有長度 → 顯示「直播」，不要顯示「/ 0:00」
