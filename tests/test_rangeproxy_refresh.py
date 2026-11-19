@@ -132,7 +132,45 @@ class RangeProxyRecovery(unittest.TestCase):
             st, body = self.get(self.local())
         self.assertEqual(body, DATA)
         self.assertEqual(self.resolved, [])
-        self.assertIn("上游 0-2097151 重試成功", "\n".join(cm.output))
+        self.assertIn("上游 0-2097151 新網址冷啟動 403，同網址重試 1 次後成功", "\n".join(cm.output))
+
+    def test_fresh_url_cold_403_waits_on_same_url(self):
+        """2026-11-19 伺服器實測：剛解析的網址前約 1 秒 403，同網址稍後就通 → 不要重新解析（以前每次多 3–4 秒）"""
+        _Up.mode = {"first_403": 4}
+        with self.assertLogs(rangeproxy.log, "INFO") as cm:
+            st, body = self.get(self.local(), "bytes=0-2097151")
+        self.assertEqual(body, DATA[:2097152])
+        self.assertEqual(self.resolved, [])
+        self.assertTrue(all("fresh=" not in p for p, _ in _Up.seen))
+        out = "\n".join(cm.output)
+        self.assertIn("同網址重試 4 次後成功", out)
+        self.assertNotIn("WARNING", out)          # 冷啟動是正常現象，不灌警告
+
+    def test_cold_waits_do_not_use_up_retries(self):
+        _Up.mode = {"first_403": rangeproxy.RETRIES + 3}
+        st, body = self.get(self.local(), "bytes=0-1000")
+        self.assertEqual(body, DATA[:1001])
+        self.assertEqual(self.resolved, [])
+
+    def test_old_url_403_refreshes_right_away(self):
+        """預先解析好、放了一陣子的網址（expire 顯示已出生 1 小時）遇 403 = 真的失效 → 照舊重新解析，不空等"""
+        exp = int(time.time()) + rangeproxy.URL_LIFETIME - 3600
+        _Up.mode = {"cold_403_gens": 1}
+        u = rangeproxy.input_url(self.base + f"&expire={exp}", page="https://www.youtube.com/watch?v=NxN61sK-Y2Q")
+        with self.assertLogs(rangeproxy.log, "INFO") as cm:
+            st, body = self.get(u, "bytes=0-1000")
+        self.assertEqual(body, DATA[:1001])
+        self.assertEqual(len(self.resolved), 1)
+        self.assertNotIn("同網址稍後重試", "\n".join(cm.output))
+
+    def test_url_age(self):
+        now = 1_800_000_000
+        e = {"url": f"https://x.googlevideo.com/videoplayback?expire={now + rangeproxy.URL_LIFETIME - 5}&clen=1", "url_ts": 0}
+        self.assertAlmostEqual(rangeproxy._url_age(e, now), 5)
+        e = {"url": "https://x.googlevideo.com/videoplayback?clen=1", "url_ts": now - 30}
+        self.assertAlmostEqual(rangeproxy._url_age(e, now), 30)      # 沒有 expire：用代理拿到網址的時間
+        e = {"url": f"https://x/v?expire={now + rangeproxy.URL_LIFETIME + 60}", "url_ts": now}
+        self.assertEqual(rangeproxy._url_age(e, now), 0)               # 時鐘誤差不會變負數
 
     def test_refresh_failure_fails_cleanly(self):
         _Up.mode = {"late_403": True}

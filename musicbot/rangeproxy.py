@@ -15,6 +15,11 @@
 - 上游回 403 / 410（網址過期或被拒）時，用 yt-dlp 重新解析同一首歌的網址（refresh），換新網址續傳。
 - 開播第一段（還沒轉出任何 byte）連續 403：可連續重新解析多次（force，略過最短間隔），
   避免「剛換上的網址又立刻 403」時被最短間隔卡住、沿用壞網址開播失敗。
+- 2026-11-19 修正「第一首歌 8–14 秒才出聲」：伺服器上實測（帶 cookies 的 yt-dlp），剛解析出來的串流網址
+  前約 0.9–1.4 秒一律回 403，之後同一個網址就正常；跟 User-Agent / yt-dlp 的 http_headers / 第一段大小都無關。
+  以前遇到 403 就重新解析 → 拿到的又是「剛出生」的網址 → 又 403，連換三次才碰巧等夠久（每次解析 3–4 秒）。
+  現在：網址還很新（COLD_WINDOW 秒內）時的 403 / 410，先用同一個網址每 COLD_POLL 秒重試（不算進 RETRIES），
+  過了冷啟動期還是 403 才照舊重新解析。網址年齡用串流網址的 expire（= 發出時間 + 6 小時）推算。
 - 重試 / 換網址的成功與失敗都記 log（含位元組範圍）；全部失敗就把這個串流標成失效，
   之後的請求直接回 502，讓 FFmpeg 結束 → 播放器切下一首，而不是卡在靜音。
 """
@@ -39,6 +44,10 @@ REFRESH_STATUS = (403, 410)  # 這些狀態碼代表網址失效 → 重新解�
 REFRESH_MIN_GAP = 20         # 同一串流兩次重新解析至少間隔秒數（force=True 時略過）
 MAX_REFRESHES_COLD = 3       # 這段還沒轉出任何 byte 時，最多重新解析幾次（開播第一段常需要）
 MAX_REFRESHES_MID = 2        # 已轉出部分資料後再遇 403/410，最多再解析幾次
+COLD_WINDOW = 12.0           # 網址出生後幾秒內的 403 算「冷啟動」：同網址重試，不重新解析（實測 ≤ 1.4 秒就通）
+COLD_POLL = 0.4              # 冷啟動 403 時同網址重試的間隔
+COLD_MAX_WAITS = 30          # 每段最多同網址重試幾次（時間也受 COLD_WINDOW 限制）
+URL_LIFETIME = 6 * 3600      # googlevideo 網址的 expire = 發出時間 + 6 小時（用來推算網址年齡）
 TTL = 8 * 3600               # 註冊的網址保留時間（YouTube 串流網址本身約 6 小時過期）
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
 
@@ -158,6 +167,16 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                       f"（{e.get('page') or '未知歌曲'}）"[:300])
 
 
+def _url_age(e, now=None):
+    """串流網址出生多久了（秒）：優先用網址的 expire 推算；沒有 expire 就用代理拿到這個網址的時間"""
+    now = time.time() if now is None else now
+    try:
+        exp = int(parse_qs(urlparse(e["url"]).query)["expire"][0])
+        return max(0.0, URL_LIFETIME - (exp - now))
+    except (KeyError, IndexError, ValueError, TypeError):
+        return max(0.0, now - e.get("url_ts", now))
+
+
 def _refresh(e, why, force=False):
     """網址失效（403/410）時重新解析；成功回 True。同一串流有鎖 + 最短間隔，避免多條連線同時狂解析。
     force=True：略過最短間隔（上一輪剛換上的網址又立刻 403 時一定要再解析，否則會沿用壞網址）"""
@@ -181,6 +200,7 @@ def _refresh(e, why, force=False):
             log.warning(f"[分段代理] 重新解析後檔案大小不同（{e['size']} → {size}），不能續傳：{page}"[:300])
             return False
         e["url"] = new
+        e["url_ts"] = time.time()
         e["refresh_ok"] = True
         log.info(f"[分段代理] 已重新解析並換上新網址（{why}）：{page}"[:300])
         return True
@@ -191,7 +211,11 @@ def _fetch_into(e, a, b, out):
     written = 0
     failed = 0
     refreshes = 0
-    for attempt in range(RETRIES):
+    cold_waits = 0               # 冷啟動 403 時同網址重試了幾次（不算進 RETRIES）
+    cold_t0 = None
+    attempt = -1
+    while attempt + 1 < RETRIES:
+        attempt += 1
         rng = f"{a + written}-{b}"
         url = e["url"]
         req = urllib.request.Request(url, headers={"Range": f"bytes={rng}", "User-Agent": UA})
@@ -215,6 +239,9 @@ def _fetch_into(e, a, b, out):
                     if written < need and waited > CHUNK_DEADLINE:
                         raise _Stalled(f"{CHUNK_DEADLINE} 秒內沒收完")
             if written >= b - a + 1:
+                if cold_waits:
+                    log.info(f"[分段代理] 上游 {a}-{b} 新網址冷啟動 403，同網址重試 {cold_waits} 次後成功"
+                             f"（多等 {time.monotonic() - cold_t0:.1f} 秒）")
                 if failed:
                     log.info(f"[分段代理] 上游 {a}-{b} 重試成功（失敗 {failed} 次後）")
                 return written
@@ -225,8 +252,17 @@ def _fetch_into(e, a, b, out):
             failed += 1
             log.warning(f"[分段代理] 上游 {rng} 失敗（第 {attempt + 1}/{RETRIES} 次）：{ex!r}"[:300])
         except Exception as ex:
-            failed += 1
             code = getattr(ex, "code", None)
+            if code in REFRESH_STATUS and written == 0 and cold_waits < COLD_MAX_WAITS and _url_age(e) < COLD_WINDOW:
+                # 剛出生的網址：YouTube 前 1 秒左右會 403，等一下用同一個網址再要就好（重新解析只會拿到另一個新網址）
+                if not cold_waits:
+                    cold_t0 = time.monotonic()
+                    log.info(f"[分段代理] 上游 {rng} 新網址暫時 HTTP {code}，同網址稍後重試"[:300])
+                cold_waits += 1
+                attempt -= 1     # 不算進 RETRIES
+                time.sleep(COLD_POLL)
+                continue
+            failed += 1
             if isinstance(ex, (socket.timeout, TimeoutError)):
                 ex = _Stalled(f"讀取逾時 {READ_TIMEOUT} 秒")
             log.warning(f"[分段代理] 上游 {rng} 失敗（第 {attempt + 1}/{RETRIES} 次）：{ex!r}"[:300])
@@ -309,5 +345,5 @@ def input_url(url, page=None):
     with _lock:
         _gc(now)
         _streams[tok] = {"url": url, "size": size, "ts": now, "page": page, "dead": False,
-                         "refreshed_at": 0, "rlock": threading.Lock()}
+                         "refreshed_at": 0, "url_ts": now, "rlock": threading.Lock()}
     return f"http://127.0.0.1:{port}/s/{tok}"
