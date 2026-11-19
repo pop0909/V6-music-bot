@@ -872,7 +872,10 @@ html.low-power .progress-fill { box-shadow: none; }
 .tabs.has-pill .tab-btn.active { background: transparent; box-shadow: none; }
 
 /* 按鈕漣漪 / 浮起 */
-.ctrl-play, .btn-sm, .tab-btn, .btn-search { position: relative; overflow: hidden; }
+.ctrl-play { position: relative; overflow: hidden; }
+/* 漣漪放在自己的裁切層裡（按鈕本身不再 overflow: hidden，觸控時往外延伸的點擊範圍才按得到） */
+.btn-sm, .tab-btn, .btn-search { position: relative; }
+.fx-ripple-clip { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; pointer-events: none; }
 .fx-ripple { position: absolute; border-radius: 50%; background: rgba(255,255,255,.35); pointer-events: none; transform: scale(0); }
 .ctrl-btn:not(.ctrl-play):hover { transform: translateY(-2px); }
 .ctrl-btn:not(.ctrl-play):active { transform: scale(.92); }
@@ -2135,3 +2138,42 @@ html.low-power .skel { animation: none; }
     scale: none;
 }
 html[data-theme="light"] .list-item.q-lift { box-shadow: 0 14px 30px -14px rgba(40,30,80,.35); }
+
+/* ================== 操作手感（按下立刻有反應、觸控點擊範圍） ================== */
+/* 送出中：按鈕變淡、游標轉圈；連點第二下不會再送 */
+.item-btn:disabled { opacity: .45; cursor: progress; }
+.search-result-item.is-adding { opacity: .6; pointer-events: none; }
+.search-result-item.is-adding .result-add { color: var(--sub); transform: none; }
+.shelf-card.is-adding { cursor: progress; }
+.shelf-card.is-adding .shelf-play { opacity: 1; transform: none; }
+/* 加入最愛：按下就變色、輕跳一下（伺服器回應後吐司再說明結果） */
+.pb-fav.fav-busy { color: var(--accent-2); }
+.pb-fav.fav-busy i { animation: favPop .35s var(--ease-out, ease-out); }
+@keyframes favPop { 0% { transform: scale(1); } 45% { transform: scale(1.3); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .pb-fav.fav-busy i { animation: none; } }
+
+/* 觸控裝置：每個按鈕至少 44×44 的點擊範圍。
+   外觀尺寸不變的，用透明的 ::before 往外延伸（不影響排版）；彼此太近的才稍微放大 / 拉開間距 */
+@media (pointer: coarse) {
+    .item-btn, .btn-search, .btn-sm, .tab-btn, .np-close, .hdr-btn, .cdd-btn { position: relative; }
+    .item-btn::before, .btn-search::before, .btn-sm::before, .tab-btn::before,
+    .np-close::before, .hdr-btn::before, .cdd-btn::before { content: ''; position: absolute; }
+    .item-actions { gap: 8px; }
+    .item-btn { width: 36px; }                             /* 高度維持 32（清單列不變高、看得到的列數不變） */
+    .item-btn::before { inset: -6px -4px; }                /* 36×32 → 44×44；間距 8 → 相鄰剛好接上不重疊 */
+    .btn-search::before { inset: -7px; }                   /* 32 → 46 */
+    .btn-sm::before { inset: -5px -2px; }                  /* 高 35 → 45 */
+    .tab-btn::before { inset: -5px 0; }                    /* 高 34~36 → 44 以上 */
+    .np-close::before { inset: -3px; }                     /* 40 → 46 */
+    .hdr-btn::before { inset: -5px; }                      /* 36 → 46 */
+    .cdd-btn::before { inset: -3px 0; }                    /* 高 40 → 46 */
+    .search-row { height: 44px; cursor: text; }
+    .drag-handle { position: relative; }
+    .drag-handle::before { content: ''; position: absolute; inset: 0 -9px 0 0; }   /* 36 → 45 寬（左邊貼著清單列邊緣，往右延伸；右邊是不能按的序號） */
+    .search-input { align-self: stretch; }                 /* 點搜尋框上下的空白也能打字 */
+    .np-extra .ctrl-btn { min-width: 44px; min-height: 44px; }
+    /* 音量：軌道外觀一樣細，但上下各多 19px 可以按；圓鈕放大到 22px 好拖 */
+    .volume-slider { height: 43px; padding: 19px 0; margin: -19px 0; background-clip: content-box; box-sizing: border-box; border-radius: 2.5px / 21.5px; }   /* 負邊距：排版高度不變；圓角換算到 5px 軌道，兩端才是圓的 */
+    .volume-slider::-webkit-slider-thumb { width: 22px; height: 22px; }
+    .volume-slider::-moz-range-thumb { width: 22px; height: 22px; }
+}

@@ -201,6 +201,15 @@ function showToast(msg, type = 'success', opts = null) {
     t.append(ic, m);
     t.title = msg;
     c.appendChild(t);
+    // 同時最多留 3 則（手機）/ 4 則（桌面）：連續操作時不會疊滿半個畫面；多的從最舊的開始收
+    const maxShown = innerWidth < 600 ? 3 : 4;
+    const live = [...c.children].filter(x => !x._leaving);
+    for (const old of live.slice(0, Math.max(0, live.length - maxShown))) {
+        old._leaving = true;
+        for (const [k, v] of _toastByKey) if (v.t === old) { clearTimeout(v.timer); _toastByKey.delete(k); }
+        old.style.transition = 'opacity .18s ease'; old.style.opacity = '0';
+        setTimeout(() => old.remove(), 180);
+    }
     const timer = hideLater(t);
     if (key) _toastByKey.set(key, { t, msg: m, ic, timer });
 }
@@ -1335,7 +1344,7 @@ function applyLiveState(data) {
     }
     
     // === 隨機模式 ===
-    if (data.shuffle_mode !== undefined) {
+    if (data.shuffle_mode !== undefined && performance.now() > _shuffleHoldUntil) {   // 剛按過：等伺服器確認前不讓 SSE 舊值把按鈕彈回去
         state.shuffleMode = data.shuffle_mode;
         setShuffleUI(data.shuffle_mode);
     }
@@ -1772,10 +1781,16 @@ $('modalCancel').addEventListener('click', () => $('editModal').classList.remove
 $('editModal').addEventListener('click', (e) => { if (e.target === e.currentTarget) $('editModal').classList.remove('active'); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('editModal').classList.contains('active')) $('editModal').classList.remove('active'); });
 
-$('modalConfirm').addEventListener('click', async () => {
+$('modalConfirm').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    if (btn.disabled) return;
     const url = $('editUrl').value.trim(), title = $('editTitle').value.trim();
     if (!url) { showToast('請輸入網址', 'error'); return; }
     if (!title) { showToast('請輸入標題', 'error'); return; }
+    btn.disabled = true;                         // 送出中不能再按（連點兩下會新增兩首）
+    try { await saveModal(url, title); } finally { btn.disabled = false; }
+});
+async function saveModal(url, title) {
     if (modalMode === 'edit' && editingIndex >= 0) {
         const r = await API.playlistEdit(editingIndex, url, title, editingUrl);
         if (r && r.status === 'error') { showToast(r.message || '更新失敗', 'error'); return; }
@@ -1787,7 +1802,7 @@ $('modalConfirm').addEventListener('click', async () => {
     }
     $('editModal').classList.remove('active');
     renderPlaylistFromCache();
-});
+}
 
 $('btnPlaylistAdd').addEventListener('click', () => {
     modalMode = 'add'; $('modalTitle').textContent = '新增到本地歌單';
@@ -1820,9 +1835,12 @@ function renderFavList(favs, view = FV.home) {
                 <button class="item-btn btn-remove" data-action="remove" title="從最愛移除" aria-label="從最愛移除"><i class="fas fa-times" aria-hidden="true"></i></button>
             </div>`;
         div.querySelector('.item-title').title = song.title || '';
-        div.querySelector('[data-action="play"]').addEventListener('click', async () => {
-            const r = await API.playUrl(song.url, song.title, null, true);
-            toastAdded(r, song.title);
+        div.querySelector('[data-action="play"]').addEventListener('click', async (ev) => {
+            const b = ev.currentTarget; if (b.disabled) return; b.disabled = true;   // 連點兩下只加一次
+            try {
+                const r = await API.playUrl(song.url, song.title, null, true);
+                toastAdded(r, song.title);
+            } finally { b.disabled = false; }
         });
         div.querySelector('[data-action="remove"]').addEventListener('click', async (ev) => {
             const b = ev.currentTarget; if (b.disabled) return; b.disabled = true;   // 連點不會刪到下一首
@@ -1879,9 +1897,12 @@ function renderPlaylistList(pl) {
                 <button class="item-btn btn-remove" data-action="delete" title="從歌單刪除" aria-label="從歌單刪除"><i class="fas fa-trash-alt" aria-hidden="true"></i></button>
             </div>`;
         div.querySelector('.item-title').title = song.title || '';
-        div.querySelector('[data-action="play"]').addEventListener('click', async () => {
-            const r = await API.playlistPlay(i, null, song.url);
-            toastAdded(r, song.title);
+        div.querySelector('[data-action="play"]').addEventListener('click', async (ev) => {
+            const b = ev.currentTarget; if (b.disabled) return; b.disabled = true;   // 連點兩下只加一次
+            try {
+                const r = await API.playlistPlay(i, null, song.url);
+                toastAdded(r, song.title);
+            } finally { b.disabled = false; }
         });
         div.querySelector('[data-action="edit"]').addEventListener('click', () => openEditModal(i, song.url, song.title));
         div.querySelector('[data-action="delete"]').addEventListener('click', async (ev) => {
@@ -1898,6 +1919,10 @@ function renderPlaylistList(pl) {
 // ==================== 搜尋 ====================
 el.btnSearch.addEventListener('click', doSearch);
 el.searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+// 點到搜尋框外框的空白（圖示旁、上下邊）也能開始打字
+if (el.searchInput.closest('.search-row')) el.searchInput.closest('.search-row').addEventListener('click', (e) => {
+    if (!e.target.closest('button, input, a')) el.searchInput.focus();
+});
 // 搜尋框清空（刪字、剪下、手機鍵盤、瀏覽器的 ✕）→ 結果一起收起來；還在搜的那次也作廢，回來不會再冒出來
 let _searchSeq = 0;
 function clearSearchResults() {
@@ -1934,6 +1959,44 @@ async function importPlaylist(url) {
     } finally { _importing = false; }
 }
 
+// 貼網址：解析 → 整批加入佇列（_resolving 擋住解析中又按 Enter 造成的重複加入）
+let _resolving = false;
+async function addFromUrl(query) {
+    el.searchResults.innerHTML = '<div style="padding:12px;text-align:center;color:var(--sub)"><i class="fas fa-spinner fa-pulse"></i> 正在解析網址...</div>';
+    el.btnSearch.disabled = true;
+
+    const data = await API.resolveUrl(query);
+    el.btnSearch.disabled = false;
+    el.searchResults.innerHTML = '';
+
+    if (data.status === 'error') {
+        showToast('❌ 解析失敗：' + (data.message || '未知錯誤'), 'error');
+        return;
+    }
+
+    if (!data.songs || data.songs.length === 0) {
+        showToast('❌ 找不到歌曲', 'error');
+        return;
+    }
+
+    // 將所有歌曲加入佇列（不自動播放）；guild 未選時後端自動 fallback
+    const batchResult = await API.queueAddBatch(data.songs);
+    if (!batchResult || batchResult.status !== 'ok') {
+        showToast(batchResult && batchResult.message ? `❌ ${batchResult.message}` : '❌ 加入佇列失敗', 'error');
+        return;
+    }
+
+    if (data.is_playlist) {
+        const full = batchResult.full_skipped ? `（${batchResult.message}）` : '';
+        showToast(`✅ 已將播放清單 ${data.playlist_title} 的 ${batchResult.count} 首歌加入佇列！${full}`, full ? 'warning' : 'success');
+    } else {
+        toastAdded(batchResult, data.songs[0].title);
+    }
+
+    el.searchInput.value = '';
+    await refreshAll();
+}
+
 async function doSearch() {
     const query = el.searchInput.value.trim();
     if (!query) return;
@@ -1947,39 +2010,9 @@ async function doSearch() {
 
     // === 處理網址（支援播放清單） ===
     if (query.match(/^https?:\/\//)) {
-        el.searchResults.innerHTML = '<div style="padding:12px;text-align:center;color:var(--sub)"><i class="fas fa-spinner fa-pulse"></i> 正在解析網址...</div>';
-        el.btnSearch.disabled = true;
-
-        const data = await API.resolveUrl(query);
-        el.btnSearch.disabled = false;
-        el.searchResults.innerHTML = '';
-
-        if (data.status === 'error') {
-            showToast('❌ 解析失敗：' + (data.message || '未知錯誤'), 'error');
-            return;
-        }
-
-        if (!data.songs || data.songs.length === 0) {
-            showToast('❌ 找不到歌曲', 'error');
-            return;
-        }
-
-        // 將所有歌曲加入佇列（不自動播放）；guild 未選時後端自動 fallback
-        const batchResult = await API.queueAddBatch(data.songs);
-        if (!batchResult || batchResult.status !== 'ok') {
-            showToast(batchResult && batchResult.message ? `❌ ${batchResult.message}` : '❌ 加入佇列失敗', 'error');
-            return;
-        }
-
-        if (data.is_playlist) {
-            const full = batchResult.full_skipped ? `（${batchResult.message}）` : '';
-            showToast(`✅ 已將播放清單 ${data.playlist_title} 的 ${batchResult.count} 首歌加入佇列！${full}`, full ? 'warning' : 'success');
-        } else {
-            toastAdded(batchResult, data.songs[0].title);
-        }
-
-        el.searchInput.value = '';
-        await refreshAll();
+        if (_resolving) return;                  // 解析中又按一次 Enter：不要加兩次
+        _resolving = true;
+        try { await addFromUrl(query); } finally { _resolving = false; }
         return;
     }
 
@@ -2010,7 +2043,14 @@ async function doSearch() {
         const rimg = div.querySelector('img');
         loadThumb(rimg, thumbCandidates(r.url, r.thumbnail, thumbNeed(64)), () => { rimg.style.display = 'none'; });
         div.addEventListener('click', async () => {
+            if (div.classList.contains('is-adding')) return;   // 連點兩下只加一次
+            div.classList.add('is-adding');                    // 按下立刻有反應：整列變淡、＋ 換成轉圈
+            div.setAttribute('aria-busy', 'true');
+            const ic = div.querySelector('.result-add i');
+            if (ic) ic.className = 'fas fa-spinner fa-pulse';
             const res = await API.playUrl(r.url, r.title, null, true, r.duration);  // no_play=true；guild 未選時後端自動 fallback
+            div.classList.remove('is-adding'); div.removeAttribute('aria-busy');
+            if (ic) ic.className = 'fas fa-plus-circle';
             toastAdded(res, r.title);
             el.searchInput.value = '';
             el.searchResults.innerHTML = '';
@@ -2074,13 +2114,16 @@ el.btnLoop.addEventListener('click', async () => {
     }
 });
 
+let _shuffleHoldUntil = 0;
 el.btnShuffle.addEventListener('click', async () => {
     if (!state.guildId) return;
     const newMode = !state.shuffleMode;
     state.shuffleMode = newMode;   // 樂觀更新，失敗再退回
+    _shuffleHoldUntil = performance.now() + 3000;
     setShuffleUI(newMode);
     showToast(newMode ? '\u{1F3B2} 已啟用隨機循環' : '\u{1F3B2} 已關閉隨機循環', 'success', { key: 'shuffle' });
     const r = await API.shuffle(newMode);
+    _shuffleHoldUntil = performance.now() + 400;   // 伺服器已確認；再等一下讓 SSE 帶上新值
     if (!r || r.status !== 'ok') {
         state.shuffleMode = !newMode;
         setShuffleUI(!newMode);
@@ -2441,7 +2484,7 @@ $('btnSleep').addEventListener('click', async (e) => {
 
 function updateVolumeSlider(value) {
     const pct = value / 2;  /* 0-200 → 0-100% */
-    el.volumeSlider.style.background = `linear-gradient(to right, var(--accent) 0%, var(--accent-2) ${pct}%, var(--track, rgba(255,255,255,.12)) ${pct}%)`;
+    el.volumeSlider.style.backgroundImage = `linear-gradient(to right, var(--accent) 0%, var(--accent-2) ${pct}%, var(--track, rgba(255,255,255,.12)) ${pct}%)`;
 }
 
 // 鍵盤調音量 / 靜音：畫面立即更新，停手 250ms 後才送出一次
@@ -2526,11 +2569,23 @@ async function playAllFavorites() {
 }
 el.btnFavPlayAll.addEventListener('click', playAllFavorites);
 
-async function addCurrentToFavorites() {
+let _favAdding = false;
+async function addCurrentToFavorites(e) {
     if (!state.guildId || !state.currentUrl) { showToast('目前沒有播放的歌曲', 'error'); return; }
-    const data = await API.favAdd(state.currentUrl, state.currentTitle);
-    showToast(data.status === 'exists' ? '❤️ 已存在於最愛' : '❤️ 已加入最愛', 'success');
-    await renderFavorites();
+    if (_favAdding) return;                      // 連點兩下只送一次
+    _favAdding = true;
+    const btn = e && e.currentTarget;
+    // 按下立刻有反應（愛心變色 + 輕跳一下），不必等伺服器回應
+    if (btn) { btn.classList.add('fav-busy'); btn.setAttribute('aria-busy', 'true'); }
+    try {
+        const data = await API.favAdd(state.currentUrl, state.currentTitle);
+        if (!data || data.status === 'error') showToast((data && data.message) || '加入最愛失敗', 'error');
+        else showToast(data.status === 'exists' ? '❤️ 已存在於最愛' : '❤️ 已加入最愛', 'success');
+        await renderFavorites();
+    } finally {
+        _favAdding = false;
+        if (btn) { btn.classList.remove('fav-busy'); btn.removeAttribute('aria-busy'); }
+    }
 }
 el.btnFavAddCurrent.addEventListener('click', addCurrentToFavorites);
 if (el.btnBarFav) el.btnBarFav.addEventListener('click', addCurrentToFavorites);
@@ -2874,7 +2929,9 @@ function fxRipple(btn, cx, cy) {
     const rip = document.createElement('span');
     rip.className = 'fx-ripple';
     rip.style.cssText = `width:${size}px;height:${size}px;left:${cx - r.left - size / 2}px;top:${cy - r.top - size / 2}px`;
-    btn.appendChild(rip);
+    let clip = btn.querySelector(':scope > .fx-ripple-clip');
+    if (!clip) { clip = document.createElement('span'); clip.className = 'fx-ripple-clip'; clip.setAttribute('aria-hidden', 'true'); btn.appendChild(clip); }
+    clip.appendChild(rip);
     const a = rip.animate([{ transform: 'scale(0)', opacity: .4 }, { transform: 'scale(1)', opacity: 0 }],
                           { duration: 650, easing: FX_EASE });
     a.onfinish = () => rip.remove();
@@ -3018,6 +3075,11 @@ function setNpOpen(open, { fromHistory = false } = {}) {
         setTip(el.btnExpand, open ? '收合播放畫面 (F / Esc)' : '展開播放畫面 (F)', open ? '收合播放畫面' : '展開播放畫面');
     }
     npView.classList.toggle('open', open);   // ← 唯一會動的東西：面板 transform
+    // 收合時焦點還在展開畫面裡（例如按了裡面的「收合」）→ 移回播放列的展開鈕，不要停在看不到的按鈕上
+    if (!open && npView.contains(document.activeElement)) {
+        const back = [el.btnExpand, el.btnPlay].find(b => b && b.getClientRects().length && getComputedStyle(b).visibility !== 'hidden');
+        if (back) back.focus({ preventScroll: true }); else document.activeElement.blur();
+    }
     if (fps) fps.start(open ? '展開' : '收合');
     const done = () => {
         if (fps) fps.stop();
@@ -3347,8 +3409,13 @@ function renderShelf(items) {
         meta.textContent = it.plays ? `播放 ${it.plays} 次` : (it.played_at ? fmtAgo(it.played_at) : '');
         card.append(art, title, meta);
         const add = async () => {
-            const r = await API.playUrl(it.url, it.title, null, undefined, it.duration);
-            toastAdded(r, it.title);
+            if (card.classList.contains('is-adding')) return;   // 連點兩下只加一次
+            card.classList.add('is-adding'); card.setAttribute('aria-busy', 'true');
+            const pi = play.querySelector('i'); pi.className = 'fas fa-spinner fa-pulse';
+            try {
+                const r = await API.playUrl(it.url, it.title, null, undefined, it.duration);
+                toastAdded(r, it.title);
+            } finally { card.classList.remove('is-adding'); card.removeAttribute('aria-busy'); pi.className = 'fas fa-play'; }
         };
         card.addEventListener('click', add);
         card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); add(); } });

@@ -331,6 +331,80 @@ async def ui6_checks(R, pg, w):
     if paused: await R.J("() => API.play()")
 
 
+HITSIZE_JS = r"""(sels) => { const bad = [];
+  for (const sel of sels) { const e = [...document.querySelectorAll(sel)].find(x => { const r = x.getBoundingClientRect(); const cs = getComputedStyle(x);
+      return r.width && r.top >= 0 && r.bottom <= innerHeight - 90 && cs.visibility !== 'hidden' && !x.closest('[aria-hidden=true]'); });
+    if (!e) continue;
+    const b = e.getBoundingClientRect(), cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+    const hit = (x, y) => { const t = document.elementFromPoint(x, y); return !!t && (t === e || e.contains(t)); };
+    let l = 0, r = 0, u = 0, d = 0; while (l < 40 && hit(cx - l - 1, cy)) l++; while (r < 40 && hit(cx + r + 1, cy)) r++; while (u < 40 && hit(cx, cy - u - 1)) u++; while (d < 40 && hit(cx, cy + d + 1)) d++;
+    if (l + r + 1 < 43 || u + d + 1 < 43) bad.push(`${sel} ${l + r + 1}×${u + d + 1}`); }
+  return bad; }"""
+
+
+async def feel_checks(R, pg, w):
+    """操作手感：連點 / 連按只送一次、按下立刻有反應、吐司不會疊滿畫面、收合後焦點、觸控點擊範圍 ≥ 44"""
+    posts = []
+    on_req = lambda r: posts.append(r.url.split("?")[0]) if r.method == "POST" else None
+    pg.on("request", on_req)
+    async def slow(route):
+        await asyncio.sleep(0.6); await route.continue_()
+    count = lambda path: sum(u.endswith(path) for u in posts)
+    try:
+        await R.J("() => closeNpView()"); await pg.wait_for_timeout(500)
+        # 貼網址按兩次 Enter：只加一次
+        await pg.route("**/api/resolve-url", slow)
+        await pg.fill("#searchInput", f"https://www.youtube.com/watch?v=FEELD{w:06d}")
+        posts.clear()
+        await pg.press("#searchInput", "Enter"); await pg.wait_for_timeout(120); await pg.press("#searchInput", "Enter")
+        await pg.wait_for_timeout(2500)
+        if count("/api/queue/add-batch") != 1: R.bad(f"貼網址連按兩次 Enter 加了 {count('/api/queue/add-batch')} 次")
+        await pg.unroute("**/api/resolve-url", slow)
+        # 愛心連點：只送一次，而且按下就變色
+        await pg.route("**/api/favorites/add", slow)
+        posts.clear()
+        busy = await R.J("() => { const b = document.getElementById('btnBarFav'); b.click(); const on = b.classList.contains('fav-busy'); setTimeout(() => b.click(), 120); return on; }")
+        await pg.wait_for_timeout(1500)
+        if not busy: R.bad("按愛心沒有立刻反應（要等伺服器回應）")
+        if count("/api/favorites/add") != 1: R.bad(f"愛心連點送了 {count('/api/favorites/add')} 次")
+        await pg.unroute("**/api/favorites/add", slow)
+        # 新增本地歌曲：確定連按兩下只新增一首
+        await pg.route("**/api/playlist/add", slow)
+        await R.J("() => document.getElementById('btnPlaylistAdd').click()"); await pg.wait_for_timeout(300)
+        await pg.fill("#editUrl", f"https://www.youtube.com/watch?v=FEELM{w:06d}"); await pg.fill("#editTitle", "連點測試")
+        posts.clear()
+        await R.J("() => { const b = document.getElementById('modalConfirm'); b.click(); setTimeout(() => b.click(), 120); }")
+        await pg.wait_for_timeout(1500)
+        if count("/api/playlist/add") != 1: R.bad(f"新增歌曲的「確定」連按送了 {count('/api/playlist/add')} 次")
+        await pg.unroute("**/api/playlist/add", slow)
+        await R.J("() => document.getElementById('editModal').classList.remove('active')")
+        # 隨機播放：伺服器慢的時候按鈕不會被舊狀態彈回去
+        await pg.route("**/api/shuffle", slow)
+        seq = await R.J("""async () => { const b = document.getElementById('btnShuffle'); const want = String(b.getAttribute('aria-pressed') !== 'true'); b.click(); const seen = [];
+            for (let i = 0; i < 24; i++) { seen.push(b.getAttribute('aria-pressed')); await new Promise(r => setTimeout(r, 50)); } return [want, seen]; }""")
+        if any(v != seq[0] for v in seq[1]): R.bad(f"隨機播放按下後被彈回去：{seq}")
+        await pg.unroute("**/api/shuffle", slow)
+        await pg.wait_for_timeout(600)
+        await R.J("() => document.getElementById('btnShuffle').click()"); await pg.wait_for_timeout(600)
+        # 吐司：一次跳很多則也只留幾則
+        await R.J("() => { for (let i = 0; i < 7; i++) showToast('連續提示 ' + i, 'success'); }"); await pg.wait_for_timeout(350)
+        n = await R.J("() => [...document.querySelectorAll('.toast')].filter(t => !t._leaving).length")
+        if n > (3 if w < 600 else 4): R.bad(f"一次跳 7 則吐司，畫面上同時有 {n} 則")
+        # 用展開畫面裡的「收合」關掉：焦點要回到看得到的按鈕
+        await R.J("() => openNpView()"); await pg.wait_for_timeout(700)
+        await R.J("() => { const b = document.getElementById('btnCollapse'); b.focus(); b.click(); }"); await pg.wait_for_timeout(700)
+        if await R.J("() => npView.contains(document.activeElement)"): R.bad("按「收合」後焦點還留在看不到的展開畫面裡")
+        # 觸控：主要按鈕的點擊範圍至少 44×44
+        if w < 600:
+            bad = await R.J(HITSIZE_JS, ["#btnSearch", "#btnSettings", "#homeTabs .tab-btn", "#btnPlaylistAdd", "#playlistList .item-btn"])
+            await R.J("() => openNpView()"); await pg.wait_for_timeout(700)
+            bad += await R.J(HITSIZE_JS, ["#btnCollapse", ".np-extra .ctrl-btn", "#npTabs .tab-btn", "#npBtnQueueClear", "#volumeSlider", ".np-view .list-item .item-btn", ".np-view .list-item .drag-handle"])
+            await R.J("() => closeNpView()"); await pg.wait_for_timeout(600)
+            if bad: R.bad(f"觸控點擊範圍小於 44×44：{bad}")
+    finally:
+        pg.remove_listener("request", on_req)
+
+
 async def scenario(br, theme, w):
     ctx = await br.new_context(viewport={"width": w, "height": 900 if w > 600 else 844}, is_mobile=w < 600, has_touch=w < 600, color_scheme=theme)
     await ctx.add_init_script(f"try{{localStorage.setItem('theme','{theme}')}}catch(e){{}}")
@@ -452,6 +526,7 @@ async def scenario(br, theme, w):
         if reqs["n"] == n0: R.bad("音量滑桿沒送出請求")
     await normalize_checks(R, pg, w)
     await ui6_checks(R, pg, w)
+    await feel_checks(R, pg, w)
     await R.J("() => closeNpView()"); await pg.wait_for_timeout(600)
     # 個人歌單：依登入身分（不用再貼金鑰）→ 新增 → 出現在清單
     tab = pg.locator('.tab-btn[data-tab="mylists"]:visible').first
