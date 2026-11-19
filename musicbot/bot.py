@@ -145,6 +145,11 @@ async def on_guild_remove(guild):
         log.warning(f"[Discord] 離開伺服器時清除播放狀態失敗：{e}")
     from . import state as _st
     try:
+        from . import prefetch
+        prefetch.forget_guild(gid)
+    except Exception:
+        pass
+    try:
         from . import idlesleep
         idlesleep.asleep.pop(gid, None)
         idlesleep.saved.pop(gid, None)

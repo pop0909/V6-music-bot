@@ -54,9 +54,9 @@ class FakeYDL:
 
 def reset_state():
     for d in (prefetch._cache, prefetch._inflight, prefetch._tasks, prefetch._gen,
-              prefetch._autoplay_pick, prefetch._random_pick, prefetch._failed):
+              prefetch._autoplay_pick, prefetch._random_pick, prefetch._failed, prefetch._random_recent):
         d.clear()
-    for d in (state.queues, state.now_playing, state.loop_modes, state.saved_queues, state.loop_current,
+    for d in (state.queues, state.now_playing, state.now_playing_url, state.loop_modes, state.saved_queues, state.loop_current,
               state.random_loop_guilds):
         d.clear()
     state.local_playlist.clear()
@@ -222,7 +222,8 @@ class RetargetTest(Base):
         rp = prefetch._random_pick[G]
         self.assertEqual(self.ydl.calls, [rp["url"]])
         self.assertEqual(prefetch.take_random_pick(G)["url"], rp["url"])   # play_next 會播同一首
-        self.assertIsNone(prefetch.take_random_pick(G))
+        self.assertNotIn(G, prefetch._random_pick)                          # 取走了；下一次當場抽（避開剛播過的）
+        self.assertNotEqual(prefetch.take_random_pick(G)["url"], rp["url"])
 
     async def test_not_playing_does_nothing(self):
         state.now_playing.pop(G)

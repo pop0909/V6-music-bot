@@ -197,7 +197,7 @@ async def _play_next_locked(guild_id, channel=None):
 
     if replay is None and (guild_id not in queues or not queues[guild_id]):
         if guild_id in random_loop_guilds and random_loop_guilds[guild_id] and local_playlist:
-            s = prefetch.take_random_pick(guild_id) or random.choice(local_playlist)
+            s = prefetch.take_random_pick(guild_id)   # 預先抽好（可能已預熱）的那首；避開剛播過的
             queues.setdefault(guild_id, []).append((s["url"], s["title"]))
         else:
             # 自動推薦接歌：佇列空了、沒有循環/隨機會補歌時，從 YouTube Mix 找相關歌曲

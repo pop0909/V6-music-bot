@@ -14,12 +14,14 @@
 import asyncio
 import random
 import time
+from collections import deque
 from urllib.parse import urlparse, parse_qs
 
 import yt_dlp
 
 from .config import log, ydl_opts_single
-from .state import queues, now_playing, loop_modes, random_loop_guilds, local_playlist, remember_duration
+from .state import (queues, now_playing, now_playing_url, loop_modes, random_loop_guilds, local_playlist,
+                    remember_duration)
 from . import autoplay
 from . import ytdl
 
@@ -34,6 +36,8 @@ _gen = {}           # gid: int — clear() 後遞增，讓舊 task 的結果被�
 _autoplay_pick = {} # gid: {"seed": 影片ID, "pick": (url, title), "ts": time}
 _random_pick = {}   # gid: {"url","title"} — 隨機循環預先抽好的下一首
 _failed = {}        # gid: {page_url: 失敗時間} — 背景解析失敗後一段時間內不再重試
+_random_recent = {} # gid: deque(page_url) — 隨機循環最近播過的歌（抽下一首時避開）
+RANDOM_RECENT = 20  # 最多記幾首（歌單少於這個數時只避開「歌單首數 - 1」首，一定抽得到）
 FAIL_RETRY_AFTER = 300
 
 
@@ -158,20 +162,50 @@ def predict_next(gid):
     if random_loop_guilds.get(gid) and local_playlist:
         rp = _random_pick.get(gid)
         if rp is None or not any(s.get("url") == rp["url"] for s in local_playlist):
-            s = random.choice(local_playlist)
-            rp = _random_pick[gid] = {"url": s["url"], "title": s["title"]}
+            rp = _random_pick[gid] = pick_random(gid)
         return (rp["url"], rp["title"])
     if autoplay.is_enabled(gid):
         return "autoplay"
     return None
 
 
+def pick_random(gid):
+    """從本地歌單抽一首（隨機循環用）：避開正在播的這首和最近播過的，歌單只有一首時才會重複"""
+    pl = local_playlist
+    if not pl:
+        return None
+    recent = list(_random_recent.get(gid, ()))
+    avoid = set(recent[-max(0, len(pl) - 1):]) if len(pl) > 1 else set()
+    cur = now_playing_url.get(gid)
+    if cur and len(pl) > 1:
+        avoid.add(cur)
+    cands = [s for s in pl if s.get("url") not in avoid] or [s for s in pl if s.get("url") != cur] or pl
+    s = random.choice(cands)
+    return {"url": s["url"], "title": s["title"]}
+
+
 def take_random_pick(gid):
-    """play_next 的隨機循環分支用：取走預先抽好的歌（仍在歌單中才算），否則 None"""
+    """play_next 的隨機循環分支用：取走預先抽好的歌（仍在歌單中才算），否則當場抽一首；
+    記到「最近播過」，下一次不會馬上又抽到"""
     rp = _random_pick.pop(gid, None)
-    if rp and any(s.get("url") == rp["url"] for s in local_playlist):
-        return rp
-    return None
+    if not (rp and any(s.get("url") == rp["url"] for s in local_playlist)):
+        rp = pick_random(gid)
+    if rp:
+        _random_recent.setdefault(gid, deque(maxlen=RANDOM_RECENT)).append(rp["url"])
+    return rp
+
+
+def peek_autoplay_pick(gid):
+    """預熱用：看一下已挑好的推薦（不取走）；條件跟 take_autoplay_pick 一樣，不符合 → None"""
+    p = _autoplay_pick.get(gid)
+    if not p or not p.get("pick"):
+        return None
+    if p["seed"] != autoplay.last_seed(gid) or time.time() - p["ts"] > MAX_AGE:
+        return None
+    vid = autoplay.extract_video_id(p["pick"][0])
+    if vid and vid in autoplay.failed_ids.get(gid, ()):
+        return None
+    return p["pick"]
 
 
 def take_autoplay_pick(gid):
@@ -292,3 +326,10 @@ def clear(gid):
     _autoplay_pick.pop(gid, None)
     _random_pick.pop(gid, None)
     _failed.pop(gid, None)
+
+
+def forget_guild(gid):
+    """機器人離開伺服器：連「最近隨機播過」也清掉"""
+    clear(gid)
+    _random_recent.pop(gid, None)
+    _gen.pop(gid, None)
