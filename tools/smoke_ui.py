@@ -119,7 +119,11 @@ class Run:
         if not await self.hidden(pop_sel): self.bad(f"{tag}: Esc 沒關")
         await self.click_or_menu(open_sel)
         # 桌機點頂欄下方的空白（快捷鍵子選單變高後會蓋到畫面中間偏下）
-        await self.pg.mouse.click(self.w // 2, 120 if self.w > 600 else 700); await self.pg.wait_for_timeout(150)
+        # 768 寬時 (w/2, 120) 會點到伺服器下拉的外框 → 先找一個真的空白、不是控制項的點
+        x, y = await self.J("""([w, y0]) => { for (const [x, y] of [[w / 2, y0], [w - 20, y0], [20, y0], [w / 2, 300], [w / 2, 700]]) {
+            const e = document.elementFromPoint(x, y); if (e && !e.closest('.cdd,button,a,input,select,textarea,[role=menu],[role=listbox],.flyout,.set-menu')) return [x, y]; }
+            return [w / 2, y0]; }""", [self.w, 120 if self.w > 600 else 700])
+        await self.pg.mouse.click(x, y); await self.pg.wait_for_timeout(150)
         if not await self.hidden(pop_sel): self.bad(f"{tag}: 點外面沒關")
         await self.pg.keyboard.press("Escape")
 

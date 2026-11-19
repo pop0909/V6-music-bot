@@ -36,7 +36,7 @@ from .views import MusicControlView
 @app_commands.describe(query="歌曲名稱、網址或播放清單")
 async def play(interaction: discord.Interaction, query: str):
     if not query:
-        await interaction.response.send_message("請提供歌曲名稱或網址！", ephemeral=True)
+        await interaction.response.send_message("請輸入歌曲名稱或網址", ephemeral=True)
         return
     vc = await get_voice_client(interaction)
     if not vc: return
@@ -81,7 +81,7 @@ async def import_cmd(interaction: discord.Interaction, url: str):
         name, songs, skipped = await loop.run_in_executor(
             None, lambda: importer.resolve(url, progress=lambda d, t: prog.update(done=d, total=t)))
     except Exception as e:
-        await interaction.followup.send(f"匯入失敗：{ytdl.friendly_error(e, '匯入歌單')}", ephemeral=True)
+        await interaction.followup.send(f"⚠️ 匯入失敗：{ytdl.friendly_error(e, '匯入歌單')}", ephemeral=True)
         return
     finally:
         if ticker: ticker.cancel()
@@ -103,7 +103,7 @@ async def import_cmd(interaction: discord.Interaction, url: str):
     out_ch = await _get_output_channel(gid)
     if out_ch:
         try:
-            await out_ch.send(f"**{interaction.user.display_name}** 匯入了歌單「{name}」，共 **{added}** 首")
+            await out_ch.send(f"📥 **{interaction.user.display_name}** 匯入了歌單「{name}」，共 **{added}** 首")
         except Exception:
             pass
 
@@ -119,7 +119,7 @@ async def skip(interaction: discord.Interaction):
         await audio.fade_out_stop(interaction.guild_id, vc)   # 0.12 秒淡出再切歌
         out_ch = await _get_output_channel(interaction.guild_id)
         if out_ch:
-            await out_ch.send(f"**{interaction.user.display_name}** 已跳過歌曲")
+            await out_ch.send(f"⏭️ **{interaction.user.display_name}** 跳過了這首歌")
     else:
         await interaction.response.send_message("沒有正在播放的歌曲", ephemeral=True)
 
@@ -138,7 +138,7 @@ async def stop(interaction: discord.Interaction):
 async def volume(interaction: discord.Interaction, level: int):
     gid = interaction.guild.id
     if level < 0 or level > 200:
-        await interaction.response.send_message("音量範圍為 0~200", ephemeral=True)
+        await interaction.response.send_message("音量請輸入 0 到 200", ephemeral=True)
         return
     vol = level / 100.0
     volumes[gid] = vol
@@ -215,14 +215,14 @@ async def leave(interaction: discord.Interaction):
     from .player import leave_voice
     gid = interaction.guild.id
     if not (interaction.guild.voice_client or voice_clients.get(gid)):
-        await interaction.response.send_message("我不在語音頻道中", ephemeral=True)
+        await interaction.response.send_message("機器人不在語音頻道中", ephemeral=True)
         return
     await interaction.response.send_message("✅ 已離開語音頻道", ephemeral=True)
     await leave_voice(gid, interaction.guild)
     await _update_panel(gid, "已離開", view=None, remove=True)
     out_ch = await _get_output_channel(gid)
     if out_ch:
-        await out_ch.send(f"👋 **{interaction.user.display_name}** 機器人已離開語音頻道")
+        await out_ch.send(f"👋 **{interaction.user.display_name}** 讓機器人離開了語音頻道")
 
 def _web_status_line(gid):
     """/web 狀態行：正在播放 / 已暫停 / 待機 / 休眠 · 佇列 N 首 · 語音頻道"""

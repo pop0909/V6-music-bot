@@ -293,8 +293,8 @@ html[data-theme="light"] .stroke-bg .s-cyan { opacity: .13; }
 
 .np-kicker {
     display: flex; align-items: center; gap: 8px;
-    font-size: 11px; font-weight: 700;
-    letter-spacing: 2.5px;
+    font-size: 12px; font-weight: 700;
+    letter-spacing: 1.5px;
     color: var(--sub);
     margin-bottom: 16px;
 }
@@ -955,6 +955,8 @@ html.low-power .np-card.is-playing .np-cover-wrap::before { animation: none; }
     .btn-sm { font-size: clamp(12.5px, 0.15vw + 10px, 14px); }
     .item-index, .item-index-num { min-width: clamp(26px, 1.4vw, 32px); height: clamp(26px, 1.4vw, 32px); font-size: clamp(11.5px, 0.15vw + 9px, 13px); }
 }
+/* 921–1080px 頂欄會換行、搜尋框自己一列：上面的 max-width 會蓋掉 1080px 規則，搜尋框只有半寬 → 這裡改回整列 */
+@media (min-width: 921px) and (max-width: 1080px) { .search-row { max-width: none; } }
 
 /* perf2: suppress row hover restyle/repaint while the wheel is scrolling a list.
    Rows passing under the cursor would otherwise repaint every frame. */

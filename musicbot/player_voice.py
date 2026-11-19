@@ -134,7 +134,7 @@ async def reply(interaction, content, **kw):
 
 async def get_voice_client(interaction):
     if not interaction.user.voice or not interaction.user.voice.channel:
-        await reply(interaction, "你必須先加入語音頻道！")
+        await reply(interaction, "請先加入語音頻道")
         return None
     channel = interaction.user.voice.channel
     cur = interaction.guild.voice_client
@@ -194,7 +194,7 @@ async def _process_and_play(interaction, query, gid, vc):
     try:
         info = await _lookup(query)
         if not info:
-            await interaction.followup.send("找不到歌曲！", ephemeral=True)
+            await interaction.followup.send("找不到歌曲，換個關鍵字試試", ephemeral=True)
             return
         from .state import queue_room, queue_full_message
         added = full_skipped = 0
@@ -215,7 +215,7 @@ async def _process_and_play(interaction, query, gid, vc):
                     added_songs.append((url, title))
                     added += 1
         if added == 0:
-            msg = f"⚠️ {queue_full_message()}" if full_skipped else "無法解析歌曲！"
+            msg = f"⚠️ {queue_full_message()}" if full_skipped else "讀不到這首歌，請換個網址或關鍵字"
             await interaction.followup.send(msg, ephemeral=True)
             return
         from . import actionlog       # 操作紀錄：一首記歌名；YouTube 播放清單只記一筆「N 首」
@@ -224,14 +224,14 @@ async def _process_and_play(interaction, query, gid, vc):
         # 發送到指定頻道
         out_ch = await _p._get_output_channel(gid)
         if out_ch:
-            await out_ch.send(f"**{interaction.user.display_name}** 已將 **{added}** 首歌加入佇列！")
+            await out_ch.send(f"🎵 **{interaction.user.display_name}** 加入了 **{added}** 首歌")
         extra = f"（佇列已滿，另有 {full_skipped} 首沒加入）" if full_skipped else ""
         await interaction.followup.send(f"✅ 已將 **{added}** 首歌加入佇列{extra}", ephemeral=True)
         if not vc.is_playing() and not vc.is_paused():
             await _p.play_next(gid)
     except Exception as e:
         log.error(f"_process Error: {e}")
-        await interaction.followup.send(f"發生錯誤：{ytdl.friendly_error(e, '點歌解析')}", ephemeral=True)
+        await interaction.followup.send(f"⚠️ 點歌失敗：{ytdl.friendly_error(e, '點歌解析')}", ephemeral=True)
 
 
 from . import player as _p  # noqa: E402  放最後：player 載入完才取用（見上方說明）

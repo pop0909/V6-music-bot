@@ -247,7 +247,35 @@ def friendly_error(err, context=""):
         pass
     if is_bot_check(err):
         return report_bot_check(context)
-    return str(err)[:200]
+    return plain_error(err)
+
+
+# yt-dlp 的英文錯誤 → 中文（依序比對，先中先用）；完整原文仍寫在日誌 / 擁有者通知
+_PLAIN = (
+    (("private video",), "這部影片是私人影片，無法播放"),
+    (("members-only", "join this channel", "member"), "這是頻道會員限定影片，無法播放"),
+    (("confirm your age", "age-restricted", "inappropriate for some users"), "這部影片有年齡限制，無法播放"),
+    (("available in your country", "blocked it in your country", "geo restrict"), "這部影片在伺服器所在地區無法播放"),
+    (("live event will begin", "premieres in", "premiere will begin"), "直播 / 首播還沒開始"),
+    (("has been removed", "video unavailable", "no longer available", "account associated", "terminated", "does not exist"), "影片已被刪除或無法觀看"),
+    (("http error 403", "403: forbidden"), "YouTube 暫時拒絕連線（403），請稍後再試"),
+    (("http error 429", "too many requests"), "YouTube 暫時限制太多請求，請稍後再試"),
+    (("unsupported url", "is not a valid url", "incomplete youtube id"), "不支援這個網址"),
+    (("timed out", "timeout"), "連線逾時，請稍後再試"),
+    (("unable to download", "unable to extract", "network is unreachable", "connection"), "暫時讀不到這首歌，請稍後再試"),
+)
+
+
+def plain_error(err):
+    """例外 → 使用者看得懂的一句中文；本來就是中文說明就照用；認不出來 → 通用說法（不丟英文原文）"""
+    msg = str(err or "")
+    if any("\u4e00" <= ch <= "\u9fff" for ch in msg) and "ERROR:" not in msg:
+        return msg[:200]
+    low = msg.lower()
+    for keys, text in _PLAIN:
+        if any(k in low for k in keys):
+            return text
+    return "無法讀取這首歌，請換一首或稍後再試"
 
 
 # 文字搜尋（ytsearchN + extract_flat）的結果不一定都是影片：YouTube 會把頻道（ie_key YoutubeTab、

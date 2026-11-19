@@ -17,7 +17,7 @@ async function refresh() {
   const s = await botApi('/api/ext/status');
   if (s.status === 'error') { $('np').textContent = s.message; $('np').className = 'np err'; $('meta').textContent = ''; return; }
   $('np').className = 'np' + (s.current_title ? '' : ' muted');
-  $('np').textContent = s.current_title ? (s.is_paused ? '⏸️ ' : '🎶 ') + s.current_title : (s.connected ? '⏹️ 待機中' : '💤 休眠中');
+  $('np').textContent = s.current_title ? (s.is_paused ? '⏸️ ' : '🎶 ') + s.current_title : (s.connected ? '⏹️ 待機中' : (s.asleep ? '💤 休眠中' : '💤 不在語音頻道'));
   $('meta').textContent = `佇列 ${s.queue_length} 首` + (s.voice_channel ? ` · 🔊 ${s.voice_channel}` : '') + (s.guild_name ? ` · ${s.guild_name}` : '') + (s.you ? ` · 我是 ${s.you}` : '');
 }
 
@@ -39,6 +39,8 @@ async function add(next) {
     $('add').disabled = $('next').disabled = false;
   } else {
     $('add').title = $('next').title = '目前分頁不是 YouTube 影片';
+    $('msg').textContent = '打開 YouTube 影片頁面後就能加入';   // 按鈕灰掉時說明原因（title 要滑過才看得到）
+    $('msg').className = 'muted';
   }
   $('add').onclick = () => add(false);
   $('next').onclick = () => add(true);

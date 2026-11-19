@@ -262,6 +262,12 @@ function goLogin() {
     const here = location.pathname + location.search;
     location.href = '/login' + (here && here !== '/' ? '?next=' + encodeURIComponent(here) : '');
 }
+function httpErrorText(code) {
+    if (code === 413) return '送出的內容太大';
+    if (code === 429) return '操作太頻繁，請稍等一下再試';
+    if (code >= 500) return '機器人暫時沒有回應，請稍後再試';
+    return '操作失敗，請重新整理頁面再試';
+}
 async function api(method, path, body = null) {
     const key = apiKey(method, path);
     const f = apiFail.get(key);
@@ -275,11 +281,15 @@ async function api(method, path, body = null) {
         if (res.status === 401) { goLogin(); return { status: 'error', message: '請先登入', auth: true }; }
         if (res.status >= 500 || res.status === 429) apiNoteFail(key);
         else if (f) apiFail.delete(key);
-        return await res.json();
+        try {
+            return await res.json();
+        } catch (_) {   // 不是 JSON（例如 Cloudflare 的錯誤頁、內容太大被擋）：不要把英文解析錯誤丟給使用者
+            return { status: 'error', message: httpErrorText(res.status) };
+        }
     } catch (err) {
         apiNoteFail(key);
         console.error(`API Error [${method} ${path}]:`, err);
-        return { status: 'error', message: err.message };
+        return { status: 'error', message: '連不到機器人，請檢查網路後再試', network: true };
     }
 }
 
@@ -1084,6 +1094,12 @@ function queueSummary(q) {
     return `${n} 首・${fmtTotal(sum)}${unknown ? '+' : ''}`;
 }
 
+// 總長度文字：直播沒有長度 → 顯示「直播」，不要顯示「/ 0:00」
+function totalText(data) {
+    if (data.current_title && !(data.duration > 0)) return '直播';
+    return data.duration_str || '0:00';
+}
+
 // ==================== 跳轉（seek） ====================
 // 拖曳中只更新預覽（進度條 + 時間提示），放開才送出一次；送出後短暫忽略 SSE 的舊進度，避免進度條跳回去
 const seekHold = { pos: 0, url: '', until: 0 };
@@ -1204,10 +1220,10 @@ function applyLiveState(data) {
         }
         // === 時間 ===
         setText(el.currentTime, data.elapsed_str || '0:00');
-        _npTimeText = `${data.elapsed_str || '0:00'} / ${data.duration_str || '0:00'}`;
+        _npTimeText = `${data.elapsed_str || '0:00'} / ${totalText(data)}`;
         if (npOpen && el.npTime) setText(el.npTime, _npTimeText);   // 收合時不碰展開畫面的 DOM
     }
-    setText(el.totalTime, data.duration_str || '0:00');
+    setText(el.totalTime, totalText(data));
     if (el.barSub && data.queue_length !== undefined) {
         const n = data.queue_length;
         setText(el.barSub, data.current_title
@@ -1384,7 +1400,7 @@ function resyncSoon(delay = 1200) {
 }
 function reportActionResult(r) {
     if (actionFailed(r)) {
-        showToast((r && r.message) || '操作失敗（bot 可能不在語音頻道）', 'error');
+        showToast((r && r.message) || '操作失敗（機器人可能不在語音頻道）', 'error');
         resyncSoon(150);   // 失敗：馬上抓回伺服器真正的狀態（退回樂觀更新）
         return;
     }
@@ -1475,7 +1491,7 @@ async function pollStatus() {
 
     if (data.error) {
         if (data.error === 'no_guilds') {
-            el.songTitle.textContent = '⚠️ Bot 尚未連線到任何伺服器';
+            el.songTitle.textContent = '⚠️ 機器人尚未連線到任何伺服器';
             updateStatusDot('inactive');
         }
         return;
@@ -1703,8 +1719,8 @@ function renderQueueList(q, view = QV.np) {
             <span class="item-index-num">${i + 1}</span>
             <span class="item-title">${escapeHtml(song.title)}${song.by ? `<span class="item-by">👤 ${escapeHtml(song.by)}</span>` : ''}</span>
             <div class="item-actions">
-                <button class="item-btn btn-play" data-action="play"><i class="fas fa-play"></i></button>
-                <button class="item-btn btn-remove" data-action="remove"><i class="fas fa-times"></i></button>
+                <button class="item-btn btn-play" data-action="play" title="現在播放這首" aria-label="現在播放這首"><i class="fas fa-play" aria-hidden="true"></i></button>
+                <button class="item-btn btn-remove" data-action="remove" title="從佇列移除" aria-label="從佇列移除"><i class="fas fa-times" aria-hidden="true"></i></button>
             </div>`;
         div.querySelector('.item-title').title = song.title || '';   // 完整歌名（屬性用 property 設定，不拼 HTML）
 
@@ -1800,8 +1816,8 @@ function renderFavList(favs, view = FV.home) {
             <span class="item-index"><i class="fas fa-heart" style="color:var(--danger);font-size:11px;"></i></span>
             <span class="item-title">${escapeHtml(song.title)}${song.by ? `<span class="item-by">👤 ${escapeHtml(song.by)}</span>` : ''}</span>
             <div class="item-actions">
-                <button class="item-btn btn-play" data-action="play"><i class="fas fa-play"></i></button>
-                <button class="item-btn btn-remove" data-action="remove"><i class="fas fa-times"></i></button>
+                <button class="item-btn btn-play" data-action="play" title="加入佇列" aria-label="加入佇列"><i class="fas fa-play" aria-hidden="true"></i></button>
+                <button class="item-btn btn-remove" data-action="remove" title="從最愛移除" aria-label="從最愛移除"><i class="fas fa-times" aria-hidden="true"></i></button>
             </div>`;
         div.querySelector('.item-title').title = song.title || '';
         div.querySelector('[data-action="play"]').addEventListener('click', async () => {
@@ -1858,9 +1874,9 @@ function renderPlaylistList(pl) {
             <span class="item-index">${i + 1}</span>
             <span class="item-title editable-hint">${escapeHtml(song.title)}</span>
             <div class="item-actions">
-                <button class="item-btn btn-play" data-action="play"><i class="fas fa-play"></i></button>
-                <button class="item-btn btn-edit" data-action="edit"><i class="fas fa-pen"></i></button>
-                <button class="item-btn btn-remove" data-action="delete"><i class="fas fa-trash-alt"></i></button>
+                <button class="item-btn btn-play" data-action="play" title="加入佇列" aria-label="加入佇列"><i class="fas fa-play" aria-hidden="true"></i></button>
+                <button class="item-btn btn-edit" data-action="edit" title="編輯" aria-label="編輯"><i class="fas fa-pen" aria-hidden="true"></i></button>
+                <button class="item-btn btn-remove" data-action="delete" title="從歌單刪除" aria-label="從歌單刪除"><i class="fas fa-trash-alt" aria-hidden="true"></i></button>
             </div>`;
         div.querySelector('.item-title').title = song.title || '';
         div.querySelector('[data-action="play"]').addEventListener('click', async () => {
@@ -3022,6 +3038,19 @@ function setNpOpen(open, { fromHistory = false } = {}) {
         _npHistoryPushed = false;
     }
 }
+// 收合時展開畫面仍留在 DOM（只是移到螢幕外；為了效能不切 visibility / inert）：
+// 用 Tab 會走進去、停在看不到的按鈕上 → 依方向跳到展開畫面前 / 後第一個看得到的控制項
+let _tabBack = false;
+document.addEventListener('keydown', (e) => { if (e.key === 'Tab') _tabBack = e.shiftKey; }, true);
+document.addEventListener('focusin', (e) => {
+    if (npOpen || !npView || !npView.contains(e.target)) return;
+    const cand = [...document.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea,[tabindex]:not([tabindex="-1"])')]
+        .filter(x => !npView.contains(x) && x.tabIndex >= 0 && x.getClientRects().length && !x.closest('[hidden],[inert]'));
+    const after = cand.filter(x => npView.compareDocumentPosition(x) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const before = cand.filter(x => npView.compareDocumentPosition(x) & Node.DOCUMENT_POSITION_PRECEDING);
+    const next = _tabBack ? before[before.length - 1] : after[0];
+    if (next) next.focus(); else e.target.blur();
+});
 // 展開時不鎖捲動（鎖 overflow 會改版面），改成攔下滑過面板的滾輪/觸控，避免後方主畫面被捲動。
 // 只在使用者操作時執行，動畫期間不做任何事。內部清單捲得動時照常捲。
 function npScrollGuard(e) {
@@ -3706,8 +3735,8 @@ setShuffleUI(!!state.shuffleMode);
         set('latency', r.latency_ms == null ? '—' : r.latency_ms + ' ms', r.latency_ms > 300 ? 'st-warn' : '');
         set('vlatency', r.voice_latency_ms == null ? '—' : r.voice_latency_ms + ' ms', r.voice_latency_ms > 300 ? 'st-warn' : '');
         set('uptime', fmtUp(r.uptime));
-        set('cpu', r.cpu == null ? '—' : `${r.cpu.toFixed(0)}%（bot ${r.proc_cpu}%）`, r.cpu > 85 ? 'st-warn' : '');
-        set('mem', r.mem_total ? `${fmtBytes(r.mem_used)} / ${fmtBytes(r.mem_total)}（bot ${fmtBytes(r.proc_rss)}）` : '—', r.mem_pct > 90 ? 'st-warn' : '');
+        set('cpu', r.cpu == null ? '—' : `${r.cpu.toFixed(0)}%（機器人 ${r.proc_cpu}%）`, r.cpu > 85 ? 'st-warn' : '');
+        set('mem', r.mem_total ? `${fmtBytes(r.mem_used)} / ${fmtBytes(r.mem_total)}（機器人 ${fmtBytes(r.proc_rss)}）` : '—', r.mem_pct > 90 ? 'st-warn' : '');
         set('guilds', `${r.guilds} 個伺服器 · ${r.voice} 個語音${r.playing ? `（${r.playing} 個播放中）` : ''}`);
         set('bitrate', state.bitrate ? `Opus ${state.bitrate} kbps` : '未在語音中');
         set('ytdlp', r.ytdlp || '—');

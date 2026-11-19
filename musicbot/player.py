@@ -398,7 +398,7 @@ async def _play_next_locked(guild_id, channel=None):
             # 單曲循環時壞掉的歌不要一直重播
             loop_current.pop(guild_id, None)
             try:
-                await channel.send(f"無法播放 **{title}**\n```{str(e)[:200]}```")
+                await channel.send(f"⚠️ 無法播放 **{title}**：{ytdl.plain_error(e)}")
             except Exception:
                 pass
             if fails >= MAX_CONSECUTIVE_FAILURES:
@@ -415,7 +415,7 @@ async def _play_next_locked(guild_id, channel=None):
                 except Exception:
                     pass
                 try:
-                    await channel.send(f"⚠️ 連續 {fails} 首無法播放，已暫停自動播放（隨機循環與自動推薦已關閉）。可能是 yt-dlp 需要更新（pip install -U yt-dlp）")
+                    await channel.send(f"⚠️ 連續 {fails} 首無法播放，已暫停自動播放（隨機循環與自動推薦已關閉）。可能是 YouTube 暫時擋下或下載工具需要更新，擁有者已收到通知")
                 except Exception:
                     pass
             else:

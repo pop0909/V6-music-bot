@@ -58,7 +58,7 @@ def api_status():
                 if guilds:
                     gid = guilds[0]["id"]
                 else:
-                    return jsonify({"error": "no_guilds", "message": "Bot 尚未連線到任何伺服器"})
+                    return jsonify({"error": "no_guilds", "message": "機器人尚未連線到任何伺服器"})
     return jsonify(get_guild_status(gid))
 
 @flask_app.route("/api/play", methods=["POST"])
@@ -116,7 +116,7 @@ def api_autoplay():
     data = request.get_json() or {}
     gid = int(data.get("guild_id", 0))
     if not gid:
-        return jsonify({"status": "error", "message": "缺少 guild_id"}), 400
+        return jsonify({"status": "error", "message": "請先選擇伺服器"}), 400
     enabled = bool(data.get("enabled", False))
     result = _w.run_async(web_set_autoplay(gid, enabled))
     return jsonify(result or {"status": "error"})
@@ -127,7 +127,7 @@ def api_normalize():
     data = request.get_json() or {}
     gid = int(data.get("guild_id", 0))
     if not gid:
-        return jsonify({"status": "error", "message": "缺少 guild_id"}), 400
+        return jsonify({"status": "error", "message": "請先選擇伺服器"}), 400
     result = _w.run_async(web_set_normalize(gid, bool(data.get("enabled", True))))
     return jsonify(result or {"status": "error"})
 
@@ -143,7 +143,7 @@ def api_seek():
     except (TypeError, ValueError):
         gid = 0
     if not gid:
-        return jsonify({"status": "error", "code": "invalid", "message": "缺少 guild_id"}), 400
+        return jsonify({"status": "error", "code": "invalid", "message": "請先選擇伺服器"}), 400
     # wait=False：驗證完立刻回應，FFmpeg 重開 + 預熱在背景（舊位置繼續播到新位置就緒為止）
     result = _w.run_async(seek(gid, data.get("position"), wait=False))
     if not result:
@@ -187,7 +187,7 @@ def api_join():
     gid = int(data.get("guild_id", 0))
     channel_id = int(data.get("channel_id", 0))
     if not gid or not channel_id:
-        return jsonify({"status": "error", "message": "缺少 guild_id 或 channel_id"}), 400
+        return jsonify({"status": "error", "message": "請先選擇伺服器和語音頻道"}), 400
     result = _w.run_async(web_join_voice(gid, channel_id))
     return jsonify(result or {"status": "error"})
 
@@ -204,7 +204,7 @@ def api_sleep_timer():
         with state_lock:
             gid = get_active_guild() or (next(iter(guild_names)) if guild_names else 0)
     if gid == 0:
-        return jsonify({"status": "error", "message": "Bot 尚未連線到任何伺服器"}), 400
+        return jsonify({"status": "error", "message": "機器人尚未連線到任何伺服器"}), 400
     if mode not in ("minutes", "track_end", "off"):
         return jsonify({"status": "error", "message": "無效模式"}), 400
     if mode == "minutes" and not (1 <= minutes <= 480):

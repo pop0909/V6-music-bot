@@ -130,14 +130,14 @@ async def web_add_to_queue(gid, url, title, auto_play=True, duration=None, reque
                 return {"ok": True, "duplicate": False, "position": position, "starts_now": position == 1}
             else:
                 return {"ok": True, "duplicate": False, "position": position, "starts_now": False,
-                        "message": "已加入佇列（bot 不在可通知的文字頻道）"}
+                        "message": "已加入佇列（機器人不在可通知的文字頻道）"}
     return {"ok": True, "duplicate": False, "position": position, "starts_now": False}
 
 
 async def web_toggle_play(gid):
     """從 Web 切換播放/暫停"""
     vc = await ensure_voice_connected(gid)
-    if not vc: return {"status": "no_voice", "message": "bot 不在語音頻道且無法自動重連"}
+    if not vc: return {"status": "no_voice", "message": "機器人不在語音頻道，也無法自動重新加入"}
     if vc.is_paused():
         if _pending_seeks.get(gid):
             # 暫停中跳轉過：新位置的 FFmpeg 可能還在預熱 → 在背景等它好了再換上並恢復，HTTP 先回應
@@ -253,6 +253,21 @@ async def web_set_normalize(gid, enabled):
     return {"status": "ok", "normalize": now, "applies": applies}
 
 
+def join_error_text(e):
+    """加入語音失敗的原因 → 使用者看得懂的中文（不要把英文例外原文丟到面板上）"""
+    import discord
+    if isinstance(e, discord.Forbidden):
+        return "加入失敗：機器人沒有這個語音頻道的連線權限"
+    if isinstance(e, (asyncio.TimeoutError, TimeoutError)):
+        return "加入失敗：連線逾時，請稍後再試"
+    msg = str(e)
+    if "full" in msg.lower():
+        return "加入失敗：語音頻道人數已滿"
+    if any("\u4e00" <= ch <= "\u9fff" for ch in msg):     # 已經是中文說明（例如 connect_voice 自己的訊息）
+        return msg
+    return "加入失敗：無法連線到語音頻道，請稍後再試"
+
+
 async def web_join_voice(gid, channel_id):
     """從 Web 加入指定的語音頻道（若已在某頻道則切換過去）"""
     import discord
@@ -269,7 +284,7 @@ async def web_join_voice(gid, channel_id):
         return {"status": "joined", "channel_name": channel.name}
     except Exception as e:
         log.error(f"Join voice error: {e}")
-        return {"status": "error", "message": str(e)}
+        return {"status": "error", "message": join_error_text(e)}
 
 
 async def web_remove_queue(gid, index, actor=None):
@@ -341,7 +356,7 @@ async def web_play_index(gid, index, actor=None, expect_url=None):
 
     # 無法連上語音：把歌塞回原位並回報
     queues[gid].insert(index, song)
-    return {"status": "error", "message": "bot 不在語音頻道且無法自動重連"}
+    return {"status": "error", "message": "機器人不在語音頻道，也無法自動重新加入"}
 
 
 async def web_add_to_queue_batch(gid, songs, stats=None, actor=None, label=None):

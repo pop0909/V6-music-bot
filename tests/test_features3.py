@@ -76,7 +76,7 @@ class YtdlOptsTest(unittest.TestCase):
         self.assertFalse(ytdl.is_bot_check("HTTP Error 403: Forbidden"))
         self.assertFalse(ytdl.is_bot_check(None))
         self.assertIn("cookies", ytdl.friendly_error(BOT_MSG))
-        self.assertEqual(ytdl.friendly_error("Video unavailable"), "Video unavailable")
+        self.assertEqual(ytdl.friendly_error("Video unavailable"), "影片已被刪除或無法觀看")
 
     def test_report_rate_limited(self):
         ytdl._last_log[0] = 0

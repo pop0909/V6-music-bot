@@ -142,7 +142,7 @@ def _do_update():
                 res["restart"] = True
                 res["message"] += "，2 秒後重新啟動"
             elif after != before:
-                res["message"] += "（不是 systemd 執行，請手動重新啟動 bot 才會生效）"
+                res["message"] += "（不是 systemd 執行，請手動重新啟動機器人才會生效）"
     except Exception as e:
         res = {"ok": False, "message": f"更新失敗：{e}", "before": before}
     log.info(f"[更新] {res.get('message')}")

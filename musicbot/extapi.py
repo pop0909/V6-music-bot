@@ -127,6 +127,14 @@ async def _move_to_next(gid, url):
     return False
 
 
+def _is_asleep(gid):
+    try:
+        from . import idlesleep
+        return bool(gid) and gid in idlesleep.asleep       # 真的因沒人聽而休眠（不是單純沒進語音）
+    except Exception:
+        return False
+
+
 @flask_app.route(PREFIX + "status", methods=["GET"])
 def ext_status():
     extmembers.record_use(g.ext_user)
@@ -145,6 +153,7 @@ def ext_status():
         "queue_length": len(queues.get(gid, [])),
         "voice_channel": (ch or {}).get("name"),
         "you": g.ext_user.get("name"),
+        "asleep": _is_asleep(gid),
         "owner": bool(g.ext_user.get("owner")),
     })
 

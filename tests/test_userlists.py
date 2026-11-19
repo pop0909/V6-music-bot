@@ -214,7 +214,7 @@ class Frontend(unittest.TestCase):
         html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
         self.assertIn('data-tab="mylists"', html)
         self.assertIn('id="tabMylists"', html)
-        self.assertIn("app.js?v=20261114aud6", html)
+        self.assertIn("app.js?v=20261120pol1", html)
         js = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
         self.assertIn("'/api/ext/lists'", js)
 
@@ -268,7 +268,7 @@ class FollowUps(Base):
         for t in ("'lists'", "'listCreate'", "'listAdd'"):
             self.assertIn(t, bg)
         man = json.load(open(os.path.join(ext, "manifest.json"), encoding="utf-8"))
-        self.assertEqual(man["version"], "1.1.1")
+        self.assertEqual(man["version"], "1.1.2")
 
 
 class LiveUpdate(Base):

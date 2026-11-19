@@ -99,7 +99,7 @@ def api_queue_add():
                 elif guild_names:
                     gid = next(iter(guild_names))
     if gid == 0:
-        return jsonify({"status": "error", "message": "Bot 尚未連線到任何伺服器"}), 400
+        return jsonify({"status": "error", "message": "機器人尚未連線到任何伺服器"}), 400
     url = data.get("url", "").strip()
     title = data.get("title", url)
     no_play = data.get("no_play", False)
@@ -139,7 +139,7 @@ def api_queue_add_batch():
                 elif guild_names:
                     gid = next(iter(guild_names))
         if gid == 0:
-            return jsonify({"status": "error", "message": "Bot 尚未連線到任何伺服器"}), 400
+            return jsonify({"status": "error", "message": "機器人尚未連線到任何伺服器"}), 400
     songs = data.get("songs", [])
     if not songs:
         return jsonify({"status": "error", "message": "請提供歌曲列表"}), 400
@@ -170,7 +170,7 @@ def api_import():
                 (g for g, vc in voice_clients.items() if vc and vc.is_connected()),
                 next(iter(guild_names), 0))
     if not gid:
-        return jsonify({"status": "error", "message": "Bot 尚未連線到任何伺服器"}), 400
+        return jsonify({"status": "error", "message": "機器人尚未連線到任何伺服器"}), 400
     actor = _w._actor()        # 背景執行緒裡沒有 flask.g，先取好
     def _done(name, songs):
         stats = {}

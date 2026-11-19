@@ -186,18 +186,25 @@ def _ack(result):
     return jsonify(result), (202 if result.get("accepted") else 200)
 
 
+# Flask / werkzeug 預設的錯誤說明是英文：換成中文再給面板
+_HTTP_ZH = {
+    400: "參數格式不正確", 401: "請先登入", 403: "沒有權限", 404: "找不到這個項目",
+    405: "不支援這個操作", 413: "送出的內容太大", 429: "操作太頻繁，請稍等一下再試",
+}
+
+
 @flask_app.errorhandler(Exception)
 def api_error_handler(e):
     """所有未捕捉例外統一回 JSON，避免 HTML 錯誤頁打壞前端解析"""
     from werkzeug.exceptions import HTTPException
     if isinstance(e, HTTPException):
-        return jsonify({"error": e.name.lower().replace(" ", "_"), "message": e.description}), e.code
+        return jsonify({"error": e.name.lower().replace(" ", "_"), "message": _HTTP_ZH.get(e.code, "操作失敗，請重新整理頁面再試")}), e.code
     if isinstance(e, (ValueError, TypeError, AttributeError)) and request.path.startswith("/api/"):
         # 使用者送了格式錯誤的參數（例如 guild_id="abc"、JSON 是陣列）：回 400，不當成伺服器錯誤
         log.warning(f"API bad request {request.path}: {e!r}")
         return jsonify({"error": "bad_request", "message": "參數格式不正確"}), 400
     log.error(f"API error: {e}", exc_info=True)
-    return jsonify({"error": "internal", "message": str(e)}), 500
+    return jsonify({"error": "internal", "message": "機器人發生錯誤，請稍後再試"}), 500   # 詳細原因只寫日誌
 
 
 @flask_app.route("/")

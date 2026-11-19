@@ -114,7 +114,12 @@ def note_error(err, context=""):
 
 
 def playback_failed(guild_id, fails, last_error=""):
-    alert("playback", f"伺服器 {guild_id} 連續 {fails} 首播放失敗，已暫停自動播放。\n```{str(last_error)[:300]}```")
+    try:
+        from .state import guild_names
+        where = f"「{guild_names[guild_id]}」" if guild_names.get(guild_id) else f" {guild_id} "
+    except Exception:
+        where = f" {guild_id} "
+    alert("playback", f"伺服器{where}連續 {fails} 首播放失敗，已暫停自動播放。\n```{str(last_error)[:300]}```")
 
 
 # ---------- 啟動／關閉紀錄 ----------
@@ -130,6 +135,12 @@ def _write_exit(data):
 _startup_reason = [None]
 
 
+def taipei_time(ts):
+    """epoch → 「2026-11-20 00:52（台北時間）」"""
+    from datetime import datetime, timedelta, timezone
+    return datetime.fromtimestamp(ts, timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M") + "（台北時間）"
+
+
 def mark_started():
     """啟動時呼叫：讀上次狀態，記下這次是否為異常重啟，再標記為執行中"""
     prev = None
@@ -140,9 +151,9 @@ def mark_started():
         pass
     if prev:
         st = prev.get("state")
-        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(prev.get("ts", 0)))
+        when = taipei_time(prev.get("ts", 0))     # 伺服器時區是 UTC：私訊一律寫台北時間
         if st == "running":
-            _startup_reason[0] = f"上次（{when} 起）沒有正常關閉：可能被強制結束、記憶體不足（OOM）或主機重開機"
+            _startup_reason[0] = f"上次從 {when} 開始執行後沒有正常關閉：可能被強制結束、記憶體不足（OOM）或主機重開機"
         elif st == "crashed":
             _startup_reason[0] = f"上次在 {when} 當機：{prev.get('reason', '未知錯誤')}"
     _write_exit({"state": "running", "ts": time.time(), "pid": os.getpid()})

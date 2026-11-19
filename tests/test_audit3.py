@@ -43,7 +43,7 @@ class A3(unittest.TestCase):
     def test_not_in_voice(self):
         i, _ = make_inter(in_voice=False)
         self.assertIsNone(asyncio.run(player.get_voice_client(i)))
-        self.assertEqual(i.response.calls[0][1], "你必須先加入語音頻道！")
+        self.assertEqual(i.response.calls[0][1], "請先加入語音頻道")
 
     def test_defers_before_slow_connect_then_followup_on_fail(self):
         i, ch = make_inter()

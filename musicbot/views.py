@@ -30,14 +30,14 @@ class MusicControlView(discord.ui.View):
             await interaction.response.send_message("此面板不屬於這個伺服器", ephemeral=True)
             return False
         if not interaction.user.voice:
-            await interaction.response.send_message("你必須先加入語音頻道！", ephemeral=True)
+            await interaction.response.send_message("請先加入語音頻道", ephemeral=True)
             return False
         vc = interaction.guild.voice_client
         if not vc:
             await interaction.response.send_message("機器人不在語音頻道中", ephemeral=True)
             return False
         if vc.channel != interaction.user.voice.channel:
-            await interaction.response.send_message("必須和機器人在同一個語音頻道！", ephemeral=True)
+            await interaction.response.send_message("請先加入機器人所在的語音頻道", ephemeral=True)
             return False
         return True
 
@@ -69,7 +69,7 @@ class MusicControlView(discord.ui.View):
             gid = self._gid(interaction)
             actionlog.record(gid, "skip", actionlog.discord_actor(interaction), now_playing.get(gid, ""),
                              url=now_playing_url.get(gid))
-            await interaction.response.send_message("已跳過", ephemeral=True)
+            await interaction.response.send_message("⏭️ 已跳過", ephemeral=True)
             await fade_out_stop(self._gid(interaction), vc)   # 0.12 秒淡出再切歌
         else:
             await interaction.response.send_message("沒有正在播放的歌曲", ephemeral=True)
@@ -85,9 +85,9 @@ class MusicControlView(discord.ui.View):
         gid = self._gid(interaction)
         if gid in queues and len(queues[gid]) > 1:
             random.shuffle(queues[gid])
-            await interaction.response.send_message("已隨機打亂佇列！", ephemeral=True)
+            await interaction.response.send_message("🔀 已隨機打亂佇列", ephemeral=True)
         else:
-            await interaction.response.send_message("佇列無需打亂", ephemeral=True)
+            await interaction.response.send_message("佇列不到 2 首，不用打亂", ephemeral=True)
 
     @discord.ui.button(label="\u2764\ufe0f", style=discord.ButtonStyle.secondary, row=1, custom_id="mb:add_favorite")
     async def add_favorite(self, interaction, button):
@@ -98,9 +98,9 @@ class MusicControlView(discord.ui.View):
             await interaction.response.send_message("目前沒有正在播放的歌曲", ephemeral=True)
             return
         if add_favorite_song(gid, url, title):
-            await interaction.response.send_message(f"已將 **{title}** 加入最愛！", ephemeral=True)
+            await interaction.response.send_message(f"❤️ 已將 **{title}** 加入最愛", ephemeral=True)
         else:
-            await interaction.response.send_message("這首歌已經在最愛清單中了！", ephemeral=True)
+            await interaction.response.send_message("❤️ 這首歌已經在最愛裡了", ephemeral=True)
 
     @discord.ui.button(label="\U0001f3b5", style=discord.ButtonStyle.success, row=1, custom_id="mb:fav_play")
     async def fav_play(self, interaction, button):
@@ -112,7 +112,7 @@ class MusicControlView(discord.ui.View):
             return
         favs = load_favorites(gid)
         if not favs:
-            await interaction.response.send_message("最愛清單為空！", ephemeral=True)
+            await interaction.response.send_message("最愛清單是空的", ephemeral=True)
             return
         from .state import queue_room, queue_full_message
         if queue_room(gid) <= 0:
@@ -122,7 +122,7 @@ class MusicControlView(discord.ui.View):
         song = random.choice(favs)
         queues[gid].append((song["url"], song["title"]))
         actionlog.record(gid, "add", actionlog.discord_actor(interaction), song["title"], url=song["url"], detail="隨機最愛")
-        await interaction.response.send_message(f"隨機選取最愛：**{song['title']}**", ephemeral=True)
+        await interaction.response.send_message(f"🎵 隨機選了一首最愛：**{song['title']}**", ephemeral=True)
         if not vc.is_playing() and not vc.is_paused():
             await play_next(gid, interaction.channel)
 
@@ -136,7 +136,7 @@ class MusicControlView(discord.ui.View):
             await interaction.response.send_message("機器人不在語音頻道中", ephemeral=True)
             return
         if not local_playlist:
-            await interaction.response.send_message("list.txt 無歌曲", ephemeral=True)
+            await interaction.response.send_message("本地歌單是空的", ephemeral=True)
             return
         from .state import queue_room, queue_full_message
         if queue_room(gid) <= 0:
@@ -147,7 +147,7 @@ class MusicControlView(discord.ui.View):
         song = random.choice(local_playlist)
         queues[gid].append((song["url"], song["title"]))
         actionlog.record(gid, "add", actionlog.discord_actor(interaction), song["title"], url=song["url"], detail="隨機循環")
-        await interaction.response.send_message(f"隨機循環：**{song['title']}**", ephemeral=True)
+        await interaction.response.send_message(f"🎲 已開啟隨機循環：**{song['title']}**", ephemeral=True)
         if not vc.is_playing() and not vc.is_paused():
             await play_next(gid, interaction.channel)
 
@@ -159,7 +159,7 @@ class MusicControlView(discord.ui.View):
         volumes[gid] = nv
         if gid in volume_transformers:
             volume_transformers[gid].volume = nv
-        await interaction.response.send_message(f"音量: {round(nv*100)}%", ephemeral=True)
+        await interaction.response.send_message(f"🔊 音量 {round(nv*100)}%", ephemeral=True)
 
     @discord.ui.button(label="\U0001f509", style=discord.ButtonStyle.secondary, row=2, custom_id="mb:volume_down")
     async def volume_down(self, interaction, button):
@@ -169,7 +169,7 @@ class MusicControlView(discord.ui.View):
         volumes[gid] = nv
         if gid in volume_transformers:
             volume_transformers[gid].volume = nv
-        await interaction.response.send_message(f"音量: {round(nv*100)}%", ephemeral=True)
+        await interaction.response.send_message(f"🔊 音量 {round(nv*100)}%", ephemeral=True)
 
     @discord.ui.button(label="\u2795", style=discord.ButtonStyle.primary, row=2, custom_id="mb:add_song")
     async def add_song(self, interaction, button):
