@@ -15,6 +15,7 @@ from . import history
 from .state import queue_full_message, queue_skip_message
 from .webcore import (
     web_add_to_queue, web_play_index, web_add_to_queue_batch, get_active_guild, web_import_songs,
+    resolve_queue_index, STALE,
 )
 from . import importer
 from . import actionlog
@@ -204,13 +205,28 @@ def api_queue_remove():
     data = request.get_json() or {}
     gid = int(data.get("guild_id", 0))
     index = int(data.get("index", -1))
+    expect = data.get("url")
     removed = None
     with state_lock:
-        if gid in queues and 0 <= index < len(queues[gid]):
-            removed = queues[gid].pop(index)
+        i = resolve_queue_index(gid, index, expect)   # 帶網址：位置過時 / 連點兩下也不會刪到別首
+        if i is not None:
+            removed = queues[gid].pop(i)
+    if expect and not removed:
+        return jsonify(dict(STALE)), 409
     if removed:
         actionlog.record(gid, "remove", _w._actor(), removed[1], url=removed[0])
+        _ensure_prefetch(gid)
     return jsonify({"status": "ok"})
+
+
+def _ensure_prefetch(gid):
+    """佇列變了（刪除 / 清空 / 排序）→ 背景預先解析立刻改瞄準新的下一首（不用等 5 秒一次的檢查）"""
+    try:
+        from . import prefetch
+        if client.loop and not client.loop.is_closed():
+            client.loop.call_soon_threadsafe(prefetch.ensure, gid)
+    except Exception:
+        pass
 
 @flask_app.route("/api/queue/reorder", methods=["POST"])
 def api_queue_reorder():
@@ -239,7 +255,11 @@ def api_queue_play():
     data = request.get_json() or {}
     gid = int(data.get("guild_id", 0))
     index = int(data.get("index", -1))
-    result = _w.run_async(web_play_index(gid, index, actor=_w._actor()))
+    expect = data.get("url")
+    result = _w.run_async(web_play_index(gid, index, actor=_w._actor(),
+                                         expect_url=expect if isinstance(expect, str) else None))
+    if result and result.get("code") == "stale":
+        return jsonify(result), 409
     return _w._ack(result)
 
 @flask_app.route("/api/queue/clear", methods=["POST"])
@@ -248,4 +268,5 @@ def api_queue_clear():
     gid = int(data.get("guild_id", 0))
     with state_lock:
         if gid in queues: queues[gid] = []
+    _ensure_prefetch(gid)
     return jsonify({"status": "cleared"})

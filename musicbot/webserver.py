@@ -19,6 +19,9 @@ from .config import log
 RESERVED = 8            # 一定留給一般請求（非 SSE）的執行緒數
 CHANNEL_TIMEOUT = 120   # 閒置連線幾秒後關閉（SSE 每 15 秒有心跳，而且處理中的請求不會被關）
 CONNECTION_LIMIT = 100
+# 單一請求內容上限：最大的正常請求（500 首歌 × 最長網址 + 歌名）約 1.7 MB。
+# waitress 預設 1 GB，而且會在登入檢查之前先把整個內容收進暫存檔 → 沒登入的人也能一直灌大檔塞爆磁碟
+MAX_BODY = 4 * 1024 * 1024
 
 
 def threads():
@@ -93,6 +96,7 @@ def create(app, host, port):
         threads=threads(),
         channel_timeout=CHANNEL_TIMEOUT,
         connection_limit=CONNECTION_LIMIT,
+        max_request_body_size=MAX_BODY,      # 超過直接回 413，不會收進記憶體 / 暫存檔
         trusted_proxy=None,
         clear_untrusted_proxy_headers=False,
         asyncore_use_poll=True,

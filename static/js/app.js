@@ -297,15 +297,15 @@ const API = {
     shuffle: (e, g) => api('POST', '/api/shuffle', { guild_id: g || gid(), enabled: e }),
     loop: (m, g) => api('POST', '/api/loop', { guild_id: g || gid(), mode: m }),
     queueAdd: (u, t, g) => api('POST', '/api/queue/add', { guild_id: g || gid(), url: u, title: t }),
-    queueRemove: (i, g) => api('POST', '/api/queue/remove', { guild_id: g || gid(), index: i }),
+    queueRemove: (i, g, u) => api('POST', '/api/queue/remove', { guild_id: g || gid(), index: i, url: u }),
     queueReorder: (f, t, g, u) => api('POST', '/api/queue/reorder', { guild_id: g || gid(), from: f, to: t, url: u }),
-    queuePlay: (i, g) => api('POST', '/api/queue/play', { guild_id: g || gid(), index: i }),
+    queuePlay: (i, g, u) => api('POST', '/api/queue/play', { guild_id: g || gid(), index: i, url: u }),
     queueClear: (g) => api('POST', '/api/queue/clear', { guild_id: g || gid() }),
     getPlaylist: () => api('GET', '/api/playlist'),
     playlistAdd: (u, t) => api('POST', '/api/playlist/add', { url: u, title: t }),
     playlistEdit: (i, u, t, ex) => api('POST', '/api/playlist/edit', { index: i, url: u, title: t, expect_url: ex }),
     playlistDelete: (i, ex) => api('POST', '/api/playlist/delete', { index: i, expect_url: ex }),
-    playlistPlay: (i, g) => api('POST', '/api/playlist/play', { guild_id: g || gid(), index: i }),
+    playlistPlay: (i, g, ex) => api('POST', '/api/playlist/play', { guild_id: g || gid(), index: i, expect_url: ex }),
     playlistPlayAll: (s, g) => api('POST', '/api/playlist/play-all', { guild_id: g || gid(), shuffle: s }),
     getFavorites: (g) => api('GET', `/api/favorites?guild_id=${g || gid()}`),
     favAdd: (u, t, g) => api('POST', '/api/favorites/add', { guild_id: g || gid(), url: u, title: t }),
@@ -1710,15 +1710,23 @@ function renderQueueList(q, view = QV.np) {
 
         bindQueueDrag(list, div);
 
-        div.querySelector('[data-action="play"]').addEventListener('click', () => {
+        div.querySelector('[data-action="play"]').addEventListener('click', (ev) => {
+            const b = ev.currentTarget; if (b.disabled) return; b.disabled = true;   // 連點兩下不會連跳兩首
             // 樂觀更新：先提示、進度歸零，伺服器在背景切歌（SSE 會立刻推送新歌）
             showToast(`▶ 播放：${song.title}`, 'success');
             setProgress(0);
             setText(el.currentTime, '0:00');
-            API.queuePlay(+div.dataset.index).then(reportActionResult);   // 用目前位置（拖曳 / 鍵盤移動後會變）
+            // 用目前位置（拖曳 / 鍵盤移動後會變）＋網址：位置過時（上一首剛播完佇列前移）時伺服器以網址為準
+            API.queuePlay(+div.dataset.index, null, song.url).then((r) => {
+                b.disabled = false;
+                if (r && r.code === 'stale') { resyncSoon(150); return; }   // 這首已經在播 / 被刪：不必再提示
+                reportActionResult(r);
+            });
         });
-        div.querySelector('[data-action="remove"]').addEventListener('click', async () => {
-            await API.queueRemove(+div.dataset.index);
+        div.querySelector('[data-action="remove"]').addEventListener('click', async (ev) => {
+            const b = ev.currentTarget; if (b.disabled) return; b.disabled = true;   // 連點兩下不會刪到下一首
+            await API.queueRemove(+div.dataset.index, null, song.url);
+            b.disabled = false;
             renderQueueFromCache();
         });
         return div;
@@ -1856,7 +1864,7 @@ function renderPlaylistList(pl) {
             </div>`;
         div.querySelector('.item-title').title = song.title || '';
         div.querySelector('[data-action="play"]').addEventListener('click', async () => {
-            const r = await API.playlistPlay(i);
+            const r = await API.playlistPlay(i, null, song.url);
             toastAdded(r, song.title);
         });
         div.querySelector('[data-action="edit"]').addEventListener('click', () => openEditModal(i, song.url, song.title));

@@ -35,8 +35,8 @@ class QueueReorder(unittest.TestCase):
         body = _slice("async function commitQueueMove(", "\nlet _qRenderPending")
         self.assertIn("API.queueReorder(from, to, undefined, song && song.url)", body)   # 伺服器比對網址，被別人改過就 409
         self.assertIn("state._queueKey = undefined;", body)                             # 失敗：下次 SSE 照伺服器重畫
-        self.assertIn("API.queuePlay(+div.dataset.index)", JS)                          # 搬過的列：播放 / 刪除用目前位置
-        self.assertIn("API.queueRemove(+div.dataset.index)", JS)
+        self.assertIn("API.queuePlay(+div.dataset.index, null, song.url)", JS)          # 搬過的列：播放 / 刪除用目前位置＋網址
+        self.assertIn("API.queueRemove(+div.dataset.index, null, song.url)", JS)
 
     def test_autoscroll_keeps_going_at_edges(self):
         body = _slice("function dragFrame(", "\nasync function finishQueueDrag")

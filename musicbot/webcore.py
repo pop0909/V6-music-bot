@@ -290,8 +290,33 @@ async def web_reorder_queue(gid, frm, to):
     return {"status": "ok"}
 
 
-async def web_play_index(gid, index, actor=None):
+def resolve_queue_index(gid, index, expect_url=None):
+    """面板送來的 (位置, 網址) → 佇列目前真正的位置；找不到 → None。
+    面板看到的位置可能已過時（上一首剛播完佇列往前移、別人刪了歌、連點兩下），
+    有帶網址就以網址為準：位置對不上時改找同一首；整首都不在佇列裡 → None（不要動到別首）"""
+    q = queues.get(gid)
+    if not q:
+        return None
+    expect = expect_url.strip() if isinstance(expect_url, str) else ""
+    if not expect:
+        return index if 0 <= index < len(q) else None
+    if 0 <= index < len(q) and q[index][0] == expect:
+        return index
+    for i, (u, _t) in enumerate(q):
+        if u == expect:
+            return i
+    return None
+
+
+STALE = {"status": "error", "code": "stale", "message": "佇列已變動，這首已不在佇列中"}
+
+
+async def web_play_index(gid, index, actor=None, expect_url=None):
     """從 Web 播放指定索引（將目標歌曲移到佇列最前，靠 after_play 驅動 play_next）"""
+    if expect_url:
+        index = resolve_queue_index(gid, index, expect_url)
+        if index is None:
+            return dict(STALE)
     if gid not in queues or index < 0 or index >= len(queues[gid]):
         return {"status": "error", "message": "無效索引"}
 

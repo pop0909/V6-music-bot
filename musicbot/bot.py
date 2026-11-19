@@ -125,6 +125,45 @@ async def on_guild_join(guild):
 
 
 @client.event
+async def on_guild_update(before, after):
+    """伺服器改名：面板的伺服器清單跟著改（舊版要重啟才會更新）"""
+    with state_lock:
+        if after.id in guild_names:
+            guild_names[after.id] = after.name
+
+
+@client.event
+async def on_guild_remove(guild):
+    """機器人被踢出 / 伺服器被刪：清掉這個伺服器的所有狀態。
+    舊版什麼都不做 → 面板一直列著已經進不去的伺服器（選了就一直失敗）、休眠中的佇列重啟後還會想回去"""
+    gid = guild.id
+    log.info(f"[Discord] 已離開伺服器：{guild.name}（{gid}）")
+    try:
+        from .player_voice import leave_voice
+        await leave_voice(gid, guild)          # 停播、清佇列與播放狀態、斷線、不再自動回去
+    except Exception as e:
+        log.warning(f"[Discord] 離開伺服器時清除播放狀態失敗：{e}")
+    from . import state as _st
+    try:
+        from . import idlesleep
+        idlesleep.asleep.pop(gid, None)
+        idlesleep.saved.pop(gid, None)
+    except Exception:
+        pass
+    t = (_st.sleep_timers.get(gid) or {}).get("task")
+    if t and not t.done():
+        t.cancel()
+    with state_lock:
+        guild_names.pop(gid, None)
+        for d in (_st.queues, _st.current_voice_channel, _st.control_panels, _st.loop_modes,
+                  _st.random_loop_guilds, _st.sleep_timers, _st.play_failures, _st.play_notices):
+            d.pop(gid, None)
+        if _st.active_guild_id == gid:
+            _st.active_guild_id = None
+    _st.notify_change()
+
+
+@client.event
 async def on_voice_state_update(member, before, after):
     """語音頻道只剩 bot 自己時，等 5 分鐘仍無人則自動離開"""
     if member.bot:

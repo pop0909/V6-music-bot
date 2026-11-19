@@ -317,6 +317,13 @@ async def ui6_checks(R, pg, w):
         await R.audit("21_queue_kbd")
     else:
         R.bad(f"佇列歌太少，測不了鍵盤移動：{before}")
+    # 連點兩下「刪除」只能刪一首（舊版第二下用同一個位置，會刪到下一首）
+    srvq = lambda: R.J("async () => (await (await fetch('/api/status?guild_id=' + state.guildId)).json()).queue.map(s => s.url)")
+    q0 = await srvq()
+    if len(q0) >= 3:
+        await pg.dblclick("#npQueueList .list-item:nth-child(2) [data-action=remove]"); await pg.wait_for_timeout(1200)
+        q1 = await srvq()
+        if q1 != q0[:1] + q0[2:]: R.bad(f"連點兩下刪除不是只刪那一首：{len(q0)} → {len(q1)}")
     if paused: await R.J("() => API.play()")
 
 

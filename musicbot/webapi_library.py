@@ -89,9 +89,16 @@ def api_playlist_play():
     data = request.get_json() or {}
     gid = int(data.get("guild_id", 0))
     index = int(data.get("index", -1))
-    if index < 0 or index >= len(_w.local_playlist):
+    expect = data.get("expect_url")
+    pl = _w.local_playlist
+    if isinstance(expect, str) and expect and not (0 <= index < len(pl) and pl[index]["url"] == expect):
+        # 面板上的位置過時（別人剛刪 / 改了歌單）→ 以網址為準，不要加到別首
+        index = next((i for i, s in enumerate(pl) if s["url"] == expect), -1)
+        if index < 0:
+            return jsonify({"status": "error", "code": "stale", "message": "歌單已變動，這首已不在歌單中"}), 409
+    if index < 0 or index >= len(pl):
         return jsonify({"status": "error", "message": "無效索引"}), 400
-    song = _w.local_playlist[index]
+    song = pl[index]
     result = _w.run_async(web_add_to_queue(gid, song["url"], song["title"], actor=_w._actor()))
     if not result:
         return jsonify({"status": "error", "message": "加入失敗"})
