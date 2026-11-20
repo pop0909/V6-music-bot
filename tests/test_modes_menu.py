@@ -89,8 +89,8 @@ class Markup(unittest.TestCase):
             self.assertIn(f'id="{i}"', menu)
 
     def test_version_bumped(self):
-        self.assertIn("style.css?v=20261121audit2", self.html)
-        self.assertIn("app.js?v=20261121audit2", self.html)
+        self.assertIn("style.css?v=20261121audit3", self.html)
+        self.assertIn("app.js?v=20261121audit3", self.html)
 
 
 class Script(unittest.TestCase):

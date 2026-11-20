@@ -218,7 +218,7 @@ class Frontend(unittest.TestCase):
         html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
         self.assertIn('data-tab="mylists"', html)
         self.assertIn('id="tabMylists"', html)
-        self.assertIn("app.js?v=20261121audit2", html)
+        self.assertIn("app.js?v=20261121audit3", html)
         js = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
         self.assertIn("'/api/ext/lists'", js)
 

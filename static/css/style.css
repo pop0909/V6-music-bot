@@ -1263,7 +1263,7 @@ html.low-power .player-bar .progress-fill::before { display: none; }
 
     #homeTabs { overflow-x: auto; scrollbar-width: none; }
     #homeTabs .tab-btn i { display: none; }
-    #homeTabs .tab-btn { white-space: nowrap; padding: 8px 4px; }
+    #homeTabs .tab-btn { white-space: nowrap; padding: 8px 4px; min-height: 36px; }   /* 可橫捲 → 會裁掉 ::before 的加大點擊範圍：本身至少 36 + 外框 10 = 46 */
     .toast-container { bottom: calc(var(--bar-h) + 14px); }
 }
 .toast-container { bottom: calc(var(--bar-h) + 18px); }
