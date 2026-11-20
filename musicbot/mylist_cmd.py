@@ -7,11 +7,13 @@ from discord import app_commands
 
 from .bot import tree
 from . import userlists, importer
+from .discord_ux import md
 
 NOT_LINKED = ("你的 Discord 帳號還沒連結到個人歌單。請擁有者到網頁「成員管理」(/members) 幫你填上 Discord 使用者 ID"
               "（Discord 設定 → 進階 → 開發者模式，再對自己按右鍵「複製使用者 ID」）。")
 
-mylist = app_commands.Group(name="mylist", description="我的個人歌單（看 / 播放 / 加歌 / 匯入 YouTube 播放清單）")
+mylist = app_commands.Group(name="mylist", description="我的個人歌單（看 / 播放 / 加歌 / 匯入 YouTube 播放清單）",
+                            guild_only=True)
 
 
 def _key(interaction):
@@ -52,15 +54,15 @@ async def show(interaction: discord.Interaction, name: str = None):
         ls = userlists.list_playlists(k)
         if not ls:
             return await _say(interaction, "你還沒有歌單。用 `/mylist import` 匯入 YouTube 播放清單，或到網頁面板「我的歌單」建立。")
-        lines = [f"• **{p['name']}**（{p['count']} 首）" for p in ls]
+        lines = [f"• **{md(p['name'])}**（{p['count']} 首）" for p in ls]
         return await _say(interaction, "\n".join(lines)[:1900])
     try:
         pl = userlists.get_playlist(k, _resolve(k, name))
     except KeyError as e:
         return await _say(interaction, str(e.args[0]))
-    lines = [f"{i}. {s['title']}" for i, s in enumerate(pl["songs"][:20], 1)]
-    more = f"\n…還有 {pl['count'] - 20} 首" if pl["count"] > 20 else ""
-    await _say(interaction, (f"**{pl['name']}**（{pl['count']} 首）\n" + "\n".join(lines))[:1850] + more)
+    lines = [f"{i}. {md(s['title'], 90)}" for i, s in enumerate(pl["songs"][:20], 1)]
+    more = f"\n…還有 {pl['count'] - 20} 首（完整內容請到網頁「我的歌單」）" if pl["count"] > 20 else ""
+    await _say(interaction, (f"**{md(pl['name'])}**（{pl['count']} 首）\n" + "\n".join(lines))[:1850] + more)
 
 
 @mylist.command(name="play", description="把整份歌單加入佇列（加在佇列尾端）")
@@ -92,7 +94,7 @@ async def play(interaction: discord.Interaction, name: str, shuffle: bool = Fals
     sk = stats.get("full_skipped", 0)
     if not n and sk:
         return await _say(interaction, f"⚠️ {queue_full_message()}")
-    msg = f"✅ 已從「{pl['name']}」加入 **{n}** 首" if n else "歌單裡的歌都已經在佇列中"
+    msg = f"✅ 已從「{md(pl['name'])}」加入 **{n}** 首" if n else "歌單裡的歌都已經在佇列中"
     await _say(interaction, msg + (f"（{queue_skip_message(sk)}）" if sk else ""))
 
 
@@ -106,21 +108,33 @@ async def add(interaction: discord.Interaction, name: str, url: str = None):
         return await _say(interaction, NOT_LINKED)
     gid = interaction.guild.id if interaction.guild else 0
     title = None
-    if not url:
+    if not (url or "").strip():
         url, title = now_playing_url.get(gid), now_playing.get(gid)
         if not url:
             return await _say(interaction, "目前沒有正在播放的歌，請填網址")
     from .extapi import normalize_youtube, _lookup_title
+    from .utils import valid_song_url
     url = url.strip()
     url = normalize_youtube(url) or url             # youtu.be / shorts / &t= 都統一，去重才準
-    if not title and url.startswith("http"):
+    if not valid_song_url(url):
+        return await _say(interaction, "網址格式不正確，請貼上 YouTube 影片網址（https://…）")
+    try:
+        lid = _resolve(k, name)                     # 先確認歌單存在，再去查標題（查標題要幾秒）
+    except KeyError as e:
+        return await _say(interaction, str(e.args[0]))
+    if not title:
+        # 用 yt-dlp 查標題可能超過 3 秒 → 先 defer，不然 Discord 會顯示「應用程式沒有回應」
+        if not interaction.response.is_done():
+            await interaction.response.defer(thinking=True, ephemeral=True)
         loop = asyncio.get_running_loop()
         title = await loop.run_in_executor(None, _lookup_title, url)
     try:
-        added, _ = userlists.add_songs(k, _resolve(k, name), [{"url": url, "title": title or url}])
+        added, _ = userlists.add_songs(k, lid, [{"url": url, "title": title or url}])
     except (KeyError, ValueError) as e:
         return await _say(interaction, str(e.args[0]))
-    await _say(interaction, f"✅ 已加入「{name}」" if added else "歌單裡已經有這首歌（或網址無效）")
+    pname = md(userlists.get_playlist(k, lid)["name"])
+    song = md(title or url, 120)
+    await _say(interaction, f"✅ 已把 **{song}** 加入「{pname}」" if added else f"「{pname}」裡已經有 **{song}** 了")
 
 
 @mylist.command(name="import", description="匯入 YouTube / Spotify 歌單，存成一份新的個人歌單（不會加入佇列）")

@@ -33,6 +33,7 @@ from .utils import clean_str, format_time
 from . import autoplay
 from . import prefetch
 from . import audio, history, ytdl, prewarm
+from . import discord_ux as _ux
 
 # 分段代理遇到 403/410（串流網址失效）時，用 yt-dlp 重新解析同一首歌的網址續傳（在代理執行緒裡同步跑）
 rangeproxy.set_resolver(lambda page: prefetch.extract_stream(page)["url"])
@@ -323,11 +324,8 @@ async def _play_next_locked(guild_id, channel=None):
 
         from .views import MusicControlView
         view = MusicControlView(guild_id)
-        dur = song_durations[guild_id]
-        if dur > 0:
-            content = f"▶ 正在播放：**{title}**\n`0:00 / {format_time(dur)}`"
-        else:
-            content = f"▶ 正在播放：**{title}**"
+        # 歌名跳脫 Markdown；長度未知（直播）顯示「🔴 直播」，跟網頁面板一致
+        content = _ux.panel_text(guild_id, title=title, paused=False, elapsed=0)
 
         # 最終安全網：發送前再次清理 content
         content = clean_str(content)
@@ -386,7 +384,7 @@ async def _play_next_locked(guild_id, channel=None):
             play_notices[guild_id] = {"kind": "bot_check", "message": msg, "ts": time.time()}
             if not prev or prev.get("kind") != "bot_check" or time.time() - prev.get("ts", 0) > 600:
                 try:
-                    await channel.send(f"⚠️ 無法播放 **{title}**：{msg}")
+                    await channel.send(f"⚠️ 無法播放 **{_ux.md(title, 150)}**：{msg}")
                 except Exception:
                     pass
             await _update_panel(guild_id, f"⚠️ 已暫停自動播放：{msg}", view=None)
@@ -398,7 +396,7 @@ async def _play_next_locked(guild_id, channel=None):
             # 單曲循環時壞掉的歌不要一直重播
             loop_current.pop(guild_id, None)
             try:
-                await channel.send(f"⚠️ 無法播放 **{title}**：{ytdl.plain_error(e)}")
+                await channel.send(f"⚠️ 無法播放 **{_ux.md(title, 150)}**：{ytdl.plain_error(e)}")
             except Exception:
                 pass
             if fails >= MAX_CONSECUTIVE_FAILURES:
@@ -427,11 +425,7 @@ async def _play_next_locked(guild_id, channel=None):
             # 歌確實有在播，更新控制面板即可
             from .views import MusicControlView
             view = MusicControlView(guild_id)
-            dur = song_durations.get(guild_id, 0)
-            if dur > 0:
-                content = f"▶ 正在播放：**{title}**\n`0:00 / {format_time(dur)}`"
-            else:
-                content = f"▶ 正在播放：**{title}**"
+            content = _ux.panel_text(guild_id, title=title, paused=False, elapsed=0)
             if guild_id in control_panels and _panel_age(control_panels[guild_id]) >= PANEL_MAX_AGE \
                     and await _repost_panel(guild_id, channel, content, view):
                 pass
@@ -527,18 +521,7 @@ async def progress_updater(guild_id, channel, version):
             elif guild_id in paused_position:
                 elapsed = paused_position[guild_id]
             else: break
-            duration = song_durations.get(guild_id, 0)
-            title = now_playing.get(guild_id, "未知")
-            if duration > 0:
-                prog = min(elapsed / duration, 1.0)
-                bar_len = 15
-                filled = int(prog * bar_len)
-                bar = "\u2588" * filled + "\u2591" * (bar_len - filled)
-                is_paused = guild_id not in song_start_times and guild_id in paused_position
-                pi = "\u23f8" if is_paused else "\u25b6"
-                content = f"{pi} 正在播放：**{title}**\n{bar} `{format_time(elapsed)} / {format_time(duration)}`"
-            else:
-                content = f"\u25b6 正在播放：**{title}**"
+            content = _ux.panel_text(guild_id, title=now_playing.get(guild_id, "未知"), elapsed=elapsed)
             msg = control_panels.get(guild_id)
             if msg is not None:
                 if _panel_age(msg) >= PANEL_MAX_AGE:

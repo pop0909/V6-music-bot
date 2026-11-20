@@ -138,6 +138,12 @@ async def get_voice_client(interaction):
         return None
     channel = interaction.user.voice.channel
     cur = interaction.guild.voice_client
+    from .discord_ux import voice_precheck, voice_error_text
+    if not (cur and cur.is_connected() and cur.channel == channel):
+        problem = voice_precheck(interaction.guild, channel)   # 沒權限 / 頻道滿了：直接說原因，不要等 3 次重試逾時
+        if problem:
+            await reply(interaction, problem)
+            return None
     # 需要實際連線 / 移動時先 defer：connect_voice 可能花上數十秒，互動 token 3 秒就過期
     if not (cur and cur.is_connected() and cur.channel == channel) and not interaction.response.is_done():
         try:
@@ -148,7 +154,7 @@ async def get_voice_client(interaction):
         return await _p.connect_voice(interaction.guild, channel)
     except Exception as e:
         log.error(f"[語音] 無法加入：{e!r}")
-        await reply(interaction, f"無法加入語音頻道：{e}")
+        await reply(interaction, voice_error_text(e, channel))   # 舊版直接顯示例外原文（常常是空的或英文）
         return None
 
 
@@ -221,13 +227,22 @@ async def _process_and_play(interaction, query, gid, vc):
         from . import actionlog       # 操作紀錄：一首記歌名；YouTube 播放清單只記一筆「N 首」
         actionlog.record_add(gid, actionlog.discord_actor(interaction), added_songs,
                              label=(f"清單：{clean_str(info.get('title') or '')[:80]}" if len(added_songs) > 1 and info.get("title") else None))
-        # 發送到指定頻道
-        out_ch = await _p._get_output_channel(gid)
-        if out_ch:
-            await out_ch.send(f"🎵 **{interaction.user.display_name}** 加入了 **{added}** 首歌")
+        from .discord_ux import md, announce
+        idle = not vc.is_playing() and not vc.is_paused()
         extra = f"（佇列已滿，另有 {full_skipped} 首沒加入）" if full_skipped else ""
-        await interaction.followup.send(f"✅ 已將 **{added}** 首歌加入佇列{extra}", ephemeral=True)
-        if not vc.is_playing() and not vc.is_paused():
+        who = md(interaction.user.display_name)
+        if added == 1:
+            # 打關鍵字時使用者不知道挑到哪一首 → 回覆要寫出歌名與位置（跟網頁「已加入，排在第 N 首」一致）
+            t = md(added_songs[0][1], 150)
+            pos = len(queues[gid])
+            mine = f"▶ 馬上播放：**{t}**" if idle and pos == 1 else f"✅ 已加入佇列第 {pos} 首：**{t}**"
+            public = f"🎵 **{who}** 點了 **{t}**"
+        else:
+            mine = f"✅ 已將 **{added}** 首歌加入佇列{extra}"
+            public = f"🎵 **{who}** 加入了 **{added}** 首歌"
+        await interaction.followup.send(mine, ephemeral=True)
+        await announce(gid, public)
+        if idle:
             await _p.play_next(gid)
     except Exception as e:
         log.error(f"_process Error: {e}")

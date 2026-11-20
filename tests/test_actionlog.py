@@ -337,6 +337,8 @@ class DiscordPaths(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         actionlog._reset_for_tests(os.path.join(self.tmp, "action_log.json"))
+        from musicbot import discord_ux
+        discord_ux.reset_for_tests()     # 連點跳過防護：每個測試從頭算
         state.queues[G] = []
         state.now_playing[G] = "正在播"
         state.now_playing_url[G] = U % 5
