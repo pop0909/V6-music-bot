@@ -6,6 +6,8 @@
 - 同一個 IP（優先看 Cloudflare 的 CF-Connecting-IP）連續輸錯 5 次 → 鎖 10 分鐘。
 - 擁有者（.env 的 EXT_TOKEN，或 Discord 擁有者帳號）才能用：更新 / 重啟、成員管理。
 - Discord 登入的 cookie 只放隨機 session id（{"s": …}），身分在伺服器端（discordauth）查。
+- Discord 登入設定好（discordauth.enabled()）→ 網頁只能用 Discord 登入，金鑰登入關閉、舊的金鑰 cookie 失效；
+  沒設定 → 跟以前一樣用金鑰（避免把自己鎖在外面）。擴充功能的 X-Ext-Token 兩種情況都照舊。
 """
 import hashlib
 import hmac
@@ -142,9 +144,11 @@ def needs_renew(issued_ts):
 
 
 def _ident_for(data):
+    from . import discordauth
     if "s" in data:
-        from . import discordauth
         return discordauth.ident_for_session(data.get("s"))
+    if discordauth.enabled():
+        return None                 # Discord 登入設定好之後，網頁只認 Discord 登入：舊的金鑰登入 cookie 一律要重新登入
     uk, fp = data.get("u"), data.get("f")
     if not isinstance(uk, str) or not isinstance(fp, str):
         return None

@@ -91,26 +91,27 @@ def login():
     if request.method == "GET":
         if webauth.current_user():
             return redirect(nxt)
+        if discordauth.enabled():
+            return _login_page(nxt, _DISCORD_ERR.get(request.args.get("err") or ""))
         wait = webauth.locked_for(ip)
-        derr = _DISCORD_ERR.get(request.args.get("err") or "")
-        if wait:
-            return _login_page(nxt, _lock_msg(wait), locked=True, key_open=True)
-        return _login_page(nxt, derr)
+        return _login_page(nxt, _lock_msg(wait) if wait else None, locked=bool(wait))
+    if discordauth.enabled():       # 網頁只能用 Discord 登入（金鑰只給擴充功能用）
+        return _login_page(nxt, "網頁已改用 Discord 登入，請按上面的「用 Discord 登入」"), 403
     if not extmembers.owner_token():
-        return _login_page(nxt, "伺服器還沒設定 EXT_TOKEN，暫時無法登入", locked=True, key_open=True), 503
+        return _login_page(nxt, "伺服器還沒設定 EXT_TOKEN，暫時無法登入", locked=True), 503
     wait = webauth.locked_for(ip)
     if wait:
-        return _login_page(nxt, _lock_msg(wait), locked=True, key_open=True), 429
+        return _login_page(nxt, _lock_msg(wait), locked=True), 429
     if not webauth.same_origin(request):
-        return _login_page(nxt, "來源不符，請重新整理再試", key_open=True), 403
+        return _login_page(nxt, "來源不符，請重新整理再試"), 403
     ident = extmembers.authenticate(request.form.get("key"))
     value = webauth.make_cookie_value(ident) if ident else None
     if not value:
         left, lock = webauth.record_fail(ip)
         log.info(f"[登入] 金鑰錯誤（{ip}，剩 {left} 次）")
         if lock:
-            return _login_page(nxt, _lock_msg(lock), locked=True, key_open=True), 429
-        return _login_page(nxt, f"金鑰錯誤或已停用，還可以再試 {left} 次", key_open=True), 401
+            return _login_page(nxt, _lock_msg(lock), locked=True), 429
+        return _login_page(nxt, f"金鑰錯誤或已停用，還可以再試 {left} 次"), 401
     webauth.clear_fails(ip)
     extmembers.record_use(ident)
     log.info(f"[登入] {ident.get('name')} 登入面板（{ip}）")
@@ -123,10 +124,9 @@ def _lock_msg(secs):
     return f"輸錯太多次，請 {max(1, (secs + 59) // 60)} 分鐘後再試"
 
 
-def _login_page(nxt, error=None, locked=False, key_open=False):
-    on = discordauth.enabled()
-    return render_template("login.html", next=nxt, error=error, locked=locked, discord_on=on,
-                           key_open=key_open or not on)
+def _login_page(nxt, error=None, locked=False):
+    """Discord 登入設定好 → 只有「用 Discord 登入」；沒設定 → 跟以前一樣輸入金鑰"""
+    return render_template("login.html", next=nxt, error=error, locked=locked, discord_on=discordauth.enabled())
 
 
 # Discord 登入失敗：網址只帶代號，頁面顯示固定的中文（不把網址上的文字直接顯示出來）
@@ -137,7 +137,7 @@ _DISCORD_ERR = {
     "exchange": "跟 Discord 連線失敗，請再試一次",
     "notmember": "你不在機器人所在的 Discord 伺服器裡，無法登入",
     "notready": "機器人還沒連上 Discord，請稍後再試",
-    "off": "Discord 登入還沒設定好，請改用金鑰登入",
+    "off": "Discord 登入還沒設定好",
 }
 
 
@@ -167,7 +167,7 @@ def discord_callback():
     ip = webauth.client_ip(request)
     if not discordauth.callback_allowed(ip):
         log.warning(f"[登入] Discord 登入回呼太頻繁（{ip}）")
-        return _login_page("/", "嘗試太多次，請 10 分鐘後再試", key_open=True), 429
+        return _login_page("/", "嘗試太多次，請 10 分鐘後再試"), 429
 
     def fail(code):
         resp = redirect("/login?err=" + code)

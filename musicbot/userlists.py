@@ -5,7 +5,11 @@
 身分（user key）：
 - 擁有者金鑰（.env EXT_TOKEN）→ "owner"
 - 成員金鑰（extmembers）       → 成員 id
-- Discord：使用者 id 透過 links 對應到上面其中一個 key（擁有者在 /members 頁設定）
+- Discord 帳號（網頁用 Discord 登入、Discord /mylist）→ discord_key()：
+    有連結（擁有者在 /members 設定）→ 連結的成員 id / "owner"（擴充功能、網頁、/mylist 共用同一份）
+    沒連結的擁有者 → "owner"；其他人 → "d:<Discord id>"（自動有自己的歌單，不用連結）
+- 連結 Discord 時，那個帳號原本 "d:<id>" 的歌單會合併到成員名下；刪除有連結的成員時，成員的歌單搬到 "d:<id>"
+  （都不會丟資料；重做一次也不會重複搬）
 """
 import json
 import os
@@ -219,8 +223,52 @@ def remove_song(key, lid, url):
 
 
 # ---------- Discord 連結 ----------
+DISCORD_PREFIX = "d:"
+
+
+def discord_key(discord_id, owner=False):
+    """Discord 使用者 → 個人歌單的 key（網頁 Discord 登入和 /mylist 都用這個，兩邊看到同一份）"""
+    did = str(discord_id or "").strip()
+    with _lock:
+        k = _load()["links"].get(did)
+    if k:
+        return k
+    return "owner" if owner else DISCORD_PREFIX + did
+
+
+def _merge_locked(src, dst, enforce_cap=True):
+    """把 src 的歌單全部搬到 dst（同名的加「（2）」…）；src 沒有歌單 → 什麼都不做。回傳搬了幾份"""
+    users = _load()["users"]
+    moving = (users.get(src) or {}).get("lists") or []
+    if src == dst:
+        return 0
+    if not moving:
+        users.pop(src, None)        # 空的也清掉
+        return 0
+    have = _lists(dst)
+    if enforce_cap and len(have) + len(moving) > MAX_LISTS:
+        raise ValueError(f"這個 Discord 帳號已經有 {len(moving)} 份自己的歌單，合併後會超過 {MAX_LISTS} 份，"
+                         f"請對方先刪掉一些再連結")
+    names = {p["name"] for p in have}
+    ids = {p["id"] for p in have}
+    for pl in moving:
+        pl = dict(pl)
+        base, n = pl["name"], 2
+        while pl["name"] in names:
+            suffix = f"（{n}）"
+            pl["name"] = base[:NAME_MAX - len(suffix)] + suffix
+            n += 1
+        while pl["id"] in ids:
+            pl["id"] = secrets.token_hex(5)
+        names.add(pl["name"]); ids.add(pl["id"])
+        have.append(pl)
+    users.pop(src, None)
+    return len(moving)
+
+
 def link_discord(key, discord_id):
-    """把 Discord 使用者 id 對應到 key；discord_id 空 → 解除這個 key 的連結"""
+    """把 Discord 使用者 id 對應到 key；discord_id 空 → 解除這個 key 的連結。
+    連結時：那個 Discord 帳號自己的歌單（"d:<id>"）合併到 key 名下"""
     with _lock:
         links = _load()["links"]
         did = str(discord_id or "").strip()
@@ -229,6 +277,9 @@ def link_discord(key, discord_id):
                 raise ValueError("Discord 使用者 ID 應為 17～20 位數字")
             if links.get(did) not in (None, key):
                 raise ValueError("這個 Discord ID 已經連結到另一位成員，請先解除那邊的連結")
+            moved = _merge_locked(DISCORD_PREFIX + did, key)       # 超過上限會丟 ValueError，什麼都沒改
+            if moved:
+                log.info(f"[個人歌單] Discord 帳號的 {moved} 份歌單已合併到連結的成員")
         for d in [d for d, k in links.items() if k == key]:
             links.pop(d)
         if did:
@@ -243,16 +294,23 @@ def discord_links():
 
 
 def key_for_discord(discord_id):
+    """只看連結（沒連結 → None）"""
     with _lock:
         return _load()["links"].get(str(discord_id))
 
 
 def drop_user(key):
-    """成員被刪除時：歌單與連結一起移除"""
+    """成員被刪除時：有連結 Discord → 歌單搬到那個 Discord 帳號名下（不丟資料）；沒連結 → 歌單一起刪。連結一律移除"""
     with _lock:
         data = _load()
-        changed = data["users"].pop(key, None) is not None
-        for d in [d for d, k in data["links"].items() if k == key]:
+        dids = [d for d, k in data["links"].items() if k == key]
+        if dids and (data["users"].get(key) or {}).get("lists"):
+            n = _merge_locked(key, DISCORD_PREFIX + dids[0], enforce_cap=False)
+            log.info(f"[個人歌單] 刪除成員：{n} 份歌單移到他的 Discord 帳號名下")
+            changed = True
+        else:
+            changed = data["users"].pop(key, None) is not None
+        for d in dids:
             data["links"].pop(d); changed = True
         if changed:
             _save()

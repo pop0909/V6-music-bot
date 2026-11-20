@@ -1,4 +1,6 @@
-"""/mylist 指令群組：Discord 上用自己的個人歌單（Discord 使用者 id → 擁有者在 /members 連結的身分）"""
+"""/mylist 指令群組：Discord 上用自己的個人歌單。
+每個 Discord 帳號自動有自己的歌單（不用連結）；有在 /members 連結到成員 → 用成員那份（跟擴充功能、網頁共用）。
+跟網頁「我的歌單」（用 Discord 登入）是同一份：都用 userlists.discord_key()。"""
 import asyncio
 import random
 
@@ -9,15 +11,14 @@ from .bot import tree
 from . import userlists, importer
 from .discord_ux import md
 
-NOT_LINKED = ("你的 Discord 帳號還沒連結到個人歌單。請擁有者到網頁「成員管理」(/members) 幫你填上 Discord 使用者 ID"
-              "（Discord 設定 → 進階 → 開發者模式，再對自己按右鍵「複製使用者 ID」）。")
-
 mylist = app_commands.Group(name="mylist", description="我的個人歌單（看 / 播放 / 加歌 / 匯入 YouTube 播放清單）",
                             guild_only=True)
 
 
 def _key(interaction):
-    return userlists.key_for_discord(interaction.user.id)
+    from . import discordauth
+    uid = interaction.user.id
+    return userlists.discord_key(uid, owner=discordauth.is_owner(uid))
 
 
 async def _say(interaction, msg):
@@ -27,8 +28,6 @@ async def _say(interaction, msg):
 
 async def _name_ac(interaction, current):
     k = _key(interaction)
-    if not k:
-        return []
     cur = (current or "").lower()
     return [app_commands.Choice(name=f"{p['name']}（{p['count']} 首）"[:100], value=p["name"])
             for p in userlists.list_playlists(k) if cur in p["name"].lower()][:25]
@@ -48,8 +47,6 @@ def _resolve(k, name):
 @app_commands.autocomplete(name=_name_ac)
 async def show(interaction: discord.Interaction, name: str = None):
     k = _key(interaction)
-    if not k:
-        return await _say(interaction, NOT_LINKED)
     if not name:
         ls = userlists.list_playlists(k)
         if not ls:
@@ -73,8 +70,6 @@ async def play(interaction: discord.Interaction, name: str, shuffle: bool = Fals
     from .webcore import web_import_songs
     from .state import queue_full_message, queue_skip_message
     k = _key(interaction)
-    if not k:
-        return await _say(interaction, NOT_LINKED)
     try:
         pl = userlists.get_playlist(k, _resolve(k, name))
     except KeyError as e:
@@ -104,8 +99,6 @@ async def play(interaction: discord.Interaction, name: str, shuffle: bool = Fals
 async def add(interaction: discord.Interaction, name: str, url: str = None):
     from .state import now_playing, now_playing_url
     k = _key(interaction)
-    if not k:
-        return await _say(interaction, NOT_LINKED)
     gid = interaction.guild.id if interaction.guild else 0
     title = None
     if not (url or "").strip():
@@ -142,8 +135,6 @@ async def add(interaction: discord.Interaction, name: str, url: str = None):
 async def import_(interaction: discord.Interaction, url: str, name: str = None):
     from .userlistapi import import_into_new_list
     k = _key(interaction)
-    if not k:
-        return await _say(interaction, NOT_LINKED)
     url = (url or "").strip()
     if not url.startswith("http") or not (importer.is_spotify(url) or "list=" in url):
         return await _say(interaction, "請貼上 YouTube 播放清單（含 list=）或 Spotify 歌單／專輯網址")

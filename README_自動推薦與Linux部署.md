@@ -66,7 +66,11 @@ OAUTH_REDIRECT_URI=https://musbot.kdns.fr/auth/discord/callback   # 要跟開發
 1. Discord 開發者後台 → 這個機器人的應用程式 → OAuth2 → Redirects 加上 `https://musbot.kdns.fr/auth/discord/callback`，按儲存。
 2. 同一頁按 Client Secret 的「Reset Secret」，複製新密鑰，寫進 `.env` 的 `DISCORD_CLIENT_SECRET`，連同 `OAUTH_REDIRECT_URI` 一起，然後重啟。
 3. 只要 `identify` 權限；必須是機器人所在伺服器的成員才能登入。`OWNER_ID`（或應用程式擁有者、或在「成員管理」連結為「我的 Discord」的帳號）= 擁有者權限。
-4. 操作紀錄、佇列「誰點的」會寫 Discord 名字；金鑰登入、Chrome 擴充功能照舊。登入紀錄存在 `data/web_sessions.json`（0600），90 天沒用自動失效。
+4. 設定好之後網頁**只能**用 Discord 登入，原本用金鑰登入的瀏覽器會被要求重新登入；Chrome 擴充功能照舊用金鑰。
+   Discord 登入出問題時，把 `DISCORD_CLIENT_SECRET` 註解掉再重啟，網頁就回到金鑰登入（不會被鎖在外面）。
+5. 每個 Discord 帳號自動有自己的「我的歌單」（網頁和 Discord `/mylist` 共用）。在「成員管理」把成員連結到 Discord ID →
+   擴充功能、網頁、`/mylist` 用同一份，對方原本 Discord 帳號下的歌單會合併進來；刪除有連結的成員時歌單留給他的 Discord 帳號。
+6. 操作紀錄、佇列「誰點的」會寫 Discord 名字。登入紀錄存在 `data/web_sessions.json`（0600），90 天沒用自動失效。
 
 ### 常用指令
 ```bash

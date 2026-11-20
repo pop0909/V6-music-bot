@@ -152,6 +152,46 @@ class Disabled(Base):
         self.assertEqual(self.me().get_json()["via"], "key")
 
 
+    def test_key_login_records_like_before(self):
+        self.c.post("/login", data={"key": OWN}, headers=H)
+        self.c.post("/api/queue/add", json={"guild_id": G, "url": U_(1), "title": "一", "no_play": True}, headers={"Host": HOST})
+        e = actionlog.recent(G)[0]
+        self.assertEqual((e["who"], e["src"]), ("擁有者", "web"))
+        self.assertNotIn("uid", e)
+        self.assertEqual(state.song_meta[G][U_(1)]["requester"], "網頁")
+
+    def test_key_login_header_unchanged(self):
+        self.c.post("/login", data={"key": OWN}, headers=H)
+        html = self.c.get("/", headers={"Host": HOST}).get_data(as_text=True)
+        self.assertNotIn("hdr-avatar", html)
+        self.assertIn('<div class="set-who" aria-hidden="true"><i class="fas fa-key"></i>', html)
+        self.assertIn('data-tip="設定"', html)
+
+    def test_old_key_cookies_need_relogin_once_configured(self):
+        self.c.post("/login", data={"key": OWN}, headers=H)
+        self.assertEqual(self.me().status_code, 200)
+        with mock.patch.dict(os.environ, {"DISCORD_CLIENT_SECRET": SECRET}):      # 擁有者把密鑰寫進 .env 並重啟
+            self.assertTrue(discordauth.enabled())
+            self.assertEqual(self.me().status_code, 401)
+            r = self.c.get("/", headers={"Host": HOST})
+            self.assertEqual(r.headers["Location"], "/login")
+            self.assertIn("用 Discord 登入", self.c.get("/login", headers=H).get_data(as_text=True))
+            _, tok = extmembers.create("阿華")                   # 擴充功能的金鑰照常
+            r = self.c.get("/api/ext/status", headers={"Host": HOST, "X-Ext-Token": tok})
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(self.c.get("/api/ext/status", headers={"Host": HOST, "X-Ext-Token": OWN}).status_code, 200)
+        self.assertEqual(self.me().status_code, 200)              # 密鑰拿掉 → 金鑰登入又能用（不會被鎖在外面）
+
+    def test_member_management_still_issues_extension_keys(self):
+        with mock.patch.dict(os.environ, {"DISCORD_CLIENT_SECRET": SECRET}):
+            self.dlogin(OWNER_DID, "阿管")
+            r = self.c.post("/api/ext/members", json={"name": "新朋友"}, headers={"Host": HOST})
+            self.assertEqual(r.status_code, 201)
+            tok = r.get_json()["token"]
+            self.assertEqual(webapi.flask_app.test_client().get(
+                "/api/ext/status", headers={"Host": HOST, "X-Ext-Token": tok}).status_code, 200)
+
+
 class Config(Base):
     def test_redirect_uri_must_be_this_site_callback(self):
         for bad in ("http://musbot.kdns.fr/auth/discord/callback", "https://evil.com/auth/discord/callback",
@@ -210,22 +250,23 @@ class Config(Base):
 
 
 class LoginPage(Base):
-    def test_big_discord_button_with_key_fallback(self):
+    def test_discord_only_no_key_form(self):
         html = self.c.get("/login?next=/x%3Fa%3D1", headers=H).get_data(as_text=True)
         self.assertIn('id="discordLogin"', html)
         self.assertIn('href="/auth/discord?next=/x%3Fa%3D1"', html)
         self.assertIn("用 Discord 登入", html)
-        self.assertIn('<details class="keybox">', html)          # 金鑰收起來
-        self.assertIn("改用金鑰登入", html)
-        r = self.c.post("/login", data={"key": OWN}, headers=H)  # 金鑰登入照舊
-        self.assertEqual(r.status_code, 302)
+        self.assertNotIn('name="key"', html)
+        self.assertNotIn("金鑰", html)
+        self.assertNotIn('class="err"', html)            # 沒錯誤就不留空白行
 
-    def test_wrong_key_opens_key_box(self):
-        r = self.c.post("/login", data={"key": "nope"}, headers=H)
-        self.assertEqual(r.status_code, 401)
-        html = r.get_data(as_text=True)
-        self.assertIn('<details class="keybox" open>', html)
-        self.assertIn("金鑰錯誤或已停用", html)
+    def test_key_post_refused_without_lockout_counting(self):
+        for _ in range(8):
+            r = self.c.post("/login", data={"key": OWN}, headers=H)
+            self.assertEqual(r.status_code, 403)
+            self.assertIn("網頁已改用 Discord 登入", r.get_data(as_text=True))
+        self.assertIsNone(self.cookie())
+        self.assertEqual(self.me().status_code, 401)
+        self.assertEqual(webauth.locked_for("5.5.5.5"), 0)          # 不算輸錯、不會鎖
 
     def test_error_codes_fixed_text_only(self):
         html = self.c.get("/login?err=notmember", headers=H).get_data(as_text=True)
@@ -391,15 +432,50 @@ class Permissions(Base):
         extmembers.set_enabled(m["id"], False)
         self.assertEqual(self.me().status_code, 401)
 
-    def test_unlinked_has_no_personal_lists(self):
+    def test_unlinked_gets_own_lists_shared_with_mylist(self):
+        from musicbot import mylist_cmd
         self.dlogin(STRANGER, "路人")
-        r = self.c.get("/api/ext/lists", headers={"Host": HOST})
-        self.assertEqual(r.status_code, 403)
-        j = r.get_json()
-        self.assertEqual(j["code"], "not_linked")
-        self.assertIn(STRANGER, j["message"])
-        self.assertEqual(self.c.post("/api/ext/lists", json={"name": "x"}, headers={"Host": HOST}).status_code, 403)
-        self.assertNotIn("d:" + STRANGER, userlists._load()["users"])
+        r = self.c.post("/api/ext/lists", json={"name": "路人的歌"}, headers={"Host": HOST})
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual([p["name"] for p in userlists.list_playlists("d:" + STRANGER)], ["路人的歌"])
+        self.assertEqual(self.c.get("/api/ext/lists", headers={"Host": HOST}).get_json()["you"], "路人")
+        i = mock.Mock(); i.user.id = int(STRANGER); i.guild.id = G
+        i.response.is_done.return_value = False; i.response.send_message = mock.AsyncMock()
+        asyncio.run(mylist_cmd.show.callback(i))                   # Discord /mylist 看到同一份
+        self.assertIn("路人的歌", i.response.send_message.await_args.args[0])
+        userlists.create("d:" + STRANGER, "在 Discord 建的")
+        names = [p["name"] for p in self.c.get("/api/ext/lists", headers={"Host": HOST}).get_json()["lists"]]
+        self.assertEqual(names, ["路人的歌", "在 Discord 建的"])
+        c2 = webapi.flask_app.test_client()                          # 別人看不到
+        self.dlogin(FRIEND, "小美", c=c2)
+        self.assertEqual(c2.get("/api/ext/lists", headers={"Host": HOST}).get_json()["lists"], [])
+
+    def test_owner_uses_owner_lists_everywhere(self):
+        from musicbot import mylist_cmd
+        userlists.create("owner", "擁有者的歌")
+        self.dlogin(OWNER_DID, "阿管")
+        names = [p["name"] for p in self.c.get("/api/ext/lists", headers={"Host": HOST}).get_json()["lists"]]
+        self.assertEqual(names, ["擁有者的歌"])                      # 跟以前用主金鑰看到的一樣
+        i = mock.Mock(); i.user.id = int(OWNER_DID); i.guild.id = G
+        i.response.is_done.return_value = False; i.response.send_message = mock.AsyncMock()
+        asyncio.run(mylist_cmd.show.callback(i))
+        self.assertIn("擁有者的歌", i.response.send_message.await_args.args[0])
+
+    def test_linked_member_extension_web_and_mylist_same_lists(self):
+        from musicbot import mylist_cmd
+        m, tok = extmembers.create("小明")
+        userlists.create(m["id"], "小明原本的")
+        userlists.link_discord(m["id"], FRIEND)
+        self.dlogin(FRIEND, "小美")
+        web = [p["name"] for p in self.c.get("/api/ext/lists", headers={"Host": HOST}).get_json()["lists"]]
+        ext = [p["name"] for p in webapi.flask_app.test_client().get(
+            "/api/ext/lists", headers={"Host": HOST, "X-Ext-Token": tok}).get_json()["lists"]]
+        self.assertEqual(web, ["小明原本的"])
+        self.assertEqual(ext, web)
+        i = mock.Mock(); i.user.id = int(FRIEND); i.guild.id = G
+        i.response.is_done.return_value = False; i.response.send_message = mock.AsyncMock()
+        asyncio.run(mylist_cmd.show.callback(i))
+        self.assertIn("小明原本的", i.response.send_message.await_args.args[0])
 
     def test_cross_site_post_blocked(self):
         self.dlogin(FRIEND)
@@ -435,14 +511,6 @@ class ActionLog(Base):
         c2.post("/api/queue/add", json={"guild_id": G, "url": U_(2), "title": "二", "no_play": True}, headers={"Host": HOST})
         self.assertEqual([(e["who"], e["uid"]) for e in actionlog.recent(G)], [("阿管", OWNER_DID), ("小美", FRIEND)])
 
-    def test_key_login_unchanged(self):
-        self.c.post("/login", data={"key": OWN}, headers=H)
-        self.c.post("/api/queue/add", json={"guild_id": G, "url": U_(1), "title": "一", "no_play": True}, headers={"Host": HOST})
-        e = actionlog.recent(G)[0]
-        self.assertEqual((e["who"], e["src"]), ("擁有者", "web"))
-        self.assertNotIn("uid", e)
-        self.assertEqual(state.song_meta[G][U_(1)]["requester"], "網頁")
-
     def test_extension_token_still_ext(self):
         self.dlogin(FRIEND, "小美")          # 同一個瀏覽器有 Discord 登入也不影響擴充功能
         _, tok = extmembers.create("阿華")
@@ -461,6 +529,104 @@ class ActionLog(Base):
         self.assertEqual((e["uid"], e["src"]), (FRIEND, "discord"))
         self.assertNotIn("uid", actionlog.record(G, "skip", ("x", "web", "not-a-number"), "歌"))
         self.assertNotIn("uid", actionlog.record(G, "skip", ("x", "web"), "歌"))
+
+
+class ListMigration(Base):
+    """每個 Discord 帳號自動有自己的歌單；連結 / 解除 / 刪除成員時歌單怎麼搬（不丟資料、重做不會重複）"""
+    D = "d:" + FRIEND
+
+    def names(self, key):
+        return [p["name"] for p in userlists.list_playlists(key)]
+
+    def test_key_resolution(self):
+        self.assertEqual(userlists.discord_key(FRIEND), self.D)
+        self.assertEqual(userlists.discord_key(int(FRIEND)), self.D)
+        self.assertEqual(userlists.discord_key(OWNER_DID, owner=True), "owner")
+        m, _ = extmembers.create("小明")
+        userlists.link_discord(m["id"], FRIEND)
+        self.assertEqual(userlists.discord_key(FRIEND), m["id"])
+        userlists.link_discord(m["id"], OWNER_DID)                   # 連結優先於擁有者身分
+        self.assertEqual(userlists.discord_key(OWNER_DID, owner=True), m["id"])
+
+    def test_existing_linked_member_keeps_lists_no_data_move(self):
+        m, _ = extmembers.create("小明")
+        pl = userlists.create(m["id"], "舊歌單", [{"url": U_(1), "title": "一"}])
+        userlists.link_discord(m["id"], FRIEND)
+        self.assertEqual(userlists.discord_key(FRIEND), m["id"])
+        self.assertEqual(userlists.get_playlist(m["id"], pl["id"])["count"], 1)
+        self.assertNotIn(self.D, userlists._load()["users"])
+
+    def test_link_merges_own_discord_lists_once(self):
+        m, _ = extmembers.create("小明")
+        userlists.create(m["id"], "通勤", [{"url": U_(1), "title": "一"}])
+        userlists.create(self.D, "通勤", [{"url": U_(2), "title": "二"}])
+        userlists.create(self.D, "睡前", [{"url": U_(3), "title": "三"}])
+        userlists.link_discord(m["id"], FRIEND)
+        self.assertEqual(self.names(m["id"]), ["通勤", "通勤（2）", "睡前"])
+        self.assertEqual(sum(p["count"] for p in userlists.list_playlists(m["id"])), 3)
+        self.assertNotIn(self.D, userlists._load()["users"])
+        userlists.link_discord(m["id"], FRIEND)                      # 再做一次：不重複
+        self.assertEqual(self.names(m["id"]), ["通勤", "通勤（2）", "睡前"])
+        userlists._reset_cache()                                     # 存檔後重新讀也一樣
+        self.assertEqual(self.names(m["id"]), ["通勤", "通勤（2）", "睡前"])
+        self.assertEqual(len({p["id"] for p in userlists.list_playlists(m["id"])}), 3)
+
+    def test_link_over_cap_refused_and_nothing_changes(self):
+        m, _ = extmembers.create("小明")
+        for i in range(userlists.MAX_LISTS - 1):
+            userlists.create(m["id"], f"m{i}")
+        userlists.create(self.D, "a"); userlists.create(self.D, "b")
+        with self.assertRaises(ValueError) as cm:
+            userlists.link_discord(m["id"], FRIEND)
+        self.assertIn("超過", str(cm.exception))
+        self.assertEqual(len(self.names(m["id"])), userlists.MAX_LISTS - 1)
+        self.assertEqual(self.names(self.D), ["a", "b"])
+        self.assertIsNone(userlists.key_for_discord(FRIEND))
+        r = self.c.post("/api/ext/members/" + m["id"], json={"action": "link_discord", "discord_id": FRIEND},
+                        headers={"Host": HOST})
+        self.assertEqual(r.status_code, 401)                         # 沒登入（API 本身在下面用擁有者測）
+
+    def test_link_over_cap_message_on_members_api(self):
+        m, _ = extmembers.create("小明")
+        for i in range(userlists.MAX_LISTS):
+            userlists.create(m["id"], f"m{i}")
+        userlists.create(self.D, "a")
+        self.dlogin(OWNER_DID, "阿管")
+        r = self.c.post("/api/ext/members/" + m["id"], json={"action": "link_discord", "discord_id": FRIEND},
+                        headers={"Host": HOST})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("超過", r.get_json()["message"])
+
+    def test_unlink_keeps_lists_with_member(self):
+        m, tok = extmembers.create("小明")
+        userlists.link_discord(m["id"], FRIEND)
+        userlists.create(m["id"], "共用")
+        userlists.link_discord(m["id"], "")
+        self.assertEqual(self.names(m["id"]), ["共用"])               # 擴充功能那邊還在
+        self.assertEqual(userlists.discord_key(FRIEND), self.D)      # Discord 帳號回到自己的（空的）
+        self.assertEqual(self.names(self.D), [])
+
+    def test_delete_linked_member_lists_go_to_discord_account(self):
+        m, _ = extmembers.create("小明")
+        userlists.link_discord(m["id"], FRIEND)
+        userlists.create(m["id"], "共用", [{"url": U_(1), "title": "一"}])
+        userlists.create(self.D, "共用")                              # 假設 Discord 帳號下也剛好有同名的
+        extmembers.delete(m["id"]); userlists.drop_user(m["id"])
+        self.assertEqual(self.names(self.D), ["共用", "共用（2）"])
+        self.assertNotIn(m["id"], userlists._load()["users"])
+        self.assertIsNone(userlists.key_for_discord(FRIEND))
+
+    def test_delete_unlinked_member_drops_lists_like_before(self):
+        m, _ = extmembers.create("小明")
+        userlists.create(m["id"], "x")
+        userlists.drop_user(m["id"])
+        self.assertNotIn(m["id"], userlists._load()["users"])
+
+    def test_link_to_owner_merges_too(self):
+        userlists.create("owner", "主")
+        userlists.create("d:" + OWNER_DID, "在 Discord 建的")
+        userlists.link_discord("owner", OWNER_DID)
+        self.assertEqual(self.names("owner"), ["主", "在 Discord 建的"])
 
 
 class Sessions(Base):
@@ -552,12 +718,6 @@ class Header(Base):
         self.assertIn('<span class="set-who-name">小美</span>', html)
         self.assertIn('referrerpolicy="no-referrer"', html)
 
-    def test_key_login_header_unchanged(self):
-        self.c.post("/login", data={"key": OWN}, headers=H)
-        html = self.c.get("/", headers={"Host": HOST}).get_data(as_text=True)
-        self.assertNotIn("hdr-avatar", html)
-        self.assertIn('<div class="set-who" aria-hidden="true"><i class="fas fa-key"></i>', html)
-        self.assertIn('data-tip="設定"', html)
 
 
 if __name__ == "__main__":

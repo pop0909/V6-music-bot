@@ -3914,16 +3914,6 @@ const ML = (() => {
     }
     async function doRefresh() {
         const j = await call('GET', '');
-        if (j.code === 'not_linked') {     // 用 Discord 登入但還沒連結個人歌單：直接在清單裡說明（不跳錯誤提示）
-            lists = []; loaded = true; songsCache.clear();
-            $('mlActions').hidden = true;
-            $('mlCount').textContent = '';
-            const list = $('mlList'), box = document.createElement('div'), p = document.createElement('p');
-            box.className = 'empty-state'; box.innerHTML = '<i class="fas fa-link-slash"></i>';
-            p.textContent = j.message || '還沒連結個人歌單';
-            box.appendChild(p); list.innerHTML = ''; list.appendChild(box);
-            return;
-        }
         if (j.status !== 'ok') { if (j.message && !j.auth) showToast(j.message, 'error'); return; }
         lists = j.lists || []; loaded = true;
         for (const id of [...songsCache.keys()]) if (!lists.some(p => p.id === id)) songsCache.delete(id);  // 展開中的歌單：draw() 先畫快取再重抓，不閃

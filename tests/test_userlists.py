@@ -177,11 +177,15 @@ class Discord(Base):
         i.followup.send = mock.AsyncMock()
         return i
 
-    def test_unlinked_gets_help(self):
+    def test_unlinked_has_own_lists(self):
         from musicbot import mylist_cmd
         i = self.inter()
         asyncio.run(mylist_cmd.show.callback(i))
-        self.assertIn("/members", i.response.send_message.await_args.args[0])
+        self.assertIn("你還沒有歌單", i.response.send_message.await_args.args[0])   # 不用連結，不再叫你找擁有者
+        userlists.create("d:123456789012345678", "我的")
+        i = self.inter()
+        asyncio.run(mylist_cmd.show.callback(i))
+        self.assertIn("我的", i.response.send_message.await_args.args[0])
 
     def test_linked_show_and_play(self):
         from musicbot import mylist_cmd, player, webcore
@@ -197,7 +201,7 @@ class Discord(Base):
             asyncio.run(mylist_cmd.play.callback(i, "chi", False))
         self.assertEqual(fake.await_args.args[0], 42)
         self.assertIn("1", i.response.send_message.await_args.args[0])
-        # 別人（未連結）看不到
+        # 別人（未連結 = 他自己的空歌單）看不到
         j = self.inter(uid=555555555555555555)
         asyncio.run(mylist_cmd.show.callback(j))
         self.assertNotIn("Chill", j.response.send_message.await_args.args[0])

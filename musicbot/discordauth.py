@@ -5,6 +5,8 @@
 - 用 code 換 access token（伺服器對 Discord，client secret 只在這裡用），拿 /users/@me 的 id 後就丟掉 token，不保存
 - 必須是機器人所在任一伺服器的成員（由機器人自己查，不需要 guilds 權限）
 - 擁有者：.env 的 OWNER_ID；沒設就用 Discord 應用程式擁有者（跟 alerts.py 一樣）；或在 /members 連結為「我的 Discord」的帳號
+- 個人歌單：userlists.discord_key()（每個 Discord 帳號自動有自己的；有連結成員 → 用成員那份）
+- 設定好之後，網頁只能用 Discord 登入；舊的金鑰登入 cookie 失效（擴充功能的 X-Ext-Token 不受影響）
 - 伺服器端 session：data/web_sessions.json（0600），只存 session id 的雜湊 + Discord id / 顯示名稱 / 頭像
   cookie 沿用 v6_session（webauth 簽章），內容只有隨機 session id
 - 沒設 DISCORD_CLIENT_SECRET / OAUTH_REDIRECT_URI → 整個功能關閉，登入頁跟以前一樣只有金鑰
@@ -407,21 +409,14 @@ def ident_for_session(sid):
         name, avatar = rec.get("name") or "Discord 使用者", rec.get("avatar") or ""
     from . import userlists, extmembers
     owner = is_owner(did)
-    key = userlists.key_for_discord(did)
-    if key and key != "owner":
-        m = extmembers.member_record(key)
-        if not m:
-            key = None
-        elif not m.get("enabled", True):
-            return None             # 擁有者停用了這位成員 → 網頁也一起登出
-    if owner:
-        uid = "owner"
-    elif key and key != "owner":
-        uid = key
-    else:
-        uid = "d:" + did
+    list_key = userlists.discord_key(did, owner=owner)     # 跟 Discord /mylist 同一份
+    if list_key not in ("owner",) and not list_key.startswith(userlists.DISCORD_PREFIX):
+        m = extmembers.member_record(list_key)
+        if m and not m.get("enabled", True):
+            return None             # 擁有者停用了連結的成員 → 網頁也一起登出
+    uid = "owner" if owner else list_key
     return {"id": uid, "name": name, "owner": owner, "discord_id": did, "avatar": avatar,
-            "via": "discord", "linked": owner or bool(key and key != "owner"), "_sid": sid}
+            "via": "discord", "list_key": list_key, "_sid": sid}
 
 
 def login_from_code(code):
