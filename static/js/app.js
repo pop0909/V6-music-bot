@@ -236,6 +236,7 @@ function setShuffleUI(on) {
     el.btnShuffle.classList.toggle('active', !!on);
     setPressed(el.btnShuffle, on);
     setTip(el.btnShuffle, on ? '隨機播放：開（S）' : '隨機播放：關（S）', on ? '隨機播放：開' : '隨機播放：關');
+    scheduleModeSync();
 }
 const TOGGLE_TIPS = {
     autoplayToggle: ['自動推薦接歌', '佇列播完自動接相關歌曲'],
@@ -251,6 +252,39 @@ function setToggleUI(input, on) {
         const a = `${t[0]}：${on ? '開' : '關'}`;
         if (input.getAttribute('aria-label') !== a) input.setAttribute('aria-label', a);
     }
+    scheduleModeSync();
+}
+
+// ==================== 播放模式 ⋮：選單裡每列的狀態文字 + ⋮ 上的小圓點 ====================
+// 各模式原本的更新函式（含樂觀更新 / 失敗退回）改完按鈕後呼叫這裡；同一輪多次呼叫只算一次
+var _modeSyncQueued = false, _sleepShort = '';   // var：初始化前就可能被呼叫（不會有 TDZ 錯誤）
+function scheduleModeSync() {
+    if (_modeSyncQueued) return;
+    _modeSyncQueued = true;
+    queueMicrotask(() => { _modeSyncQueued = false; syncModeMenu(); });
+}
+function syncModeMenu() {
+    const btn = document.getElementById('btnModes');
+    if (!btn) return;
+    const put = (id, txt) => { const n = document.getElementById(id); if (n && n.textContent !== txt) n.textContent = txt; };
+    const lp = el.btnLoop, isOn = (input) => !!(input && input.closest('.toggle-row') && input.closest('.toggle-row').classList.contains('on'));
+    const loop = lp && lp.classList.contains('loop-one') ? '單曲' : lp && lp.classList.contains('loop-all') ? '全部' : '';
+    const shuffle = !!(el.btnShuffle && el.btnShuffle.classList.contains('active'));
+    const auto = isOn(el.autoplayToggle), norm = isOn(el.normalizeToggle);
+    put('loopState', loop || '關');
+    put('shuffleState', shuffle ? '開' : '關');
+    put('autoplayState', auto ? '開' : '關');
+    put('normalizeState', norm ? '開' : '關');
+    put('sleepState', _sleepShort || '關');
+    const on = [];
+    if (loop) on.push(`循環（${loop}）`);
+    if (shuffle) on.push('隨機');
+    if (auto) on.push('推薦');
+    if (norm) on.push('平衡');
+    if (_sleepShort) on.push(`睡眠（${_sleepShort}）`);
+    btn.classList.toggle('has-on', on.length > 0);
+    const tip = on.length ? `播放模式：已開 ${on.join('、')}` : '播放模式：全部關閉';
+    setTip(btn, tip, tip);
 }
 
 // ==================== API ====================
@@ -2102,6 +2136,7 @@ function updateLoopButton() {
         el.btnLoop.classList.add('loop-all');
         el.loopIndicator.textContent = '∞';
     }
+    scheduleModeSync();
 }
 
 el.btnLoop.addEventListener('click', async () => {
@@ -2446,6 +2481,8 @@ function updateSleepIndicator() {
     const cur = state.sleepMode || 'off';
     const nxt = { 'off': '30 分鐘', 'minutes:30': '60 分鐘', 'minutes:60': '播完這首', 'track_end:': '關閉' }[cur] || '關閉';
     setTip(btn, `睡眠計時：${now}（點一下切換：${nxt}）`, `睡眠計時：${now}`);
+    _sleepShort = !on ? '' : isTrack ? '播完這首' : mins ? `${mins} 分` : '開';
+    scheduleModeSync();
 }
 // SSE：伺服器上的睡眠計時器（剩餘分鐘每分鐘才變一次 → 每分鐘最多多推一次）
 function applySleepState(sl) {
@@ -3068,6 +3105,7 @@ function npAnimEnd() {
 function setNpOpen(open, { fromHistory = false } = {}) {
     open = !!open;
     if (open === npOpen || !npView) return;
+    if (window.closeModeMenu) window.closeModeMenu(false);
     const root = document.documentElement;
     if (open) { updateHeaderBottom(); _npScrollY = window.scrollY; }   // 只讀（版面是乾淨的）
     else if (window.scrollY !== _npScrollY) window.scrollTo(0, _npScrollY);   // 展開期間背後頁面被捲動過才還原
@@ -3314,11 +3352,88 @@ const mobileMQ = window.matchMedia('(max-width: 1179px)');
 function placeExtras() {
     const extras = $('barExtras'), npExtra = $('npExtra'), right = el.playerBar && el.playerBar.querySelector('.pb-right');
     if (!extras || !npExtra || !right) return;
+    if (window.closeModeMenu) window.closeModeMenu(false);   // ⋮ 換位置了：選單先收起
     if (mobileMQ.matches) { if (extras.parentElement !== npExtra) npExtra.appendChild(extras); }
     else if (extras.parentElement !== right) right.insertBefore(extras, el.btnExpand);
 }
 mobileMQ.addEventListener ? mobileMQ.addEventListener('change', placeExtras) : mobileMQ.addListener(placeExtras);
 placeExtras();
+
+// 播放模式選單（⋮）：循環 / 隨機 / 自動推薦 / 音量平衡 / 睡眠。
+// 開在 ⋮ 上方（放不下才改下方）；點外面 / Esc / 再按 ⋮ 收起；切換模式時不收（可以連續調好幾個）。
+// 鍵盤：Enter / 空白打開並聚焦第一項，↑ ↓ Home End 移動，Tab 離開（收起），Esc 收起回到 ⋮。快捷鍵 L / S 照常可用。
+(function modeMenu() {
+    const btn = $('btnModes'), menu = $('modeMenu');
+    if (!btn || !menu) return;
+    const EDGE = 8, GAP = 8;
+    const items = () => [el.btnLoop, el.btnShuffle, el.autoplayToggle, el.normalizeToggle, $('btnSleep')].filter(Boolean);
+    function place() {
+        const r = btn.getBoundingClientRect();
+        const vw = document.documentElement.clientWidth, vh = window.innerHeight;
+        const mw = menu.offsetWidth, mh = menu.offsetHeight;
+        // ⋮ 在畫面右半（播放列）→ 右緣對齊；在左半（窄視窗展開畫面）→ 左緣對齊
+        let left = (r.left + r.width / 2 > vw / 2) ? r.right - mw : r.left;
+        left = Math.max(EDGE, Math.min(left, vw - EDGE - mw));
+        let top = r.top - GAP - mh;
+        if (top < EDGE) top = Math.min(r.bottom + GAP, vh - EDGE - mh);
+        menu.style.left = Math.round(left) + 'px';
+        menu.style.top = Math.round(Math.max(EDGE, top)) + 'px';
+    }
+    function focusAt(i) {
+        const list = items(); if (!list.length) return;
+        list[(i + list.length) % list.length].focus({ preventScroll: true });
+    }
+    function open(viaKey) {
+        if (!menu.hidden) return;
+        if (window.closeSettingsMenu) window.closeSettingsMenu();
+        syncModeMenu();
+        menu.hidden = false;
+        btn.setAttribute('aria-expanded', 'true');
+        btn.classList.remove('tip-show');
+        place();
+        if (viaKey) focusAt(0);
+    }
+    // restore：Esc / Tab 收起時焦點回到 ⋮；點外面收起時不搶焦點
+    function close(restore) {
+        if (menu.hidden) return;
+        const inside = menu.contains(document.activeElement);
+        menu.hidden = true;
+        btn.setAttribute('aria-expanded', 'false');
+        if (restore) btn.focus({ preventScroll: true });
+        else if (inside) document.activeElement.blur();
+    }
+    window.closeModeMenu = close;
+    window.isModeMenuOpen = () => !menu.hidden;
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (menu.hidden) open(e.detail === 0); else close(false);
+    });
+    document.addEventListener('pointerdown', (e) => {
+        if (!menu.hidden && !menu.contains(e.target) && !btn.contains(e.target)) close(false);
+    }, { capture: true, passive: true });
+    document.addEventListener('keydown', (e) => {
+        if (menu.hidden || e.isComposing) return;
+        const stop = () => { e.preventDefault(); e.stopImmediatePropagation(); };
+        if (e.key === 'Escape') { stop(); close(true); return; }
+        const ae = document.activeElement;
+        if (!menu.contains(ae)) return;
+        const list = items(), i = list.indexOf(ae);
+        if (e.key === 'ArrowDown') { stop(); focusAt(i + 1); }
+        else if (e.key === 'ArrowUp') { stop(); focusAt(i < 0 ? -1 : i - 1); }
+        else if (e.key === 'Home') { stop(); focusAt(0); }
+        else if (e.key === 'End') { stop(); focusAt(-1); }
+        else if (e.key === 'Tab') {
+            // 選單在 body 最後面：Tab 離開時接回播放列的順序（往後 = ⋮ 的下一顆，往前 = ⋮）
+            stop(); close(true);
+            if (!e.shiftKey) { const nx = $('btnStop'); if (nx && nx.offsetParent !== null) nx.focus({ preventScroll: true }); }
+        }
+        else if (e.key === 'Enter' && ae.type === 'checkbox') { stop(); ae.click(); }   // 開關：Enter 也能切換（空白鍵原生就會）
+    }, true);
+    const reposition = () => { if (!menu.hidden) place(); };
+    window.addEventListener('resize', reposition, { passive: true });
+    document.addEventListener('scroll', reposition, { capture: true, passive: true });
+    syncModeMenu();
+})();
 
 // 頂欄高度 → CSS 變數（桌面版展開畫面從頂欄下方開始）
 (function trackHeaderHeight() {

@@ -1329,12 +1329,12 @@ html.wheeling .album-art img, html.wheeling .marquee-inner, html.wheeling .progr
     .np-side { min-height: 0; overflow: hidden; }
 }
 /* < 1180px：控制鍵搬進展開畫面（另加兩列） */
-@media (min-width: 761px) and (max-width: 1179px) { .np-stage .np-cover-wrap { --np-reserve: 270px; } }
+@media (min-width: 761px) and (max-width: 1179px) { .np-stage .np-cover-wrap { --np-reserve: 222px; } }
 @media (min-width: 761px) and (max-height: 760px) {
     .np-stage .np-cover-wrap { margin: 20px 0 12px; --np-reserve: 120px; }
     .np-stage .song-url { display: none; }
 }
-@media (min-width: 761px) and (max-width: 1179px) and (max-height: 760px) { .np-stage .np-cover-wrap { --np-reserve: 232px; } }
+@media (min-width: 761px) and (max-width: 1179px) and (max-height: 760px) { .np-stage .np-cover-wrap { --np-reserve: 184px; } }
 
 /* 手機：上半部封面 + 標題 + 控制鍵，下半部佇列 / 紀錄（清單在面板內捲動），整體剛好一個畫面 */
 @media (max-width: 760px) {
@@ -1350,7 +1350,7 @@ html.wheeling .album-art img, html.wheeling .marquee-inner, html.wheeling .progr
         /* 54+14 上下內距、12 封面下距、約 52 標題+時間、約 106 控制鍵、10 間距 → 約 250px；下半部至少留 --np-side-min */
         --np-h: calc(100dvh - var(--bar-h) - 12px);
         --np-side-min: clamp(190px, calc(var(--np-h) * .36), 340px);
-        --np-reserve: 250px;
+        --np-reserve: 204px;
         width: max(120px, min(100%, calc((var(--np-h) - var(--np-side-min) - var(--np-reserve)) * 1.7778)));
         min-width: 0; margin: 0 auto 12px;
     }
@@ -1561,7 +1561,7 @@ button, .ctrl-btn, .btn-sm, .tab-btn, .list-item, .player-bar, [data-action] { t
         display: block; margin-top: 3px;
         font-size: 10px; font-weight: 600; line-height: 1; color: var(--faint); white-space: nowrap;
     }
-    .player-bar .pb-extras #btnLoop, .player-bar .pb-extras #btnShuffle, .player-bar .pb-extras #btnSleep { width: 44px; height: 48px; border-radius: 12px; align-content: center; gap: 0; }
+    .player-bar .pb-extras #btnModes { width: 44px; height: 48px; border-radius: 12px; align-content: center; gap: 0; }
     .player-bar .pb-extras .pb-toggle { width: 44px; height: 48px; flex-direction: column; justify-content: center; border-radius: 12px; }
     .player-bar .pb-extras .pb-toggle .toggle-icon { width: 30px; height: 30px; font-size: 14px; }
     .player-bar .pb-extras .pb-toggle .toggle-icon, .player-bar .pb-extras .pb-toggle.on .toggle-icon,
@@ -1570,17 +1570,17 @@ button, .ctrl-btn, .btn-sm, .tab-btn, .list-item, .player-bar, [data-action] { t
     .player-bar .pb-extras .pb-toggle.on { background: var(--gold-dim); }
     .player-bar .pb-extras .ctrl-btn.active .ctrl-label, .player-bar .pb-extras .ctrl-btn.loop-one .ctrl-label,
     .player-bar .pb-extras .ctrl-btn.loop-all .ctrl-label, .player-bar .pb-extras .pb-toggle.on .ctrl-label { color: var(--gold-bright); }
-    .player-bar .pb-extras #btnLoop::before, .player-bar .pb-extras #btnShuffle::before, .player-bar .pb-extras #btnSleep::before, .player-bar .pb-extras .pb-toggle.on::before { display: none; }   /* 有文字標籤時用文字顏色表示開啟 */
+    .player-bar .pb-extras .pb-toggle.on::before { display: none; }
     .player-bar .pb-extras .ctrl-badge { top: 0; right: 2px; }
     .player-bar .pb-extras .ctrl-btn:not(.ctrl-play):hover { transform: none; }
 }
 /* 展開畫面（窄視窗控制鍵搬進來時）：開關本來就有文字，不重複顯示短標籤 */
 .np-extra .ctrl-label { display: none !important; }
 /* 展開畫面裡（窄視窗）：最左邊兩顆的提示往右長、音量往左長，不超出螢幕 */
-.np-extra #btnLoop.has-tip::after, .np-extra #btnShuffle.has-tip::after { left: -4px; transform: translate3d(var(--tip-dx, 0px), 4px, 0); }
+.np-extra #btnModes.has-tip::after { left: -4px; transform: translate3d(var(--tip-dx, 0px), 4px, 0); }
 .np-extra .volume-row.has-tip::after { left: auto; right: 0; transform: translate3d(var(--tip-dx, 0px), 4px, 0); }
-.np-extra #btnLoop.has-tip.tip-show::after, .np-extra #btnShuffle.has-tip.tip-show::after, .np-extra .volume-row.has-tip.tip-show::after,
-.np-extra #btnLoop.has-tip:focus-visible::after, .np-extra #btnShuffle.has-tip:focus-visible::after { transform: translate3d(var(--tip-dx, 0px), 0, 0); }
+.np-extra #btnModes.has-tip.tip-show::after, .np-extra .volume-row.has-tip.tip-show::after,
+.np-extra #btnModes.has-tip:focus-visible::after { transform: translate3d(var(--tip-dx, 0px), 0, 0); }
 @media (max-width: 760px) { .has-tip::after { white-space: normal; max-width: min(300px, calc(100vw - 16px)); text-align: center; } }
 
 /* =====================================================================
@@ -2193,3 +2193,63 @@ html[data-theme="light"] .list-item.q-lift { box-shadow: 0 14px 30px -14px rgba(
     html:not(.np-open) .player-bar .progress-bar { pointer-events: none; }
     html:not(.np-open) .player-bar .progress-bar::before { pointer-events: auto; top: -12px; bottom: calc(100% + 2px); }
 }
+
+
+/* ================== 播放模式 ⋮（循環 / 隨機 / 推薦 / 平衡 / 睡眠收進一個選單） ================== */
+/* ⋮ 按鈕：有任何模式開著 → 右上角亮小圓點（模式收起來也看得出來）；選單開著時按鈕維持按下的樣子 */
+.pb-modes { position: relative; }
+.pb-modes .modes-dot {
+    position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--gold-bright); box-shadow: 0 0 0 2px var(--bg-2); pointer-events: none;
+    display: none;
+}
+.pb-modes.has-on .modes-dot { display: block; }
+.pb-modes.has-on { color: var(--gold-bright); }
+.pb-modes[aria-expanded="true"] { color: var(--text); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.pb-modes[aria-expanded="true"]::after { display: none; }   /* 選單開著不顯示提示 */
+.player-bar .pb-extras .pb-modes .ctrl-label { color: inherit; }
+
+/* 選單本體：body 底下 fixed（不被播放列 / 展開畫面裁切）；只切換顯示，沒有動畫 */
+.mode-menu {
+    position: fixed; left: 8px; top: 8px; z-index: 360;
+    width: 228px; max-width: calc(100vw - 16px);
+    padding: 6px; border-radius: 14px;
+    background: var(--pop-bg); border: 1px solid var(--pop-border);
+    box-shadow: 0 18px 40px -18px rgba(0,0,0,.7);
+    display: flex; flex-direction: column; gap: 2px;
+    contain: layout paint style;
+}
+.mode-menu[hidden] { display: none; }
+.mode-menu .mm-sep { height: 1px; margin: 4px 6px; background: var(--pop-border); flex: none; }
+.mode-menu .mm-item, .mode-menu .mm-item:hover, .mode-menu .mm-item:active {
+    position: relative; display: flex; align-items: center; gap: 12px;
+    width: 100%; height: auto; min-height: 44px; margin: 0; padding: 0 12px 0 7px;
+    border: 0; border-radius: 10px; background: transparent; box-shadow: none; transform: none;
+    color: var(--sub); font: inherit; font-size: 13.5px; text-align: left; cursor: pointer; user-select: none;
+}
+.mode-menu .mm-item:hover, .mode-menu .mm-item:focus-visible, .mode-menu .pb-toggle:focus-within {
+    background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--text);
+}
+.mode-menu .mm-item:focus-visible, .mode-menu .pb-toggle:has(.switch:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+.mode-menu .pb-toggle:focus-within { outline: none; }
+.mode-menu .mm-item > i, .mode-menu .mm-item .toggle-icon, .mode-menu .mm-item:hover .toggle-icon {
+    width: 30px; height: 30px; flex: none; display: grid; place-items: center;
+    border-radius: 9px; background: color-mix(in srgb, var(--text) 7%, transparent); box-shadow: none;
+    color: var(--sub); font-size: 13px;
+}
+.mode-menu .ctrl-label { display: block; flex: 1 1 auto; min-width: 0; color: var(--text); font-weight: 600; white-space: nowrap; }
+.mode-menu .mm-state { margin-left: auto; flex: none; font-size: 12px; color: var(--faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mode-menu .toggle-text, .mode-menu .ctrl-badge, .mode-menu .mm-item::before, .mode-menu .mm-item::after { display: none; }
+.mode-menu .switch { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+/* 開啟中：跟原本播放列一樣的強調色（淡底 + 亮色圖示 / 狀態文字） */
+.mode-menu .mm-item.active > i, .mode-menu .mm-item.loop-one > i, .mode-menu .mm-item.loop-all > i,
+.mode-menu .pb-toggle.on .toggle-icon, .mode-menu .pb-toggle.on:hover .toggle-icon { background: var(--gold-dim); color: var(--gold-bright); }
+.mode-menu .mm-item.active .mm-state, .mode-menu .mm-item.loop-one .mm-state, .mode-menu .mm-item.loop-all .mm-state,
+.mode-menu .pb-toggle.on .mm-state { color: var(--gold-bright); font-weight: 600; }
+
+/* 窄視窗（控制鍵在展開畫面裡）：一列排完 ⋮、停止、音量；按鈕 44px */
+.np-extra .pb-extras { display: flex; align-items: center; gap: 8px; }
+.np-extra .ctrl-btn { width: 44px; height: 44px; flex: 0 0 auto; }
+.np-extra .volume-row { flex: 1 1 auto; min-width: 0; order: 9; margin: 0; }
+.np-extra .pb-modes .modes-dot { top: 6px; right: 6px; }
+

@@ -236,10 +236,11 @@ async def settings_menu_checks(R, pg, w):
 
 async def normalize_checks(R, pg, w):
     """音量平衡：播放中切換要立即用新濾鏡重開 FFmpeg（不等下一首），再切回去"""
+    if w < 1180 and not await R.J("() => npOpen"):
+        await R.J("() => openNpView()"); await pg.wait_for_timeout(500)
+    await open_modes(R, pg)                                   # 音量平衡收在 ⋮ 裡
     tg = pg.locator("label[for=normalizeToggle]:visible")
     if await tg.count() and await R.J("() => !!state.isPlaying"):
-        if w < 1180 and not await R.J("() => npOpen"):
-            await R.J("() => openNpView()"); await pg.wait_for_timeout(500)
         was = await R.J("() => document.getElementById('normalizeToggle').checked")
         n0 = (await R.J("async () => (await fetch('/sim/ffmpeg')).json()"))["count"]
         await tg.first.click(); await pg.wait_for_timeout(1200)
@@ -248,6 +249,129 @@ async def normalize_checks(R, pg, w):
             R.bad(f"音量平衡切換後沒有立即重開 FFmpeg {str(ff)[:160]}")
         await tg.first.click(); await pg.wait_for_timeout(900)
         if await R.J("() => document.getElementById('normalizeToggle').checked") != was: R.bad("音量平衡切回去失敗")
+        if await R.hidden("#modeMenu"): R.bad("在 ⋮ 選單裡切換音量平衡後選單被收起")
+    await pg.keyboard.press("Escape"); await pg.wait_for_timeout(150)
+
+
+async def open_modes(R, pg):
+    """打開播放模式 ⋮ 選單（已開就不動）；回傳是否打開"""
+    if not await R.hidden("#modeMenu"): return True
+    b = pg.locator("#btnModes:visible")
+    if not await b.count(): R.bad("找不到播放模式 ⋮ 按鈕"); return False
+    await b.first.click(); await pg.wait_for_timeout(150)
+    if await R.hidden("#modeMenu"): R.bad("播放模式 ⋮ 點了沒打開"); return False
+    return True
+
+
+MODE_ITEMS = ("btnLoop", "btnShuffle", "autoplayToggle", "normalizeToggle", "btnSleep")
+
+
+async def mode_menu_checks(R, pg, w):
+    """播放模式 ⋮：五個模式只在選單裡、開在 ⋮ 上方不超出畫面、每列 ≥ 44px、切換時選單不收、
+    狀態文字 / 小圓點跟著變、點外面 / Esc / 再按 ⋮ 收起（Esc 不會連帶收合播放畫面）、鍵盤操作、快捷鍵 L / S 照常"""
+    if w < 1180 and not await R.J("() => npOpen"):
+        await R.J("() => openNpView()"); await pg.wait_for_timeout(600)
+    # 先全部關掉（前面的檢查可能留下開著的模式）
+    await R.J("""async () => { const g = state.guildId, post = (u, b) => fetch(u, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(Object.assign({guild_id: g}, b))});
+        await post('/api/shuffle', {enabled: false}); await post('/api/loop', {mode: 'none'}); await post('/api/autoplay', {enabled: false});
+        await post('/api/normalize', {enabled: false}); await post('/api/sleep-timer', {mode: 'off'}); }""")
+    await pg.wait_for_timeout(1600)
+    vis = await R.J("ids => ids.filter(i => { const e = document.getElementById(i); return e && e.offsetParent !== null && !e.closest('#modeMenu'); })", list(MODE_ITEMS))
+    if vis: R.bad(f"播放模式還有露在外面：{vis}")
+    if await R.J("() => document.getElementById('btnModes').classList.contains('has-on')"):
+        lab = await R.J("() => document.getElementById('btnModes').getAttribute('aria-label')")
+        R.bad(f"全部模式關掉後 ⋮ 還亮著小圓點：{lab}")
+    if not await open_modes(R, pg): return
+    if await R.J("() => document.getElementById('btnModes').getAttribute('aria-expanded')") != "true": R.bad("⋮ 打開後 aria-expanded 不是 true")
+    geo = await R.J("""() => { const m = document.getElementById('modeMenu').getBoundingClientRect(), b = document.getElementById('btnModes').getBoundingClientRect();
+        const rows = [...document.querySelectorAll('#modeMenu .mm-item')].map(e => Math.round(e.getBoundingClientRect().height));
+        return {m: [m.left, m.top, m.right, m.bottom], b: [b.left, b.top, b.right, b.bottom], vw: document.documentElement.clientWidth, vh: innerHeight, rows,
+                labels: [...document.querySelectorAll('#modeMenu .mm-item')].map(e => e.innerText.replace(/\\s+/g, ' ').trim())}; }""")
+    m, b = geo["m"], geo["b"]
+    if m[0] < 0 or m[1] < 0 or m[2] > geo["vw"] or m[3] > geo["vh"]: R.bad(f"⋮ 選單超出畫面 {geo}")
+    if m[3] > b[1] + 1: R.bad(f"⋮ 選單沒有開在按鈕上方 {geo}")
+    if len(geo["rows"]) != 5 or min(geo["rows"]) < 44: R.bad(f"⋮ 選單每列要 ≥ 44px：{geo['rows']}")
+    for want in ("循環 關", "隨機 關", "推薦 關", "平衡 關", "睡眠 關"):
+        if want not in geo["labels"]: R.bad(f"⋮ 選單少了「{want}」：{geo['labels']}")
+    await R.audit("18_modes_menu")
+    # 選單裡切換：選單不收、狀態文字與小圓點立刻變（樂觀更新）
+    st = lambda i: R.J("i => document.getElementById(i).textContent", i)
+    await pg.click("#btnShuffle"); await pg.wait_for_timeout(120)
+    if await R.hidden("#modeMenu"): R.bad("在 ⋮ 選單裡按「隨機」後選單被收起")
+    if await st("shuffleState") != "開": R.bad(f"按「隨機」後狀態文字沒變：{await st('shuffleState')}")
+    if not await R.J("() => document.getElementById('btnModes').classList.contains('has-on')"): R.bad("開了隨機，⋮ 沒有亮小圓點")
+    await pg.click("label[for=autoplayToggle]"); await pg.wait_for_timeout(500)
+    if await st("autoplayState") != "開": R.bad("按「推薦」後狀態文字沒變")
+    await pg.click("#btnSleep"); await pg.wait_for_timeout(500)
+    if await st("sleepState") != "30 分": R.bad(f"睡眠按一下應該是「30 分」：{await st('sleepState')}")
+    await pg.click("#btnLoop"); await pg.wait_for_timeout(300)
+    if await st("loopState") != "單曲": R.bad(f"循環按一下應該是「單曲」：{await st('loopState')}")
+    if await R.hidden("#modeMenu"): R.bad("連續切換模式時選單被收起")
+    tip = await R.J("() => document.getElementById('btnModes').getAttribute('aria-label')")
+    for part in ("循環（單曲）", "隨機", "推薦", "睡眠（30 分）"):
+        if part not in tip: R.bad(f"⋮ 的說明沒寫出開著的模式「{part}」：{tip}")
+    await R.audit("19_modes_active")
+    # Esc：只收選單，不收合播放畫面；焦點回到 ⋮
+    np_before = await R.J("() => npOpen")
+    await pg.keyboard.press("Escape"); await pg.wait_for_timeout(150)
+    if not await R.hidden("#modeMenu"): R.bad("⋮ 選單 Esc 沒關")
+    if await R.J("() => npOpen") != np_before: R.bad("⋮ 選單按 Esc 時連帶收合了播放畫面")
+    if await R.J("() => document.activeElement && document.activeElement.id") != "btnModes": R.bad("⋮ 選單 Esc 後焦點沒回到 ⋮")
+    if await R.J("() => document.getElementById('btnModes').getAttribute('aria-expanded')") != "false": R.bad("⋮ 收起後 aria-expanded 不是 false")
+    # 收起時：小圓點仍在（模式沒有被藏起來）
+    if not await R.J("() => document.getElementById('btnModes').classList.contains('has-on')"): R.bad("選單收起後 ⋮ 沒有小圓點")
+    # 再按一次 ⋮ 收起
+    await pg.click("#btnModes"); await pg.wait_for_timeout(120)
+    await pg.click("#btnModes"); await pg.wait_for_timeout(120)
+    if not await R.hidden("#modeMenu"): R.bad("再按一次 ⋮ 沒有收起選單")
+    # 點外面收起
+    await pg.click("#btnModes"); await pg.wait_for_timeout(120)
+    x, y = await R.J("""() => { const m = document.getElementById('modeMenu').getBoundingClientRect();
+        for (let y = 40; y < innerHeight - 100; y += 37) for (let x = 12; x < innerWidth - 12; x += 41) {
+            if (x >= m.left - 4 && x <= m.right + 4 && y >= m.top - 4 && y <= m.bottom + 4) continue;
+            const e = document.elementFromPoint(x, y);
+            if (e && !e.closest('#modeMenu, #btnModes, button, a, input, select, label, .list-item, .cdd, .np-cover-wrap, .progress-bar, .volume-row, .np-extra, .tab-btn, .toast')) return [x, y]; }
+        return [innerWidth - 12, 40]; }""")
+    await pg.mouse.click(x, y); await pg.wait_for_timeout(150)
+    if not await R.hidden("#modeMenu"): R.bad("⋮ 選單點外面沒關")
+    # 鍵盤：Enter 打開並聚焦第一項、↓ 下一項、End 最後一項、Tab 離開收起
+    await R.J("() => document.getElementById('btnModes').focus()")
+    await pg.keyboard.press("Enter"); await pg.wait_for_timeout(150)
+    if await R.hidden("#modeMenu"): R.bad("⋮ 按 Enter 沒打開")
+    if await R.J("() => document.activeElement && document.activeElement.id") != "btnLoop": R.bad("⋮ 用鍵盤打開後焦點不在第一項")
+    await pg.keyboard.press("ArrowDown")
+    if await R.J("() => document.activeElement && document.activeElement.id") != "btnShuffle": R.bad("⋮ 選單 ↓ 沒移到下一項")
+    vol0 = await R.J("() => state.volume")
+    await pg.keyboard.press("End")
+    if await R.J("() => document.activeElement && document.activeElement.id") != "btnSleep": R.bad("⋮ 選單 End 沒移到最後一項")
+    await pg.keyboard.press("ArrowUp")
+    if await R.J("() => document.activeElement && document.activeElement.id") != "normalizeToggle": R.bad("⋮ 選單 ↑ 沒移到上一項")
+    if await R.J("() => state.volume") != vol0: R.bad("在 ⋮ 選單裡按 ↑ 也調了音量")
+    await pg.keyboard.press("Tab"); await pg.wait_for_timeout(100)
+    if not await R.hidden("#modeMenu"): R.bad("⋮ 選單 Tab 離開後沒收起")
+    # 快捷鍵 L / S（選單收著也能用），狀態同步到選單 / 小圓點
+    await R.J("() => document.activeElement && document.activeElement.blur()")
+    s0 = await st("shuffleState")
+    await pg.keyboard.press("s"); await pg.wait_for_timeout(200)
+    if await st("shuffleState") == s0: R.bad("快捷鍵 S 沒切換隨機（或選單狀態沒同步）")
+    l0 = await st("loopState")
+    await pg.keyboard.press("l"); await pg.wait_for_timeout(200)
+    if await st("loopState") == l0: R.bad("快捷鍵 L 沒切換循環（或選單狀態沒同步）")
+    # 各種寬度：⋮ 選單不超出畫面、頁面不能橫向捲動
+    for vw in (360, 390, 600, 760, 900, 1179, 1180, 1440):
+        await pg.set_viewport_size({"width": vw, "height": 800 if vw < 761 else 900}); await pg.wait_for_timeout(250)
+        if vw < 1180 and not await R.J("() => npOpen"): await R.J("() => openNpView()"); await pg.wait_for_timeout(600)
+        if not await pg.locator("#btnModes:visible").count(): R.bad(f"{vw}px：看不到 ⋮"); continue
+        await R.J("() => document.getElementById('btnModes').click()"); await pg.wait_for_timeout(150)
+        o = await R.J("""() => { const m = document.getElementById('modeMenu').getBoundingClientRect(), vw = document.documentElement.clientWidth;
+            return [document.documentElement.scrollWidth > vw + 1, m.left < 0 || m.right > vw || m.top < 0 || m.bottom > innerHeight, m.width, m.height]; }""")
+        if o[0] or o[1] or not o[2]: R.bad(f"{vw}px：⋮ 選單超出畫面或頁面可橫向捲動 {o}")
+        await pg.keyboard.press("Escape"); await pg.wait_for_timeout(100)
+    await pg.set_viewport_size({"width": w, "height": 900 if w > 600 else 844}); await pg.wait_for_timeout(300)
+    # 收尾：全部關掉
+    await R.J("""async () => { const g = state.guildId, post = (u, b) => fetch(u, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(Object.assign({guild_id: g}, b))});
+        await post('/api/shuffle', {enabled: false}); await post('/api/loop', {mode: 'none'}); await post('/api/autoplay', {enabled: false}); await post('/api/sleep-timer', {mode: 'off'}); }""")
+    await pg.wait_for_timeout(1500)
 
 
 async def ui6_checks(R, pg, w):
@@ -534,8 +658,13 @@ async def scenario(br, theme, w):
     if w < 1180:
         await R.J("() => openNpView()"); await pg.wait_for_timeout(700)
     for bid in ("btnSkip", "btnLoop", "btnShuffle", "btnLoop", "btnLoop", "btnShuffle", "btnBarFav", "btnSleep"):
+        if bid in MODE_ITEMS and w < 1180 and not await R.J("() => npOpen"):
+            await R.J("() => openNpView()"); await pg.wait_for_timeout(500)
+        if bid in MODE_ITEMS: await open_modes(R, pg)
         loc = pg.locator(f"#{bid}:visible")
-        if not await loc.count(): continue
+        if not await loc.count():
+            if bid in MODE_ITEMS: R.bad(f"按鈕 #{bid} 在 ⋮ 選單裡找不到（看不見）")
+            continue
         if w < 1180 and bid != "btnSkip":
             await R.J("() => openNpView()"); await pg.wait_for_timeout(500)
         n0 = reqs["n"]; t0 = await R.J("() => document.querySelectorAll('.toast').length")
@@ -556,6 +685,7 @@ async def scenario(br, theme, w):
     await normalize_checks(R, pg, w)
     await ui6_checks(R, pg, w)
     await feel_checks(R, pg, w)
+    await mode_menu_checks(R, pg, w)
     await R.J("() => closeNpView()"); await pg.wait_for_timeout(600)
     # 個人歌單：依登入身分（不用再貼金鑰）→ 新增 → 出現在清單
     tab = pg.locator('.tab-btn[data-tab="mylists"]:visible').first
