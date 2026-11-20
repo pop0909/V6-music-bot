@@ -175,7 +175,7 @@ async def volume(interaction: discord.Interaction, level: app_commands.Range[int
     await interaction.response.send_message(f"🔊 音量已設為 **{level}**%", ephemeral=True)
     await announce(gid, f"🔊 **{md(interaction.user.display_name)}** 將音量設為 **{level}**%")
 
-@tree.command(name="queue", description="顯示目前的播放佇列")
+@tree.command(name="queue", description="查看目前的播放佇列（只有你看得到）")
 @app_commands.guild_only()
 async def queue(interaction: discord.Interaction):
     gid = interaction.guild.id
@@ -185,20 +185,17 @@ async def queue(interaction: discord.Interaction):
             msg = f"正在播放：**{md(now_playing[gid], 150)}**\n佇列是空的"
         await interaction.response.send_message(msg, ephemeral=True)
         return
-    await interaction.response.defer(ephemeral=True, thinking=True)
+    # 只給問的人看（不洗音樂頻道）；翻頁按鈕在這則私人訊息上，只有自己按得到，5 分鐘後收起
     view = QueuePager(gid) if queue_pages(gid) > 1 else None
-    kw = {"embed": queue_embed(gid, 0)}
+    kw = {"embed": queue_embed(gid, 0), "ephemeral": True}
     if view is not None:
         kw["view"] = view
-    # 輸出頻道不存在（沒設定 / 被刪 / 沒權限）→ 發在指令所在的頻道，不會回「已輸出」卻什麼都沒有
-    msg = await announce(gid, fallback=interaction.channel, **kw)
+    await interaction.response.send_message(**kw)
     if view is not None:
-        view.message = msg
-    if msg is None:
-        await interaction.followup.send(embed=queue_embed(gid, 0), ephemeral=True)
-        return
-    where = getattr(getattr(msg, "channel", None), "mention", None)
-    await interaction.followup.send(f"✅ 播放佇列已發到 {where}" if isinstance(where, str) else "✅ 播放佇列已發出", ephemeral=True)
+        try:
+            view.message = await interaction.original_response()
+        except Exception:
+            view.message = None
 
 @tree.command(name="join", description="讓機器人加入你所在的語音頻道")
 @app_commands.guild_only()
@@ -279,3 +276,52 @@ async def web_panel(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 from . import mylist_cmd as _mylist_cmd  # noqa: E402,F401  /mylist 指令群組
+
+
+# /help 的內容：每個指令一行。測試會比對實際註冊的指令與面板按鈕，新增 / 改名沒更新這裡就會失敗
+HELP_COMMANDS = [
+    ("play", "點歌：輸入歌名關鍵字、YouTube 網址或播放清單"),
+    ("import", "把整個 YouTube / Spotify 歌單加進佇列（最多 200 首）"),
+    ("skip", "跳過目前這首"),
+    ("stop", "停止播放並清空佇列（機器人留在語音頻道）"),
+    ("volume", "調整音量，0～200%"),
+    ("queue", "查看播放佇列（只有你看得到，可翻頁）"),
+    ("join", "讓機器人加入你所在的語音頻道"),
+    ("leave", "讓機器人離開語音頻道"),
+    ("panel", "重新發送控制面板"),
+    ("web", "取得網頁控制面板連結"),
+    ("mylist show", "列出我的個人歌單，或看某份歌單的內容"),
+    ("mylist play", "把整份個人歌單加進佇列（可選隨機順序）"),
+    ("mylist add", "把歌加進個人歌單（不填網址＝目前播放的歌）"),
+    ("mylist import", "匯入 YouTube / Spotify 歌單，存成新的個人歌單"),
+    ("help", "顯示這份說明"),
+]
+HELP_BUTTONS = [
+    ("\u23ef\ufe0f", "播放 / 暫停"),
+    ("\u23ed\ufe0f", "跳過目前這首"),
+    ("\u23f9\ufe0f", "停止並清空佇列（會先問你確定）"),
+    ("\U0001f500", "把佇列順序打亂一次"),
+    ("\u2764\ufe0f", "把目前這首加入最愛"),
+    ("\U0001f3b5", "從最愛隨機點一首"),
+    ("\U0001f3b2", "開啟隨機循環（從本地歌單一直隨機播）"),
+    ("\U0001f50a", "音量 +10%"),
+    ("\U0001f509", "音量 −10%"),
+    ("\u2795", "點歌（輸入歌名或網址）"),
+]
+
+
+def help_embed():
+    url = PUBLIC_URL.rstrip("/") + "/"
+    embed = discord.Embed(title="🎵 聽歌機器人 使用說明", color=discord.Color.from_rgb(108, 92, 231),
+                          description="大部分指令要先進語音頻道；回覆大多只有你看得到。")
+    embed.add_field(name="指令", value="\n".join(f"`/{n}` {d}" for n, d in HELP_COMMANDS), inline=False)
+    embed.add_field(name="控制面板按鈕（要在機器人所在的語音頻道）",
+                    value="\n".join(f"{e} {d}" for e, d in HELP_BUTTONS), inline=False)
+    embed.add_field(name="網頁控制面板", value=f"搜尋、排序佇列、我的歌單、播放紀錄等更多功能：{url}（或用 `/web`）", inline=False)
+    return embed
+
+
+@tree.command(name="help", description="列出所有指令與控制面板按鈕的用法（只有你看得到）")
+@app_commands.guild_only()
+async def help_cmd(interaction: discord.Interaction):
+    await interaction.response.send_message(embed=help_embed(), ephemeral=True)

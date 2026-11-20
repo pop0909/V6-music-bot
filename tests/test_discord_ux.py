@@ -34,6 +34,9 @@ def inter(in_voice=True, name="阿明"):
     it.response.edit_message = mock.AsyncMock(side_effect=edit_message)
     it.response.is_done = lambda: done["v"]
     it.followup.send = mock.AsyncMock(side_effect=followup)
+    it.original_response = mock.AsyncMock(return_value=mock.MagicMock())
+    it.edit_original_response = mock.AsyncMock()
+    it.user.id = 111
     it.guild.id = G
     it.guild_id = G
     it.guild.voice_client = None
@@ -210,6 +213,53 @@ class StopVolumeQueuePanel(Base):
         sp.assert_awaited_once()
         self.assertIn("已停止", texts(it)[0])
 
+    def _stop_button(self, it):
+        run(views.MusicControlView(G).stop_bot.callback(it))
+        kw = it.response.send_message.await_args.kwargs
+        return it.response.send_message.await_args.args[0], kw.get("view"), kw
+
+    def test_stop_button_asks_first(self):
+        state.queues[G] = [(U % i, "x") for i in range(4)]
+        state.now_playing[G] = "歌"
+        it = inter(); playing_vc(it)
+        with mock.patch("musicbot.player.stop_playback", mock.AsyncMock()) as sp:
+            text, view, kw = self._stop_button(it)
+            self.assertEqual(text, "確定要停止並清空佇列（4 首）嗎？")
+            self.assertTrue(kw["ephemeral"])
+            self.assertEqual(view.timeout, 30)
+            self.assertEqual(view.confirm.style, discord.ButtonStyle.danger)
+            sp.assert_not_awaited()                      # 還沒確認：什麼都不做
+            c1, c2 = inter(), inter()
+            run(view.confirm.callback(c1))
+            run(view.confirm.callback(c2))               # 連按兩下
+        sp.assert_awaited_once()
+        self.assertEqual(c1.response.edit_message.await_args.kwargs, {"content": "⏹ 已停止並清空佇列（仍在語音頻道）", "view": None})
+        c2.response.edit_message.assert_not_awaited()
+
+    def test_stop_button_cancel_and_timeout(self):
+        state.now_playing[G] = "歌"
+        it = inter(); playing_vc(it)
+        with mock.patch("musicbot.player.stop_playback", mock.AsyncMock()) as sp:
+            _, view, _ = self._stop_button(it)
+            c = inter()
+            run(view.cancel.callback(c))
+            run(view.confirm.callback(inter()))          # 取消後再按確定：無效
+            self.assertEqual(c.response.edit_message.await_args.kwargs["content"], "已取消，繼續播放")
+            _, view2, _ = self._stop_button(inter())
+            run(view2.on_timeout())
+            run(view2.confirm.callback(inter()))         # 逾時後再按確定：無效
+        sp.assert_not_awaited()
+        view2.message_interaction.edit_original_response.assert_awaited_once_with(content="已逾時，沒有停止", view=None)
+
+    def test_stop_confirm_only_presser(self):
+        state.now_playing[G] = "歌"
+        it = inter(); playing_vc(it)
+        _, view, _ = self._stop_button(it)
+        other = inter("小花"); other.user.id = 222
+        self.assertFalse(run(view.interaction_check(other)))
+        self.assertIn("只有按 ⏹ 的人", texts(other)[0])
+        self.assertTrue(run(view.interaction_check(inter())))
+
     def test_stop_button_with_nothing(self):
         it = inter(); playing_vc(it, playing=False)
         with mock.patch("musicbot.player.stop_playback", mock.AsyncMock()) as sp:
@@ -234,7 +284,9 @@ class StopVolumeQueuePanel(Base):
         it = inter()
         with mock.patch.dict(state.known_durations, {U % 0: 65}, clear=False):
             run(commands.queue.callback(it))
-        kw = self.out.send.await_args.kwargs
+        self.assertEqual(self.public(), [])                       # 不再公開發到音樂頻道
+        kw = it.response.send_message.await_args.kwargs
+        self.assertTrue(kw["ephemeral"])                          # 只有問的人看得到
         e = kw["embed"]
         self.assertIn(r"現在\*播", e.description)
         self.assertEqual(e.fields[0].name, "即將播放（25 首・1 分鐘以上）")
@@ -242,6 +294,8 @@ class StopVolumeQueuePanel(Base):
         self.assertIn(r"歌\_0 `1:05`", e.fields[0].value)
         self.assertEqual(e.footer.text, "第 1／3 頁")
         pager = kw["view"]
+        self.assertEqual(pager.timeout, 300)
+        self.assertIs(pager.message, it.original_response.return_value)   # 逾時時收起按鈕用
         self.assertTrue(pager.prev.disabled)
         self.assertFalse(pager.next.disabled)
         click = inter()
@@ -249,21 +303,26 @@ class StopVolumeQueuePanel(Base):
         e2 = click.response.edit_message.await_args.kwargs["embed"]
         self.assertIn("`11.`", e2.fields[0].value)
         self.assertEqual(e2.footer.text, "第 2／3 頁")
-        self.assertEqual(it.response.defer.await_count, 1)          # 先 defer 再發
-        self.assertEqual(texts(it)[-1], "✅ 播放佇列已發到 #音樂")
+        for t in texts(it):
+            self.assertNotIn("已發到", t)
+
+    def test_queue_pager_timeout_removes_buttons(self):
+        state.queues[G] = [(U % i, "x") for i in range(25)]
+        it = inter()
+        it.original_response = mock.AsyncMock(return_value=mock.MagicMock(edit=mock.AsyncMock()))
+        run(commands.queue.callback(it))
+        pager = it.response.send_message.await_args.kwargs["view"]
+        run(pager.on_timeout())
+        pager.message.edit.assert_awaited_once_with(view=None)
 
     def test_queue_short_has_no_pager(self):
         state.queues[G] = [(U % 1, "一首")]
-        run(commands.queue.callback(inter()))
-        self.assertNotIn("view", self.out.send.await_args.kwargs)
-
-    def test_queue_falls_back_to_command_channel(self):
-        state.queues[G] = [(U % 1, "一首")]
         it = inter()
-        with mock.patch.object(player, "_get_output_channel", mock.AsyncMock(return_value=None)):
-            run(commands.queue.callback(it))
-        it.channel.send.assert_awaited_once()
-        self.assertIn("#指令頻道", texts(it)[-1])
+        run(commands.queue.callback(it))
+        kw = it.response.send_message.await_args.kwargs
+        self.assertNotIn("view", kw)
+        self.assertTrue(kw["ephemeral"])
+        self.assertEqual(self.public(), [])
 
     def test_queue_empty(self):
         it = inter()
@@ -311,6 +370,41 @@ class StopVolumeQueuePanel(Base):
         with mock.patch.object(player, "connect_voice", mock.AsyncMock(return_value=vc)):
             run(commands.join.callback(it))
         self.assertTrue(texts(it)[-1].startswith("✅ 已經在"))
+
+
+class Help(unittest.TestCase):
+    def _names(self):
+        out = []
+        for c in tree.get_commands():
+            if hasattr(c, "commands"):
+                out += [f"{c.name} {s.name}" for s in c.commands]
+            else:
+                out.append(c.name)
+        return out
+
+    def test_help_lists_every_command_exactly(self):
+        listed = [n for n, _ in commands.HELP_COMMANDS]
+        self.assertEqual(sorted(listed), sorted(self._names()))     # 新增 / 改名指令沒更新說明就會失敗
+        self.assertEqual(len(set(listed)), len(listed))
+
+    def test_help_lists_every_panel_button(self):
+        labels = [i.label for i in views.MusicControlView(G).children]
+        self.assertEqual(sorted(e for e, _ in commands.HELP_BUTTONS), sorted(labels))
+
+    def test_help_reply(self):
+        it = inter()
+        run(commands.help_cmd.callback(it))
+        kw = it.response.send_message.await_args.kwargs
+        self.assertTrue(kw["ephemeral"])
+        e = kw["embed"]
+        for f in e.fields:
+            self.assertLessEqual(len(f.value), 1024)
+        body = "\n".join(f.value for f in e.fields)
+        self.assertIn("`/play`", body)
+        self.assertIn("`/mylist add`", body)
+        self.assertIn("會先問你確定", body)
+        self.assertIn(commands.PUBLIC_URL.rstrip("/"), body)
+        self.assertLessEqual(len(e), 6000)
 
 
 class PlayReplies(Base):

@@ -94,8 +94,11 @@ class MusicControlView(discord.ui.View):
         if not ((vc and (vc.is_playing() or vc.is_paused())) or queues.get(gid) or now_playing.get(gid)):
             await interaction.response.send_message("目前沒有在播放，佇列也是空的", ephemeral=True)
             return
-        await interaction.response.send_message("⏹ 已停止並清空佇列（仍在語音頻道）", ephemeral=True)
-        await stop_playback(self._gid(interaction), guild=interaction.guild)
+        # 先確認：⏹ 就在 ⏭️ 旁邊，誤按會把整個佇列清掉（只有按的人看得到、30 秒內有效）
+        n = len(queues.get(gid) or [])
+        view = StopConfirmView(gid, interaction.user.id)
+        await interaction.response.send_message(f"確定要停止並清空佇列（{n} 首）嗎？", view=view, ephemeral=True)
+        view.message_interaction = interaction
 
     @discord.ui.button(label="\U0001f500", style=discord.ButtonStyle.secondary, custom_id="mb:shuffle_queue")
     async def shuffle_queue(self, interaction, button):
@@ -192,6 +195,55 @@ class MusicControlView(discord.ui.View):
     async def add_song(self, interaction, button):
         modal = MusicLinkModal()
         await interaction.response.send_modal(modal)
+
+
+class StopConfirmView(discord.ui.View):
+    """⏹ 的確認：確定停止（紅）/ 取消；只有按 ⏹ 的人能確認，連按兩下只停一次，30 秒沒按就作廢"""
+    def __init__(self, gid, user_id, timeout=30):
+        super().__init__(timeout=timeout)
+        self.gid = gid
+        self.user_id = user_id
+        self.done = False
+        self.message_interaction = None
+
+    async def interaction_check(self, interaction):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("只有按 ⏹ 的人可以確認", ephemeral=True)
+            return False
+        return True
+
+    async def on_error(self, interaction, error, item):
+        log.error(f"[面板] 停止確認失敗：{error!r}", exc_info=error)
+        await reply_error(interaction, GENERIC_ERROR)
+
+    @discord.ui.button(label="確定停止", style=discord.ButtonStyle.danger)
+    async def confirm(self, interaction, button):
+        from .player import stop_playback
+        if self.done:                     # 連按兩下：第二下什麼都不做
+            await interaction.response.defer()
+            return
+        self.done = True
+        self.stop()
+        await interaction.response.edit_message(content="⏹ 已停止並清空佇列（仍在語音頻道）", view=None)
+        await stop_playback(self.gid, guild=interaction.guild)
+
+    @discord.ui.button(label="取消", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction, button):
+        if self.done:
+            await interaction.response.defer()
+            return
+        self.done = True
+        self.stop()
+        await interaction.response.edit_message(content="已取消，繼續播放", view=None)
+
+    async def on_timeout(self):
+        if self.done or self.message_interaction is None:
+            return
+        self.done = True
+        try:
+            await self.message_interaction.edit_original_response(content="已逾時，沒有停止", view=None)
+        except Exception:
+            pass
 
 
 class MusicLinkModal(discord.ui.Modal, title="點歌"):
