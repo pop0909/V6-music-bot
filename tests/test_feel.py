@@ -98,5 +98,38 @@ class TouchTargets(unittest.TestCase):
         self.assertIn("border-radius: 2.5px / 21.5px", line)
 
 
+class Feel2(unittest.TestCase):
+    """第二輪：跳過防連點、手機播放列上緣展開、錯誤提示停久一點"""
+    def setUp(self):
+        self.js = src("static", "js", "app.js")
+        self.css = src("static", "css", "style.css")
+
+    def test_skip_guard(self):
+        i = self.js.index("function skipSong()")
+        body = self.js[i:self.js.index("\n}\n", i)]
+        self.assertIn("if (_skipBusy || now < _skipHoldUntil) return;", body)
+        self.assertIn("_skipHoldUntil = now + 700;", body)
+        self.assertIn(".finally(", body)          # 伺服器回應後解除
+        self.assertIn("setTimeout(() => { _skipBusy = false; }, 5000)", body)   # 沒回應也最多擋 5 秒
+        # 樂觀更新仍在送出之前
+        self.assertLess(body.index("showToast('⏭️ 已跳過'"), body.index("API.skip()"))
+
+    def test_all_skip_paths_use_guard(self):
+        # 按鈕、快捷鍵都走 skipSong，沒有別處直接呼叫 API.skip
+        self.assertEqual(self.js.count("API.skip("), 1)
+        self.assertIn("el.btnSkip.addEventListener('click', skipSong);", self.js)
+
+    def test_error_toast_longer(self):
+        self.assertIn("(type === 'error' ? 5000 : key ? 1400 : 2500)", self.js)
+
+    def test_minibar_top_edge_expands_on_touch(self):
+        i = self.css.index("@media (max-width: 760px) and (pointer: coarse) {\n    html:not(.np-open) .player-bar .progress-bar")
+        block = self.css[i:self.css.index("\n}\n", i)]
+        self.assertIn("html:not(.np-open) .player-bar .progress-bar { pointer-events: none; }", block)
+        self.assertIn("pointer-events: auto; top: -12px; bottom: calc(100% + 2px);", block)
+        # 播放列點擊展開時會略過進度條本身；pointer-events: none 讓上緣的點擊落到播放列
+        self.assertIn("'button, input, label, select, a, .progress-bar, .volume-row, .pb-extras'", self.js)
+
+
 if __name__ == "__main__":
     unittest.main()

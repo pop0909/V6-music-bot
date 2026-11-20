@@ -221,7 +221,11 @@ async def settings_menu_checks(R, pg, w):
         await pg.click("#statusClose"); await pg.wait_for_timeout(200)
         if not await R.hidden("#statusPop") or await R.hidden("#setMenu"): R.bad("手機子選單按返回沒回到選單")
         if await R.J("() => getComputedStyle(document.getElementById('setMenu')).visibility") != "visible": R.bad("返回後選單內容沒顯示")
-        await pg.mouse.click(w // 2, 780); await pg.wait_for_timeout(200)
+        # 點「外面」要找真的空白處：(w/2, 780) 是底部播放列的上緣，現在點那裡會展開播放畫面
+        ox, oy = await R.J("""([w]) => { for (const [x, y] of [[w / 2, 700], [w / 2, 600], [20, 700], [w - 20, 600]]) {
+            const e = document.elementFromPoint(x, y); if (e && !e.closest('.cdd,button,a,input,select,textarea,[role=menu],.set-menu,.player-bar,.list-item,.shelf-card')) return [x, y]; }
+            return [w / 2, 700]; }""", [w])
+        await pg.mouse.click(ox, oy); await pg.wait_for_timeout(200)
         if not await R.hidden("#setMenu"): R.bad("手機點外面沒關齒輪選單")
     # 跟語音下拉互斥
     await pg.click("#btnSettings"); await pg.wait_for_timeout(150)
@@ -342,6 +346,12 @@ HITSIZE_JS = r"""(sels) => { const bad = [];
   return bad; }"""
 
 
+# 播放列上緣：在 x=120 由上往下掃，哪些 y 會點到細進度條（inside：播放列裡面 0~14px；above：播放列上方 12px 內）
+MINIBAR_JS = r"""() => { const pb = document.querySelector('.player-bar').getBoundingClientRect(); const r = { inside: [], above: [] };
+  for (let d = -12; d <= 14; d++) { const t = document.elementFromPoint(120, pb.top + d); if (t && t.closest('.player-bar .progress-bar')) (d >= 0 ? r.inside : r.above).push(d); }
+  return r; }"""
+
+
 async def feel_checks(R, pg, w):
     """操作手感：連點 / 連按只送一次、按下立刻有反應、吐司不會疊滿畫面、收合後焦點、觸控點擊範圍 ≥ 44"""
     posts = []
@@ -390,6 +400,25 @@ async def feel_checks(R, pg, w):
         await R.J("() => { for (let i = 0; i < 7; i++) showToast('連續提示 ' + i, 'success'); }"); await pg.wait_for_timeout(350)
         n = await R.J("() => [...document.querySelectorAll('.toast')].filter(t => !t._leaving).length")
         if n > (3 if w < 600 else 4): R.bad(f"一次跳 7 則吐司，畫面上同時有 {n} 則")
+        # 錯誤提示停得比一般提示久（約 5 秒 vs 2.5 秒）
+        await R.J("() => showToast('手感測試：錯誤提示', 'error')")
+        await pg.wait_for_timeout(3200)
+        if not await R.J("() => [...document.querySelectorAll('.toast.error')].some(t => !t._leaving && t.textContent.includes('手感測試：錯誤提示'))"):
+            R.bad("錯誤提示 3 秒內就消失了（應該比一般提示停久一點）")
+        # 「跳過」連點兩下只跳一首（按鍵 / 快捷鍵 N）
+        posts.clear()
+        await R.J("() => { const b = document.getElementById('btnSkip'); b.click(); setTimeout(() => b.click(), 90); }"); await pg.wait_for_timeout(1000)
+        await R.J("() => document.activeElement && document.activeElement.blur()")
+        await pg.keyboard.press("n"); await pg.wait_for_timeout(120); await pg.keyboard.press("n"); await pg.wait_for_timeout(1000)
+        if count("/api/skip") != 2: R.bad(f"「跳過」連點兩下 ×2 次，送了 {count('/api/skip')} 次跳過（應該 2 次）")
+        # 手機底部播放列：收合時點上緣是展開，不是跳轉；展開時這條細進度條照樣可以跳轉
+        if w < 600:
+            hits = await R.J(MINIBAR_JS)
+            if hits["inside"]: R.bad(f"手機播放列上緣點下去會跳轉（播放列內 y={hits['inside']}）")
+            if not hits["above"]: R.bad("手機播放列上方的細進度條完全點不到了")
+            await R.J("() => openNpView()"); await pg.wait_for_timeout(700)
+            if not (await R.J(MINIBAR_JS))["inside"]: R.bad("展開畫面時底部進度條不能跳轉了")
+            await R.J("() => closeNpView()"); await pg.wait_for_timeout(600)
         # 用展開畫面裡的「收合」關掉：焦點要回到看得到的按鈕
         await R.J("() => openNpView()"); await pg.wait_for_timeout(700)
         await R.J("() => { const b = document.getElementById('btnCollapse'); b.focus(); b.click(); }"); await pg.wait_for_timeout(700)

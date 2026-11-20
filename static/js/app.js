@@ -168,7 +168,8 @@ const _toastByKey = new Map();
 const _TOAST_EMOJI = /^\s*(?:\p{Extended_Pictographic}|[\u2190-\u21FF\u2300-\u23FF\u25A0-\u27BF])/u;
 function showToast(msg, type = 'success', opts = null) {
     const key = opts && opts.key;
-    const ms = (opts && opts.ms) || (key ? 1400 : 2500);
+    // 錯誤停久一點（5 秒），來得及看完；一般提示 2.5 秒、連續更新的提示 1.4 秒
+    const ms = (opts && opts.ms) || (type === 'error' ? 5000 : key ? 1400 : 2500);
     const hideLater = (t) => setTimeout(() => {
         if (key && _toastByKey.get(key) && _toastByKey.get(key).t === t) _toastByKey.delete(key);
         t.style.transition = 'opacity .3s ease, transform .3s cubic-bezier(.5,0,.75,0)';
@@ -602,13 +603,21 @@ function renderPlayState() {
     updateDocTitle();
 }
 
+// 連點「跳過」只跳一首：按下後 700ms 內、或伺服器還沒回應（最多等 5 秒）時，再按都不送
+let _skipBusy = false, _skipHoldUntil = 0;
 function skipSong() {
     if (!state.guildId) return;
+    const now = performance.now();
+    if (_skipBusy || now < _skipHoldUntil) return;
+    _skipBusy = true;
+    _skipHoldUntil = now + 700;
+    const release = setTimeout(() => { _skipBusy = false; }, 5000);
     // 樂觀更新
     setProgress(0);
     el.currentTime.textContent = '0:00';
     showToast('⏭️ 已跳過', 'success');
-    API.skip().then(reportActionResult);  // SSE 會推送新歌資訊
+    API.skip().then(reportActionResult)  // SSE 會推送新歌資訊
+        .finally(() => { clearTimeout(release); _skipBusy = false; });
 }
 
 function stopPlayback() {
@@ -3066,7 +3075,7 @@ function setNpOpen(open, { fromHistory = false } = {}) {
     const instant = fxOff();
     const fps = window.__npFps;
     _npAnimating = !instant;
-    // 以下都是很小的寫入：一個屬性、兩個沒有樣式規則依賴的 class、按鈕自己的 class
+    // 以下都是很小的寫入：一個屬性、兩個 class（np-open 只影響手機底部那條細進度條的點擊範圍）、按鈕自己的 class
     npView.setAttribute('aria-hidden', open ? 'false' : 'true');
     root.classList.toggle('np-open', open);
     if (el.btnExpand) {

@@ -2177,3 +2177,10 @@ html[data-theme="light"] .list-item.q-lift { box-shadow: 0 14px 30px -14px rgba(
     .volume-slider::-webkit-slider-thumb { width: 22px; height: 22px; }
     .volume-slider::-moz-range-thumb { width: 22px; height: 22px; }
 }
+
+/* 手機、播放器收合時：細進度條只在播放列「上方」留 10px 可拖曳（跟播放列隔 2px，避免手指點到邊緣被瀏覽器吸到進度條），播放列裡面（上緣）點了就是展開播放畫面。
+   展開時（展開畫面沒有自己的進度條，跳轉靠這條）維持原本上下加大的範圍。桌面不變 */
+@media (max-width: 760px) and (pointer: coarse) {
+    html:not(.np-open) .player-bar .progress-bar { pointer-events: none; }
+    html:not(.np-open) .player-bar .progress-bar::before { pointer-events: auto; top: -12px; bottom: calc(100% + 2px); }
+}
