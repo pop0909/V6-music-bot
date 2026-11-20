@@ -25,7 +25,7 @@ from . import audio as _audio
 from .state import manual_advance, song_meta, queue_room, queue_max, queue_full_message
 from .state import play_notices, note_song_meta, known_durations, remember_duration, notify_change
 from .state import pending_seeks as _pending_seeks, sleep_timers
-from .utils import format_time, valid_song_url, safe_title
+from .utils import format_time, allowed_song_url, song_url_error, safe_title
 from .player import _update_panel, play_next, resume_playback, _spawn  # noqa: F401  _update_panel：測試會替換
 from . import actionlog
 
@@ -97,8 +97,9 @@ async def web_add_to_queue(gid, url, title, auto_play=True, duration=None, reque
     position = 加入後在佇列中的位置（1 = 下一首）；starts_now = 佇列原本閒置，馬上開播
     """
     url = (url or "").strip() if isinstance(url, str) else ""
-    if not valid_song_url(url):
-        return {"ok": False, "invalid": True, "message": "網址格式不正確（需要 http/https 連結）"}
+    err = song_url_error(url)
+    if err:
+        return {"ok": False, "invalid": True, "message": err}
     if gid not in queues: queues[gid] = []
     title = safe_title(title, url)
     # 去重檢查：同一首歌已在佇列（或正在播放）就不重複加入
@@ -377,7 +378,7 @@ async def web_add_to_queue_batch(gid, songs, stats=None, actor=None, label=None)
             continue
         url = (song.get("url") or "").strip() if isinstance(song.get("url"), str) else ""
         title = safe_title(song.get("title"), url)
-        if valid_song_url(url):
+        if allowed_song_url(url):
             if queue_room(gid) <= 0:
                 skipped += 1
                 continue
@@ -417,7 +418,7 @@ async def web_play_all(gid, songs, stats=None, actor=None, label=None):
         if not isinstance(s, dict):
             continue
         url = (s.get("url") or "").strip() if isinstance(s.get("url"), str) else ""
-        if valid_song_url(url) and url not in seen:
+        if allowed_song_url(url) and url not in seen:
             seen.add(url)
             new_q.append((url, safe_title(s.get("title"), url)))
     cap = queue_max()
@@ -520,18 +521,28 @@ def get_guild_status(gid):
         }
 
 
-def get_full_app_state(gid):
+def get_full_app_state(gid, known=None):
     """
     統一的全狀態函式 — 一次打包所有前端需要的資料。
     取代前端所有輪詢，透過 SSE 每秒推送。
+    known：這條 SSE 連線上次送出的清單版本 {"fav": ..., "pl": ...}；版本沒變就不附整份最愛 / 歌單
+    （前端沿用手上那份）。不給 = 全部都附（新連線 / 重連一定拿到完整資料）。
     """
     gid = int(gid)
     state_data = get_guild_status(gid)
-    # 加入最愛清單（讓前端可以直接快取）
+    from .storage import favorites_rev, playlist_rev
     with state_lock:
-        state_data["favorites"] = load_favorites(gid)
-        state_data["favorites_count"] = len(state_data["favorites"])
-        state_data["playlist"] = local_playlist.copy()
+        favs = load_favorites(gid)
+        # 版本 + 長度：就算有地方改了清單卻沒走存檔，長度變了也會重送
+        fav_key = f"{favorites_rev(gid)}.{len(favs)}"
+        pl_key = f"{playlist_rev()}.{len(local_playlist)}"
+        state_data["fav_rev"] = fav_key
+        state_data["pl_rev"] = pl_key
+        if not known or known.get("fav") != fav_key:
+            state_data["favorites"] = list(favs)
+        if not known or known.get("pl") != pl_key:
+            state_data["playlist"] = local_playlist.copy()
+        state_data["favorites_count"] = len(favs)
         state_data["playlist_count"] = len(local_playlist)
         state_data["sleep"] = _sleep_info(gid)
     from . import idlesleep
@@ -569,7 +580,7 @@ async def web_import_songs(gid, songs, requester="網頁", stats=None, actor=Non
         if not url or url in existing:
             continue
         existing.add(url)
-        if not valid_song_url(url):
+        if not allowed_song_url(url):
             continue
         if queue_room(gid) <= 0:
             skipped += 1

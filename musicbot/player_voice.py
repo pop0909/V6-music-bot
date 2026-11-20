@@ -197,6 +197,11 @@ async def _lookup(query):
 async def _process_and_play(interaction, query, gid, vc):
     if not interaction.response.is_done():
         await interaction.response.defer(thinking=True, ephemeral=True)
+    from . import searchcache
+    from .utils import song_host_allowed, URL_NOT_ALLOWED
+    if searchcache.is_url(query) and not song_host_allowed(query):
+        await interaction.followup.send(f"⚠️ {URL_NOT_ALLOWED}（其他網址不能點歌；也可以直接打歌名搜尋）", ephemeral=True)
+        return
     try:
         info = await _lookup(query)
         if not info:

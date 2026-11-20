@@ -331,7 +331,8 @@ class Revocation(Base):
     def test_sse_stream_closes_when_revoked(self):
         m, tok = self.friend()
         self.login(tok)
-        with mock.patch.object(webapi, "get_full_app_state", lambda gid: {"t": time.time()}):
+        with mock.patch.object(webapi, "get_full_app_state", lambda gid, known=None: {"t": time.time()}), \
+                mock.patch("musicbot.guildscope.allowed_guilds", return_value=None):
             r = self.c.get("/api/progress-stream?guild_id=1", headers={"Host": HOST}, buffered=False)
             self.assertEqual(r.status_code, 200)
             it = iter(r.response)

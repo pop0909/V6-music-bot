@@ -21,7 +21,21 @@ def _atomic_write_lines(path, items):
     os.replace(tmp, path)
 
 
+# 版本號：歌單 / 最愛每次存檔（或重新載入）+1。即時更新（SSE）只在版本變了才重送整份清單
+_pl_rev = [0]
+_fav_rev = {}
+
+
+def playlist_rev():
+    return _pl_rev[0]
+
+
+def favorites_rev(guild_id):
+    return _fav_rev.get(guild_id, 0)
+
+
 def load_local_playlist():
+    _pl_rev[0] += 1
     with state_lock:
         local_playlist.clear()
         try:
@@ -43,6 +57,7 @@ def load_local_playlist():
 
 
 def save_local_playlist():
+    _pl_rev[0] += 1
     try:
         _atomic_write_lines(LIST_FILE, local_playlist)
         return True
@@ -79,6 +94,7 @@ def load_favorites(guild_id):
 
 
 def save_favorites(guild_id):
+    _fav_rev[guild_id] = _fav_rev.get(guild_id, 0) + 1
     favs = favorites_cache.get(guild_id, [])
     path = _get_fav_path(guild_id)
     os.makedirs(FAVORITES_DIR, exist_ok=True)

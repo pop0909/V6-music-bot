@@ -17,8 +17,9 @@ import secrets
 import threading
 import time
 
+from .jsonfile import write_atomic
 from .config import log
-from .utils import valid_song_url, safe_title
+from .utils import allowed_song_url, safe_title
 
 FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "user_playlists.json")
 MAX_LISTS = 20          # 每人最多幾份歌單
@@ -61,12 +62,7 @@ def _load():
 
 def _save():
     data = _cache["data"]
-    os.makedirs(os.path.dirname(FILE), exist_ok=True)
-    tmp = FILE + ".tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
-    os.replace(tmp, FILE)
+    write_atomic(FILE, data, private=True)
     _rev[0] += 1
     try:
         from .state import notify_change
@@ -95,7 +91,7 @@ def _clean_songs(songs, limit=MAX_SONGS):
         if not isinstance(s, dict):
             continue
         url = s.get("url").strip() if isinstance(s.get("url"), str) else ""
-        if not valid_song_url(url) or url in seen:
+        if not allowed_song_url(url) or url in seen:
             continue
         seen.add(url)
         out.append({"url": url, "title": safe_title(s.get("title"), url)})

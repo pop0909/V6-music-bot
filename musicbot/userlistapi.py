@@ -4,6 +4,7 @@ import random
 
 from flask import request, jsonify, g
 
+from .utils import song_host_allowed
 from . import userlists, extmembers, importer
 from .config import log
 from .state import queue_skip_message, queue_full_message
@@ -83,6 +84,9 @@ def ul_update(lid):
             title = d.get("title") if isinstance(d.get("title"), str) and d.get("title").strip() else None
             if not title and url.startswith("http"):
                 title = _lookup_title(url)               # 只貼網址 → 查歌名（查不到就用網址）
+            from .utils import song_url_error
+            if song_url_error(url):
+                return jsonify({"status": "error", "message": song_url_error(url)}), 400
             songs = [{"url": url, "title": title}]
         added, skipped = userlists.add_songs(k, lid, songs)
         if not added:
@@ -152,7 +156,7 @@ def import_into_new_list(k, url, name=None):
 def ul_import():
     d, k = _body(), user_key()
     url = d.get("url").strip() if isinstance(d.get("url"), str) else ""
-    if not url.startswith("http") or not (importer.is_spotify(url) or "list=" in url):
+    if not url.startswith("http") or not song_host_allowed(url) or not (importer.is_spotify(url) or "list=" in url):
         return jsonify({"status": "error", "message": "請貼上 YouTube 播放清單（含 list=）或 Spotify 歌單／專輯網址"}), 400
     if len(userlists.list_playlists(k)) >= userlists.MAX_LISTS:
         return jsonify({"status": "error", "message": f"每人最多 {userlists.MAX_LISTS} 份歌單"}), 400

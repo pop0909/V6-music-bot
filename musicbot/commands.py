@@ -16,16 +16,6 @@ from .utils import format_time  # noqa: F401
 from .discord_ux import md, panel_text, claim_skip, announce, queue_embed, queue_pages, QueuePager, reply_error, GENERIC_ERROR
 
 
-def _field_lines(lines, limit=1024):
-    """Embed field value 上限 1024 字元，超過 Discord 會回 400 導致整個指令失敗"""
-    out, size = [], 0
-    for line in lines:
-        if size + len(line) + 1 > limit - 4:
-            out.append("…")
-            break
-        out.append(line)
-        size += len(line) + 1
-    return "\n".join(out)
 from .player import (  # noqa: F401  play_next / _update_panel：測試用 mock.patch.object(commands, ...) 替換
     _get_output_channel, _update_panel, play_next,
     get_voice_client, _process_and_play,
@@ -70,7 +60,8 @@ async def import_cmd(interaction: discord.Interaction, url: str):
     from . import importer
     from .webcore import web_import_songs
     url = (url or "").strip()
-    if not url.startswith("http"):
+    from .utils import song_host_allowed
+    if not url.startswith("http") or not song_host_allowed(url):
         await interaction.response.send_message("請貼上 YouTube 或 Spotify 歌單網址", ephemeral=True)
         return
     vc = await get_voice_client(interaction)

@@ -6,8 +6,8 @@ import subprocess
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-PAT = re.compile(r"/static/(?:css/style\.css|js/app\.js)\?v=([0-9A-Za-z_.-]+)")
-FILES = ("static/css/style.css", "static/js/app.js")
+PAT = re.compile(r"/static/(?:css/style\.css|css/icons\.css|js/app\.js)\?v=([0-9A-Za-z_.-]+)")
+FILES = ("static/css/style.css", "static/css/icons.css", "static/js/app.js")
 
 
 def git(*args, inp=None):
@@ -37,7 +37,8 @@ class StaticVersionTest(unittest.TestCase):
             if html.returncode != 0 or cur_v not in PAT.findall(html.stdout):
                 continue
             for f in FILES:
-                old = git("rev-parse", f"{c}:{f}").stdout.strip()
+                r = git("rev-parse", "-q", "--verify", f"{c}:{f}")
+                old = r.stdout.strip() if r.returncode == 0 else ""
                 if old and old != cur[f]:
                     bad.append(f"{c[:7]} 的 {f} 內容不同但也用 ?v={cur_v}")
         self.assertEqual(bad, [], "改了 CSS / JS 要換新的 ?v 值")

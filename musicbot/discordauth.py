@@ -266,19 +266,15 @@ def in_any_guild_cached(did):
 
 
 def owner_ids():
+    """擁有者的 Discord ID 集合：OWNER_ID（沒設 → 應用程式擁有者）+ 成員管理連結的「我的 Discord」"""
+    from . import owner
     ids = set()
-    raw = (os.getenv("OWNER_ID") or "").strip()
-    if raw.isdigit():
-        ids.add(raw)
-    else:
-        try:
-            app = _bot().application
-            if app:
-                owner = app.team.owner if getattr(app, "team", None) and app.team.owner else app.owner
-                if owner:
-                    ids.add(str(owner.id))
-        except Exception:
-            pass
+    try:
+        oid = owner.owner_id(_bot())
+    except Exception:
+        oid = owner.configured_id()
+    if oid:
+        ids.add(oid)
     try:
         from . import userlists
         did = userlists.discord_links().get("owner")
@@ -302,18 +298,11 @@ def owner_discord_id():
             return str(did)
     except Exception:
         pass
-    raw = (os.getenv("OWNER_ID") or "").strip()
-    if raw.isdigit():
-        return raw
+    from . import owner
     try:
-        app = _bot().application
-        if app:
-            owner = app.team.owner if getattr(app, "team", None) and app.team.owner else app.owner
-            if owner:
-                return str(owner.id)
+        return owner.owner_id(_bot())
     except Exception:
-        pass
-    return None
+        return owner.configured_id()
 
 
 def display_name(did):
@@ -378,15 +367,8 @@ def _save():
     data = _sessions["data"] or {}
     try:
         os.makedirs(os.path.dirname(SESSIONS_FILE), exist_ok=True)
-        tmp = SESSIONS_FILE + ".tmp"
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump({"v": 1, "sessions": data}, f, ensure_ascii=False, separators=(",", ":"))
-        try:
-            os.chmod(tmp, 0o600)
-        except OSError:
-            pass
-        os.replace(tmp, SESSIONS_FILE)
+        from .jsonfile import write_atomic
+        write_atomic(SESSIONS_FILE, {"v": 1, "sessions": data}, private=True)
     except Exception as e:
         log.warning(f"[Discord 登入] 寫入登入紀錄失敗：{e!r}")
 
@@ -427,17 +409,6 @@ def delete_session(sid):
     with _lock:
         if _load().pop(_hash(sid), None) is not None:
             _save()
-
-
-def delete_user_sessions(did):
-    with _lock:
-        data = _load()
-        ks = [k for k, v in data.items() if v.get("did") == str(did)]
-        for k in ks:
-            data.pop(k, None)
-        if ks:
-            _save()
-        return len(ks)
 
 
 def ident_for_session(sid):

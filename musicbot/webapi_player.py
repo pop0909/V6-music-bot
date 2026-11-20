@@ -22,44 +22,40 @@ from .webcore import (
 )
 from . import webauth
 from .webapi import flask_app
+from . import guildscope
 from . import webapi as _w
 
 
 @flask_app.route("/api/guilds")
 def api_guilds():
-    return jsonify({"guilds": get_guild_list()})
+    return jsonify({"guilds": guildscope.filter_guild_list(get_guild_list())})
 
 @flask_app.route("/api/active-guild", methods=["GET"])
 def api_active_guild_get():
-    with state_lock:
-        # 傳字串避免 JavaScript 精度丟失（Discord Snowflake ID 超過 JS 安全整數）
-        return jsonify({"active_guild_id": str(get_active_guild()) if get_active_guild() is not None else None})
+    # 每個人各自的「目前伺服器」（見 guildscope.py）；傳字串避免 JavaScript 精度丟失（Discord Snowflake ID 超過 JS 安全整數）
+    gid = guildscope.chosen_guild()
+    return jsonify({"active_guild_id": str(gid) if gid else None})
 
 @flask_app.route("/api/active-guild", methods=["POST"])
 def api_active_guild_set():
     data = request.get_json() or {}
     raw = data.get("guild_id")
-    with state_lock:
-        if raw is not None:
-            _set_active_guild(int(raw))
-        else:
-            _set_active_guild(None)
-        return jsonify({"active_guild_id": str(get_active_guild()) if get_active_guild() is not None else None})
+    # 不能選的伺服器已經在 guildscope.check_request 擋掉（403）；只改自己的，擁有者的選擇同時是大家的預設
+    guildscope.set_chosen(int(raw) if raw not in (None, "", 0, "0") else None)
+    gid = guildscope.chosen_guild()
+    return jsonify({"active_guild_id": str(gid) if gid else None})
 
 @flask_app.route("/api/status")
 def api_status():
     gid = request.args.get("guild_id", 0, type=int)
     if gid == 0:
-        with state_lock:
-            if get_active_guild():
-                gid = get_active_guild()
-            else:
-                guilds = get_guild_list()
-                if guilds:
-                    gid = guilds[0]["id"]
-                else:
-                    return jsonify({"error": "no_guilds", "message": "機器人尚未連線到任何伺服器"})
-    return jsonify(get_guild_status(gid))
+        gid = guildscope.default_guild()
+        if not gid:
+            return jsonify({"error": "no_guilds", "message": "機器人尚未連線到任何伺服器"})
+    data = get_guild_status(gid)
+    chosen = guildscope.chosen_guild()
+    data["active_guild_id"] = str(chosen) if chosen else None     # 自己的目前伺服器（不是別人的）
+    return jsonify(data)
 
 @flask_app.route("/api/play", methods=["POST"])
 def api_play():
@@ -194,6 +190,8 @@ def api_join():
     if not gid or not channel_id:
         return jsonify({"status": "error", "message": "請先選擇伺服器和語音頻道"}), 400
     result = _w.run_async(web_join_voice(gid, channel_id))
+    if result and result.get("status") == "joined":
+        guildscope.set_chosen(gid)
     return jsonify(result or {"status": "error"})
 
 
@@ -206,8 +204,7 @@ def api_sleep_timer():
     mode = data.get("mode", "off")
     minutes = int(data.get("minutes", 0))
     if gid == 0:
-        with state_lock:
-            gid = get_active_guild() or (next(iter(guild_names)) if guild_names else 0)
+        gid = guildscope.default_guild()
     if gid == 0:
         return jsonify({"status": "error", "message": "機器人尚未連線到任何伺服器"}), 400
     if mode not in ("minutes", "track_end", "off"):
@@ -240,6 +237,7 @@ def api_progress_stream():
     取代前端所有輪詢 API，單一通道驅動所有 UI 更新
     """
     gid = request.args.get("guild_id", 0, type=int)
+    ident = guildscope.current_ident()
     check_auth = not flask_app.config.get("LOGIN_DISABLED")
     cookie = request.cookies.get(webauth.COOKIE)
     # waitress 提供：客戶端已斷線就回 True（見 webserver.py）；開發伺服器沒有 → 等寫入失敗才知道
@@ -258,6 +256,9 @@ def api_progress_stream():
         last_payload = None
         last_sent = time.monotonic()
         ver = change_version()
+        mine = guildscope.chosen_guild(ident)
+        last_ver = ver
+        known = {}                       # 這條連線已送過的最愛 / 歌單版本（沒變就不再送整份；重連 = 新連線 → 全送）
         while True:
             if disconnected is not None and disconnected():
                 break                    # 分頁已關：結束串流、歸還執行緒與名額
@@ -267,11 +268,15 @@ def api_progress_stream():
                 yield "event: auth\ndata: logout\n\n"
                 break
             try:
-                data = _w.get_full_app_state(gid)
+                data = _w.get_full_app_state(gid, known)
+                mine = guildscope.chosen_guild(ident) if ver != last_ver else mine
+                last_ver = ver
+                data["active_guild_id"] = str(mine) if mine else None     # 自己的目前伺服器（不跟著別人切換）
                 payload = f"data: {json.dumps(data)}\n\n"
                 if payload != last_payload:
                     yield payload
                     last_payload = payload
+                    known = {"fav": data.get("fav_rev"), "pl": data.get("pl_rev")}
                     last_sent = time.monotonic()
                 elif time.monotonic() - last_sent >= 30:
                     # 每 30 秒強制推送一次心跳，避免中間設備（Nginx/Tunnel）把閒置連線掐掉

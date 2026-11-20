@@ -67,6 +67,7 @@ class Store(unittest.TestCase):
 
     def test_atomic_file_written_and_reloaded(self):
         actionlog.record(G, "add", ("a", "web"), "x")
+        actionlog.flush()                           # 寫檔是延後合併的；flush 立刻寫
         self.assertTrue(os.path.exists(self.file))
         self.assertFalse(os.path.exists(self.file + ".tmp"))
         with open(self.file, encoding="utf-8") as f:
@@ -88,6 +89,7 @@ class Store(unittest.TestCase):
         actionlog.prune()                          # 啟動時
         self.assertEqual([i["title"] for i in actionlog.recent(G)], ["fresh"])
         self.assertEqual(actionlog.recent(G2), [])
+        actionlog.flush()
         with open(self.file, encoding="utf-8") as f:
             raw = json.load(f)
         self.assertNotIn(str(G2), raw["guilds"])   # 檔案也已經清掉
@@ -95,6 +97,32 @@ class Store(unittest.TestCase):
         with mock.patch.object(actionlog.time, "time", return_value=time.time() + 2 * 86400):
             actionlog.record(G, "add", ("b", "web"), "new")
         self.assertEqual([i["title"] for i in actionlog.recent(G)], ["new"])
+
+    def test_saves_are_debounced(self):
+        """連續多筆紀錄只寫一次檔（延後 SAVE_DELAY 秒）；flush / 換檔（重啟）前會寫進去"""
+        with mock.patch.object(actionlog, "write_atomic", wraps=actionlog.write_atomic) as w, \
+                mock.patch.object(actionlog, "SAVE_DELAY", 60):
+            for i in range(50):
+                actionlog.record(G, "add", ("a", "web"), f"s{i}")
+            self.assertEqual(w.call_count, 0)
+            self.assertFalse(os.path.exists(self.file))
+            actionlog.flush()
+            self.assertEqual(w.call_count, 1)
+            actionlog.flush()                       # 沒有新變更 → 不再寫
+            self.assertEqual(w.call_count, 1)
+            actionlog.record(G, "skip", ("a", "web"), "s49")
+            actionlog._reset_for_tests(self.file)   # 模擬重啟：換檔前先寫
+            self.assertEqual(w.call_count, 2)
+        self.assertEqual(len(actionlog.recent(G)), 51)
+
+    def test_debounce_timer_writes_by_itself(self):
+        with mock.patch.object(actionlog, "SAVE_DELAY", 0.05):
+            actionlog.record(G, "add", ("a", "web"), "t")
+            for _ in range(200):
+                if os.path.exists(self.file):
+                    break
+                time.sleep(0.01)
+        self.assertTrue(os.path.exists(self.file))
 
     def test_bounded_per_guild(self):
         with mock.patch.object(actionlog, "MAX_PER_GUILD", 5):
@@ -146,7 +174,9 @@ class Paths(unittest.TestCase):
                   mock.patch.object(extapi, "run_async", lambda c: asyncio.run(c)),
                   mock.patch.object(userlistapi, "run_async", lambda c: asyncio.run(c)),
                   mock.patch.object(extapi, "_pick_guild", return_value=G),
-                  mock.patch.object(extapi, "_lookup_title", return_value="查到的")]
+                  mock.patch.object(extapi, "_lookup_title", return_value="查到的"),
+                  # 這裡測「誰點的」；伺服器權限另外在 test_guildscope.py 測 → 當作每把金鑰都能用所有伺服器
+                  mock.patch("musicbot.guildscope.allowed_guilds", return_value=None)]
         for p in self.p: p.start()
         extmembers._cache.update(mtime=None, members=[])
         userlists._reset_cache()

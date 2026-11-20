@@ -29,6 +29,8 @@ RENEW_AFTER = 86400             # 有在用就續期：cookie 簽發超過 1 天
 MAX_FAILS = 5                   # 連續輸錯幾次就鎖
 LOCK_SECS = 10 * 60             # 鎖多久
 FAIL_WINDOW = 10 * 60           # 輸錯次數在這段時間內累計（之後歸零）
+# 擴充功能金鑰（X-Ext-Token）輸錯：另外計數，門檻較高（擴充功能會自動輪詢，舊金鑰不要太快把同一個 IP 的網頁登入一起鎖住）
+EXT_MAX_FAILS = 20
 SECRET_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "panel_secret")
 
 # 只有擁有者能用的路徑（前綴比對）；/api/ext/members* 由 extapi 的金鑰檢查擋
@@ -215,9 +217,10 @@ def client_ip(req):
     return ip[:64] or "?"
 
 
-def locked_for(ip):
-    """還要鎖幾秒（0 = 沒鎖）"""
+def locked_for(ip, kind="login"):
+    """還要鎖幾秒（0 = 沒鎖）。kind：login 網頁登入 / ext 擴充功能金鑰（分開計數）"""
     now = time.time()
+    ip = ip if kind == "login" else f"{kind}:{ip}"
     with _lock:
         f = _fails.get(ip)
         if not f:
@@ -229,9 +232,12 @@ def locked_for(ip):
         return 0
 
 
-def record_fail(ip):
+def record_fail(ip, kind="login"):
     """記一次輸錯；回傳 (剩幾次, 鎖幾秒)"""
     now = time.time()
+    limit = EXT_MAX_FAILS if kind == "ext" else MAX_FAILS
+    label = "擴充功能金鑰" if kind == "ext" else "登入"
+    ip = ip if kind == "login" else f"{kind}:{ip}"
     with _lock:
         if len(_fails) > 5000:          # 防止被灌爆記憶體：清掉過期的
             for k in [k for k, v in _fails.items() if v["until"] < now and now - v["first"] > FAIL_WINDOW]:
@@ -240,16 +246,16 @@ def record_fail(ip):
         if not f or (f["until"] and f["until"] <= now) or now - f["first"] > FAIL_WINDOW:
             f = _fails[ip] = {"n": 0, "first": now, "until": 0}
         f["n"] += 1
-        if f["n"] >= MAX_FAILS:
+        if f["n"] >= limit:
             f["until"] = now + LOCK_SECS
-            log.warning(f"[登入] {ip} 連續輸錯 {f['n']} 次，鎖 {LOCK_SECS // 60} 分鐘")
+            log.warning(f"[{label}] {ip} 連續輸錯 {f['n']} 次，鎖 {LOCK_SECS // 60} 分鐘")
             return 0, LOCK_SECS
-        return MAX_FAILS - f["n"], 0
+        return limit - f["n"], 0
 
 
-def clear_fails(ip):
+def clear_fails(ip, kind="login"):
     with _lock:
-        _fails.pop(ip, None)
+        _fails.pop(ip if kind == "login" else f"{kind}:{ip}", None)
 
 
 def reset_all():

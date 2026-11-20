@@ -71,6 +71,10 @@ OAUTH_REDIRECT_URI=https://musbot.kdns.fr/auth/discord/callback   # 要跟開發
 5. 每個 Discord 帳號自動有自己的「我的歌單」（網頁和 Discord `/mylist` 共用）。在「成員管理」把成員連結到 Discord ID →
    擴充功能、網頁、`/mylist` 用同一份，對方原本 Discord 帳號下的歌單會合併進來；刪除有連結的成員時歌單留給他的 Discord 帳號。
 6. 操作紀錄、佇列「誰點的」會寫 Discord 名字。登入紀錄存在 `data/web_sessions.json`（0600），90 天沒用自動失效。
+7. 伺服器權限（`musicbot/guildscope.py`）：網頁和擴充功能都只看得到、只能操作**自己有加入**的伺服器。
+   擁有者 = 擁有者 Discord 帳號所在的伺服器（查不到擁有者帳號時看得到全部）；成員金鑰 = 成員管理裡連結的 Discord 帳號所在的伺服器，
+   **沒連結 Discord 的成員金鑰沒有任何伺服器可用**。「目前伺服器」每個人各一份：自己沒選過就跟擁有者選的，一般成員切換不會影響別人。
+8. 點歌網址只接受 YouTube（含 music.youtube.com、youtu.be）、Spotify、SoundCloud；其他網站會回「只支援 YouTube、Spotify、SoundCloud 的網址」。
 
 ### 常用指令
 ```bash

@@ -11,6 +11,7 @@ import secrets
 import threading
 import time
 
+from .jsonfile import write_atomic
 from .config import log
 
 FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "ext_members.json")
@@ -47,15 +48,7 @@ def _load():
 
 def _save(members):
     os.makedirs(os.path.dirname(FILE), exist_ok=True)
-    tmp = FILE + ".tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        json.dump({"members": members}, f, ensure_ascii=False, indent=1)
-    try:
-        os.chmod(tmp, 0o600)
-    except OSError:
-        pass
-    os.replace(tmp, FILE)
+    write_atomic(FILE, {"members": members}, private=True, indent=1)
     _cache.update(mtime=os.path.getmtime(FILE), members=members)
 
 

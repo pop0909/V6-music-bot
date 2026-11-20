@@ -7,7 +7,6 @@
 """
 from .config import DEFAULT_VOLUME
 import asyncio
-import random
 import time
 
 import discord
@@ -29,7 +28,7 @@ from .state import (
 MAX_CONSECUTIVE_FAILURES = 3
 # 開播時 FFmpeg 拿不到第一格（串流網址冷啟動 403）→ 清快取重解析再開一次，通常就好
 STREAM_OPEN_RETRIES = 2
-from .utils import clean_str, format_time
+from .utils import clean_str
 from . import autoplay
 from . import prefetch
 from . import audio, history, ytdl, prewarm
@@ -158,6 +157,46 @@ async def play_next(guild_id, channel=None):
 
 
 async def _play_next_locked(guild_id, channel=None):
+    """換下一首。步驟：輸出頻道 → 睡眠計時（播完這首就停）→ 決定下一首（單曲循環 / 佇列 / 隨機 / 自動推薦）
+    → 確認語音連線 → 開串流（含預熱、重試）→ 開播 → 更新控制面板；任何一步出錯交給 _on_play_error。"""
+    channel = await _resolve_output_channel(guild_id, channel)
+    if not channel:
+        return
+    if await _stop_if_sleep_due(guild_id):
+        return
+    _cancel_progress(guild_id)
+
+    # 單曲循環：歌曲自然播完 → 重播同一首（不放進佇列，佇列顯示的仍是真正的下一首）；
+    # 使用者按跳過 / 指定播放（manual_advance）→ 照常前進
+    advance = manual_advance.pop(guild_id, False)
+    replay = None
+    if loop_modes.get(guild_id) == "one" and not advance and loop_current.get(guild_id):
+        replay = loop_current[guild_id]
+    if replay is None and (guild_id not in queues or not queues[guild_id]):
+        if not await _refill_or_finish(guild_id):
+            return
+
+    vc = _ensure_voice_client(guild_id)
+    if vc is None:
+        return
+    flat_url, title = _take_next_song(guild_id, replay)
+
+    opened = {"source": None}   # 開到一半的 FFmpeg 來源（出錯時要收掉）
+    try:
+        warm, duration, thumbnail = await _open_stream(guild_id, flat_url, opened)
+        source = opened["source"]
+        if voice_clients.get(guild_id) is not vc or not vc.is_connected() or vc.is_playing() or vc.is_paused():
+            # 預熱期間被按了停止 / 離開語音 / 別的路徑已開播 → 放棄這次
+            source.cleanup()
+            return
+        _start_playback(guild_id, vc, source, channel, flat_url, title, warm, advance, duration, thumbnail)
+        await _post_now_playing_panel(guild_id, channel, title)
+    except Exception as e:
+        await _on_play_error(guild_id, channel, vc, e, flat_url, title, replay, opened["source"])
+
+
+async def _resolve_output_channel(guild_id, channel):
+    """訊息要發到哪個文字頻道：指定的輸出頻道 > 呼叫端給的 > 伺服器第一個文字頻道；都沒有 → None"""
     # 強制使用指定輸出頻道
     out_ch = await _get_output_channel(guild_id)
     if out_ch:
@@ -169,56 +208,58 @@ async def _play_next_locked(guild_id, channel=None):
             for c in guild.text_channels:
                 channel = c
                 break
-    if not channel:
-        return
+    return channel
 
-    # 睡眠計時器（播完這首模式）：不播下一首，直接收工
-    if check_track_end_sleep(guild_id):
-        prewarm.discard(guild_id)
-        if guild_id in now_playing:
-            del now_playing[guild_id]
-        is_playing_state[guild_id] = False
-        is_paused_state[guild_id] = False
-        loop_current.pop(guild_id, None)
-        await _update_panel(guild_id, "😴 睡眠計時器：播完目前歌曲後已停止", view=None, remove=True)
-        return
 
+async def _stop_if_sleep_due(guild_id):
+    """睡眠計時器（播完這首模式）：不播下一首，直接收工 → True"""
+    if not check_track_end_sleep(guild_id):
+        return False
+    prewarm.discard(guild_id)
+    if guild_id in now_playing:
+        del now_playing[guild_id]
+    is_playing_state[guild_id] = False
+    is_paused_state[guild_id] = False
+    loop_current.pop(guild_id, None)
+    await _update_panel(guild_id, "😴 睡眠計時器：播完目前歌曲後已停止", view=None, remove=True)
+    return True
+
+
+def _cancel_progress(guild_id):
     if guild_id in progress_tasks:
         progress_tasks[guild_id].cancel()
         del progress_tasks[guild_id]
     if guild_id in progress_versions:
         del progress_versions[guild_id]
 
-    # 單曲循環：歌曲自然播完 → 重播同一首（不放進佇列，佇列顯示的仍是真正的下一首）；
-    # 使用者按跳過 / 指定播放（manual_advance）→ 照常前進
-    advance = manual_advance.pop(guild_id, False)
-    replay = None
-    if loop_modes.get(guild_id) == "one" and not advance and loop_current.get(guild_id):
-        replay = loop_current[guild_id]
 
-    if replay is None and (guild_id not in queues or not queues[guild_id]):
-        if guild_id in random_loop_guilds and random_loop_guilds[guild_id] and local_playlist:
-            s = prefetch.take_random_pick(guild_id)   # 預先抽好（可能已預熱）的那首；避開剛播過的
-            queues.setdefault(guild_id, []).append((s["url"], s["title"]))
-        else:
-            # 自動推薦接歌：佇列空了、沒有循環/隨機會補歌時，從 YouTube Mix 找相關歌曲
-            pick = await _autoplay_pick(guild_id)
-            if pick:
-                queues.setdefault(guild_id, []).append(pick)
-                note_song_meta(guild_id, pick[0], requester=None, source="autoplay")
-                log.info(f"[自動推薦] {guild_id} 接下一首：{pick[1]}")
-            else:
-                if guild_id in now_playing:
-                    del now_playing[guild_id]
-                is_playing_state[guild_id] = False
-                is_paused_state[guild_id] = False
-                loop_current.pop(guild_id, None)   # 單曲循環不要在之後加新歌時重播舊的那首
-                song_durations.pop(guild_id, None)  # 播完了：面板不要還顯示上一首的長度
-                now_playing_url.pop(guild_id, None)
-                prewarm.discard(guild_id)
-                await _update_panel(guild_id, "播放完畢，佇列已空", view=None, remove=True)
-                return
+async def _refill_or_finish(guild_id):
+    """佇列空了：隨機循環抽一首 / 自動推薦接一首 → True；都沒有 → 收工（面板顯示播放完畢）→ False"""
+    if guild_id in random_loop_guilds and random_loop_guilds[guild_id] and local_playlist:
+        s = prefetch.take_random_pick(guild_id)   # 預先抽好（可能已預熱）的那首；避開剛播過的
+        queues.setdefault(guild_id, []).append((s["url"], s["title"]))
+        return True
+    # 自動推薦接歌：佇列空了、沒有循環/隨機會補歌時，從 YouTube Mix 找相關歌曲
+    pick = await _autoplay_pick(guild_id)
+    if pick:
+        queues.setdefault(guild_id, []).append(pick)
+        note_song_meta(guild_id, pick[0], requester=None, source="autoplay")
+        log.info(f"[自動推薦] {guild_id} 接下一首：{pick[1]}")
+        return True
+    if guild_id in now_playing:
+        del now_playing[guild_id]
+    is_playing_state[guild_id] = False
+    is_paused_state[guild_id] = False
+    loop_current.pop(guild_id, None)   # 單曲循環不要在之後加新歌時重播舊的那首
+    song_durations.pop(guild_id, None)  # 播完了：面板不要還顯示上一首的長度
+    now_playing_url.pop(guild_id, None)
+    prewarm.discard(guild_id)
+    await _update_panel(guild_id, "播放完畢，佇列已空", view=None, remove=True)
+    return False
 
+
+def _ensure_voice_client(guild_id):
+    """目前的語音連線；voice_clients 遺失但 Bot 其實還在語音頻道 → 接回來；不在語音 → None"""
     vc = voice_clients.get(guild_id)
     # 安全網：如果 voice_clients 遺失但 Bot 實際上還在語音頻道中
     if not vc or not vc.is_connected():
@@ -228,8 +269,12 @@ async def _play_next_locked(guild_id, channel=None):
             voice_clients[guild_id] = vc
             current_voice_channel[guild_id] = {"id": vc.channel.id, "name": vc.channel.name}
         else:
-            return
+            return None
+    return vc
 
+
+def _take_next_song(guild_id, replay):
+    """取出這次要播的 (網址, 歌名)：單曲循環重播 / 佇列第一首（全部循環時接回尾端）"""
     if replay is not None:
         flat_url, title = replay
     else:
@@ -239,211 +284,221 @@ async def _play_next_locked(guild_id, channel=None):
             queues[guild_id].append((flat_url, title))
     title = clean_str(title)
     loop_current[guild_id] = (flat_url, title)
+    return flat_url, title
 
+
+async def _open_stream(guild_id, flat_url, opened):
+    """解析 + 開 FFmpeg（優先用預熱好的）；FFmpeg 沒吐音訊會重試。開好的來源同步放在 opened["source"]。
+    回傳 (warm, duration, thumbnail)"""
     source = None
-    try:
-        last_open_err = None
-        for open_try in range(STREAM_OPEN_RETRIES):
-            if open_try:
-                # 上一輪 FFmpeg 沒吐出音訊（常見：冷啟動分段代理連續 403）→ 丟掉快取、稍等再重解析
-                prefetch.forget(guild_id, flat_url)
-                if source is not None:
-                    try:
-                        source.cleanup()
-                    except Exception:
-                        pass
-                    source = None
-                log.warning(f"[播放] 開播重試 {open_try + 1}/{STREAM_OPEN_RETRIES}：{flat_url}（{last_open_err}）"[:300])
-                await asyncio.sleep(0.8)
-            # 上一首結尾前已預熱好這首（FFmpeg 已讀到第一格）→ 直接用，換歌不用再等 FFmpeg 開啟
-            warm = prewarm.take(guild_id, flat_url) if open_try == 0 else None
-            # 預先解析命中就直接用快取；否則（或共用進行中的解析）照常用 yt-dlp 解析
-            res = warm[1] if warm else await prefetch.resolve(guild_id, flat_url)
-            real_audio_url, duration, thumbnail = res["url"], res.get("duration", 0), res.get("thumbnail", "")
-            song_durations[guild_id] = duration or 0
-            now_playing_thumbnail[guild_id] = thumbnail
+    last_open_err = None
+    for open_try in range(STREAM_OPEN_RETRIES):
+        if open_try:
+            # 上一輪 FFmpeg 沒吐出音訊（常見：冷啟動分段代理連續 403）→ 丟掉快取、稍等再重解析
+            prefetch.forget(guild_id, flat_url)
+            if source is not None:
+                try:
+                    source.cleanup()
+                except Exception:
+                    pass
+                source = opened["source"] = None
+            log.warning(f"[播放] 開播重試 {open_try + 1}/{STREAM_OPEN_RETRIES}：{flat_url}（{last_open_err}）"[:300])
+            await asyncio.sleep(0.8)
+        # 上一首結尾前已預熱好這首（FFmpeg 已讀到第一格）→ 直接用，換歌不用再等 FFmpeg 開啟
+        warm = prewarm.take(guild_id, flat_url) if open_try == 0 else None
+        # 預先解析命中就直接用快取；否則（或共用進行中的解析）照常用 yt-dlp 解析
+        res = warm[1] if warm else await prefetch.resolve(guild_id, flat_url)
+        real_audio_url, duration, thumbnail = res["url"], res.get("duration", 0), res.get("thumbnail", "")
+        song_durations[guild_id] = duration or 0
+        now_playing_thumbnail[guild_id] = thumbnail
 
-            _drop_pending(guild_id)
-            _remember_stream(guild_id, flat_url, real_audio_url)
-            remember_duration(flat_url, duration)
-            if warm:
-                source = warm[0]
-                last_open_err = None
-                break
-            # 長影片經分段代理避開 YouTube 對「從頭到結尾」請求的限速；音量平衡 + 開頭 0.25 秒淡入，見 audio.py
-            source = prewarm.open_source(guild_id, flat_url, real_audio_url)
-            try:
-                # 先讓 FFmpeg 吐出第一格再交給播放執行緒（見 audio.PrimedSource）
-                source = await audio.prime_source(source)
-                last_open_err = None
-                break
-            except RuntimeError as e:
-                last_open_err = e
-                if "FFmpeg 沒有輸出音訊" not in str(e) or open_try + 1 >= STREAM_OPEN_RETRIES:
-                    raise
-                continue
-        if last_open_err is not None:
-            raise last_open_err
-        if voice_clients.get(guild_id) is not vc or not vc.is_connected() or vc.is_playing() or vc.is_paused():
-            # 預熱期間被按了停止 / 離開語音 / 別的路徑已開播 → 放棄這次
+        _drop_pending(guild_id)
+        _remember_stream(guild_id, flat_url, real_audio_url)
+        remember_duration(flat_url, duration)
+        if warm:
+            source = opened["source"] = warm[0]
+            last_open_err = None
+            break
+        # 長影片經分段代理避開 YouTube 對「從頭到結尾」請求的限速；音量平衡 + 開頭 0.25 秒淡入，見 audio.py
+        source = opened["source"] = prewarm.open_source(guild_id, flat_url, real_audio_url)
+        try:
+            # 先讓 FFmpeg 吐出第一格再交給播放執行緒（見 audio.PrimedSource）
+            source = opened["source"] = await audio.prime_source(source)
+            last_open_err = None
+            break
+        except RuntimeError as e:
+            last_open_err = e
+            if "FFmpeg 沒有輸出音訊" not in str(e) or open_try + 1 >= STREAM_OPEN_RETRIES:
+                raise
+            continue
+    if last_open_err is not None:
+        raise last_open_err
+    return warm, duration, thumbnail
+
+
+def _start_playback(guild_id, vc, source, channel, flat_url, title, warm, advance, duration, thumbnail):
+    """交給 Discord 播放並更新所有播放狀態（進度、歷史、預熱 / 預解析下一首）"""
+    vol = volumes.get(guild_id, DEFAULT_VOLUME)
+    transformer = discord.PCMVolumeTransformer(source, volume=vol)
+    volume_transformers[guild_id] = transformer
+
+    def after_play(e):
+        if e: log.error(f"播放錯誤: {e}")
+        prewarm.mark_end(guild_id)     # 量換歌間隔：上一首結束的時間
+        asyncio.run_coroutine_threadsafe(play_next(guild_id), client.loop)
+
+    kbps = audio.target_bitrate(vc)
+    audio.current_bitrate[guild_id] = kbps
+    # 用語音頻道的位元率編碼（預設 128k），signal_type=music 讓 Opus 用音樂模式
+    vc.play(transformer, after=after_play, bitrate=kbps, signal_type='music')
+    now_playing[guild_id] = title
+    now_playing_url[guild_id] = flat_url
+    song_start_times[guild_id] = time.time()
+    prewarm.note_start(guild_id, bool(warm), advance)   # 日誌記一行實際換歌間隔
+    is_playing_state[guild_id] = True
+    is_paused_state[guild_id] = False
+    if guild_id in paused_position:
+        del paused_position[guild_id]
+
+    progress_versions[guild_id] = progress_versions.get(guild_id, 0) + 1
+    version = progress_versions[guild_id]
+    progress_tasks[guild_id] = asyncio.create_task(progress_updater(guild_id, channel, version))
+    _start_history_watch(guild_id, version, flat_url, title, thumbnail, duration or 0)
+    prewarm.start(guild_id, version)   # 快播完時預熱下一首的 FFmpeg
+    play_failures.pop(guild_id, None)  # 成功開播，重置失敗計數
+    play_notices.pop(guild_id, None)
+    autoplay.remember(guild_id, flat_url)  # 記錄播放歷史（自動推薦的種子與去重）
+    prefetch.ensure(guild_id)  # 背景預先解析下一首
+    notify_change()
+
+
+async def _post_now_playing_panel(guild_id, channel, title):
+    """發 / 更新 Discord 控制面板（太舊就重發到最下面）"""
+    from .views import MusicControlView
+    view = MusicControlView(guild_id)
+    # 歌名跳脫 Markdown；長度未知（直播）顯示「🔴 直播」，跟網頁面板一致
+    content = _ux.panel_text(guild_id, title=title, paused=False, elapsed=0)
+
+    # 最終安全網：發送前再次清理 content
+    content = clean_str(content)
+
+    async def _send_with_fallback(content, view):
+        """發送訊息，若 orjson crash 則降級為純文字（不含 view）"""
+        try:
+            return await channel.send(content, view=view)
+        except TypeError:
+            # orjson 無法序列化 → 降級為純文字
+            return await channel.send(content)
+
+    if guild_id in control_panels and _panel_age(control_panels[guild_id]) >= PANEL_MAX_AGE:
+        if not await _repost_panel(guild_id, channel, content, view):
+            try: await control_panels[guild_id].edit(content=content, view=view)
+            except Exception: pass
+    elif guild_id in control_panels:
+        try:
+            await control_panels[guild_id].edit(content=content, view=view)
+        except:
+            msg = await _send_with_fallback(content, view)
+            control_panels[guild_id] = msg
+    else:
+        msg = await _send_with_fallback(content, view)
+        control_panels[guild_id] = msg
+
+
+async def _on_play_error(guild_id, channel, vc, e, flat_url, title, replay, source):
+    """開播失敗：收掉 FFmpeg、記錄 / 通知；YouTube 機器人驗證 → 放回佇列暫停；其他錯誤 → 計失敗次數、稍後播下一首；
+    其實已經在播（只是面板更新失敗）→ 只補面板"""
+    # 已開好 FFmpeg 但沒交給播放器（prime / vc.play 失敗）→ 收掉，避免殘留 ffmpeg 行程
+    if source is not None and not (vc and (vc.is_playing() or vc.is_paused())):
+        try:
             source.cleanup()
-            return
-
-        vol = volumes.get(guild_id, DEFAULT_VOLUME)
-        transformer = discord.PCMVolumeTransformer(source, volume=vol)
-        volume_transformers[guild_id] = transformer
-
-        def after_play(e):
-            if e: log.error(f"播放錯誤: {e}")
-            prewarm.mark_end(guild_id)     # 量換歌間隔：上一首結束的時間
-            asyncio.run_coroutine_threadsafe(play_next(guild_id), client.loop)
-
-        kbps = audio.target_bitrate(vc)
-        audio.current_bitrate[guild_id] = kbps
-        # 用語音頻道的位元率編碼（預設 128k），signal_type=music 讓 Opus 用音樂模式
-        vc.play(transformer, after=after_play, bitrate=kbps, signal_type='music')
-        now_playing[guild_id] = title
-        now_playing_url[guild_id] = flat_url
-        song_start_times[guild_id] = time.time()
-        prewarm.note_start(guild_id, bool(warm), advance)   # 日誌記一行實際換歌間隔
-        is_playing_state[guild_id] = True
+        except Exception:
+            pass
+    log.error("Queue Error: %s: %s", type(e).__name__, e, exc_info=e)
+    try:
+        from . import alerts
+        alerts.note_error(e, f"播放 {title}")
+    except Exception:
+        pass
+    # 如果其實已經在播放了，表示只是顯示更新失敗，不誤報「無法播放」
+    if vc and not vc.is_playing() and not vc.is_paused() and ytdl.is_bot_check(e):
+        # YouTube 機器人驗證：換下一首也一樣會被擋 → 不計入失敗次數、不自動重試（避免洗版），
+        # 把這首放回佇列最前面，設定好 cookies 後按播放即可續播
+        prefetch.forget(guild_id, flat_url)
+        if replay is None:
+            q = queues.setdefault(guild_id, [])
+            if loop_modes.get(guild_id) == "all" and q and q[-1][0] == flat_url:
+                q.pop()             # 剛接到尾端的那份拿掉，改放回最前面
+            q.insert(0, (flat_url, title))
+        loop_current.pop(guild_id, None)
+        is_playing_state[guild_id] = False
         is_paused_state[guild_id] = False
-        if guild_id in paused_position:
-            del paused_position[guild_id]
-
-        progress_versions[guild_id] = progress_versions.get(guild_id, 0) + 1
-        version = progress_versions[guild_id]
-        progress_tasks[guild_id] = asyncio.create_task(progress_updater(guild_id, channel, version))
-        _start_history_watch(guild_id, version, flat_url, title, thumbnail, duration or 0)
-        prewarm.start(guild_id, version)   # 快播完時預熱下一首的 FFmpeg
-        play_failures.pop(guild_id, None)  # 成功開播，重置失敗計數
-        play_notices.pop(guild_id, None)
-        autoplay.remember(guild_id, flat_url)  # 記錄播放歷史（自動推薦的種子與去重）
-        prefetch.ensure(guild_id)  # 背景預先解析下一首
-        notify_change()
-
+        now_playing.pop(guild_id, None)
+        msg = ytdl.report_bot_check(f"播放 {title} 時")
+        prev = play_notices.get(guild_id)
+        play_notices[guild_id] = {"kind": "bot_check", "message": msg, "ts": time.time()}
+        if not prev or prev.get("kind") != "bot_check" or time.time() - prev.get("ts", 0) > 600:
+            try:
+                await channel.send(f"⚠️ 無法播放 **{_ux.md(title, 150)}**：{msg}")
+            except Exception:
+                pass
+        await _update_panel(guild_id, f"⚠️ 已暫停自動播放：{msg}", view=None)
+    elif vc and not vc.is_playing() and not vc.is_paused():
+        prefetch.forget(guild_id, flat_url)
+        autoplay.mark_failed(guild_id, flat_url)
+        fails = play_failures.get(guild_id, 0) + 1
+        play_failures[guild_id] = fails
+        # 單曲循環時壞掉的歌不要一直重播
+        loop_current.pop(guild_id, None)
+        try:
+            await channel.send(f"⚠️ 無法播放 **{_ux.md(title, 150)}**：{ytdl.plain_error(e)}")
+        except Exception:
+            pass
+        if fails >= MAX_CONSECUTIVE_FAILURES:
+            play_failures.pop(guild_id, None)
+            random_loop_guilds[guild_id] = False
+            autoplay.set_enabled(guild_id, False)  # 連續失敗也關掉自動推薦，避免無限接歌重試
+            is_playing_state[guild_id] = False
+            is_paused_state[guild_id] = False
+            now_playing.pop(guild_id, None)
+            log.error(f"[播放] {guild_id} 連續 {fails} 首失敗，暫停自動播放（可能是 yt-dlp 需要更新）")
+            try:
+                from . import alerts
+                alerts.playback_failed(guild_id, fails, e)
+            except Exception:
+                pass
+            try:
+                await channel.send(f"⚠️ 連續 {fails} 首無法播放，已暫停自動播放（隨機循環與自動推薦已關閉）。可能是 YouTube 暫時擋下或下載工具需要更新，擁有者已收到通知")
+            except Exception:
+                pass
+        else:
+            async def _retry():
+                await asyncio.sleep(2)  # 小延遲，避免狂打 YouTube
+                await play_next(guild_id)
+            _keep(_retry())
+    else:
+        # 歌確實有在播，更新控制面板即可
         from .views import MusicControlView
         view = MusicControlView(guild_id)
-        # 歌名跳脫 Markdown；長度未知（直播）顯示「🔴 直播」，跟網頁面板一致
         content = _ux.panel_text(guild_id, title=title, paused=False, elapsed=0)
-
-        # 最終安全網：發送前再次清理 content
-        content = clean_str(content)
-
-        async def _send_with_fallback(content, view):
-            """發送訊息，若 orjson crash 則降級為純文字（不含 view）"""
-            try:
-                return await channel.send(content, view=view)
-            except TypeError:
-                # orjson 無法序列化 → 降級為純文字
-                return await channel.send(content)
-
-        if guild_id in control_panels and _panel_age(control_panels[guild_id]) >= PANEL_MAX_AGE:
-            if not await _repost_panel(guild_id, channel, content, view):
-                try: await control_panels[guild_id].edit(content=content, view=view)
-                except Exception: pass
+        if guild_id in control_panels and _panel_age(control_panels[guild_id]) >= PANEL_MAX_AGE \
+                and await _repost_panel(guild_id, channel, content, view):
+            pass
         elif guild_id in control_panels:
             try:
                 await control_panels[guild_id].edit(content=content, view=view)
             except:
-                msg = await _send_with_fallback(content, view)
-                control_panels[guild_id] = msg
-        else:
-            msg = await _send_with_fallback(content, view)
-            control_panels[guild_id] = msg
-
-    except Exception as e:
-        # 已開好 FFmpeg 但沒交給播放器（prime / vc.play 失敗）→ 收掉，避免殘留 ffmpeg 行程
-        if source is not None and not (vc and (vc.is_playing() or vc.is_paused())):
-            try:
-                source.cleanup()
-            except Exception:
-                pass
-        log.exception("Queue Error: %s: %s", type(e).__name__, e)
-        try:
-            from . import alerts
-            alerts.note_error(e, f"播放 {title}")
-        except Exception:
-            pass
-        # 如果其實已經在播放了，表示只是顯示更新失敗，不誤報「無法播放」
-        if vc and not vc.is_playing() and not vc.is_paused() and ytdl.is_bot_check(e):
-            # YouTube 機器人驗證：換下一首也一樣會被擋 → 不計入失敗次數、不自動重試（避免洗版），
-            # 把這首放回佇列最前面，設定好 cookies 後按播放即可續播
-            prefetch.forget(guild_id, flat_url)
-            if replay is None:
-                q = queues.setdefault(guild_id, [])
-                if loop_modes.get(guild_id) == "all" and q and q[-1][0] == flat_url:
-                    q.pop()             # 剛接到尾端的那份拿掉，改放回最前面
-                q.insert(0, (flat_url, title))
-            loop_current.pop(guild_id, None)
-            is_playing_state[guild_id] = False
-            is_paused_state[guild_id] = False
-            now_playing.pop(guild_id, None)
-            msg = ytdl.report_bot_check(f"播放 {title} 時")
-            prev = play_notices.get(guild_id)
-            play_notices[guild_id] = {"kind": "bot_check", "message": msg, "ts": time.time()}
-            if not prev or prev.get("kind") != "bot_check" or time.time() - prev.get("ts", 0) > 600:
-                try:
-                    await channel.send(f"⚠️ 無法播放 **{_ux.md(title, 150)}**：{msg}")
-                except Exception:
-                    pass
-            await _update_panel(guild_id, f"⚠️ 已暫停自動播放：{msg}", view=None)
-        elif vc and not vc.is_playing() and not vc.is_paused():
-            prefetch.forget(guild_id, flat_url)
-            autoplay.mark_failed(guild_id, flat_url)
-            fails = play_failures.get(guild_id, 0) + 1
-            play_failures[guild_id] = fails
-            # 單曲循環時壞掉的歌不要一直重播
-            loop_current.pop(guild_id, None)
-            try:
-                await channel.send(f"⚠️ 無法播放 **{_ux.md(title, 150)}**：{ytdl.plain_error(e)}")
-            except Exception:
-                pass
-            if fails >= MAX_CONSECUTIVE_FAILURES:
-                play_failures.pop(guild_id, None)
-                random_loop_guilds[guild_id] = False
-                autoplay.set_enabled(guild_id, False)  # 連續失敗也關掉自動推薦，避免無限接歌重試
-                is_playing_state[guild_id] = False
-                is_paused_state[guild_id] = False
-                now_playing.pop(guild_id, None)
-                log.error(f"[播放] {guild_id} 連續 {fails} 首失敗，暫停自動播放（可能是 yt-dlp 需要更新）")
-                try:
-                    from . import alerts
-                    alerts.playback_failed(guild_id, fails, e)
-                except Exception:
-                    pass
-                try:
-                    await channel.send(f"⚠️ 連續 {fails} 首無法播放，已暫停自動播放（隨機循環與自動推薦已關閉）。可能是 YouTube 暫時擋下或下載工具需要更新，擁有者已收到通知")
-                except Exception:
-                    pass
-            else:
-                async def _retry():
-                    await asyncio.sleep(2)  # 小延遲，避免狂打 YouTube
-                    await play_next(guild_id)
-                _keep(_retry())
-        else:
-            # 歌確實有在播，更新控制面板即可
-            from .views import MusicControlView
-            view = MusicControlView(guild_id)
-            content = _ux.panel_text(guild_id, title=title, paused=False, elapsed=0)
-            if guild_id in control_panels and _panel_age(control_panels[guild_id]) >= PANEL_MAX_AGE \
-                    and await _repost_panel(guild_id, channel, content, view):
-                pass
-            elif guild_id in control_panels:
-                try:
-                    await control_panels[guild_id].edit(content=content, view=view)
-                except:
-                    try:
-                        msg = await channel.send(content, view=view)
-                        control_panels[guild_id] = msg
-                    except:
-                        pass
-            else:
                 try:
                     msg = await channel.send(content, view=view)
                     control_panels[guild_id] = msg
                 except:
                     pass
+        else:
+            try:
+                msg = await channel.send(content, view=view)
+                control_panels[guild_id] = msg
+            except:
+                pass
 
 
 

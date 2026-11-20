@@ -10,7 +10,7 @@ from flask import request, jsonify
 
 from .bot import client
 from .state import state_lock, queues, voice_clients, guild_names, remember_duration
-from .utils import valid_song_url
+from .utils import song_url_error, song_host_allowed
 from . import history
 from .state import queue_full_message, queue_skip_message
 from .webcore import (
@@ -19,6 +19,7 @@ from .webcore import (
 )
 from . import importer
 from . import actionlog
+from . import guildscope
 from .webapi import flask_app
 from . import webapi as _w
 
@@ -26,7 +27,7 @@ from . import webapi as _w
 def _history_gid():
     gid = request.args.get("guild_id", 0, type=int)
     if not gid:
-        gid = get_active_guild() or (next(iter(guild_names)) if guild_names else 0)
+        gid = guildscope.default_guild()
     return gid
 
 
@@ -89,15 +90,7 @@ def api_queue_add():
     # 沒指定伺服器時自動 fallback：active guild → 第一個有語音連線的 → 第一個 guild
     # 讓新開分頁的使用者不必選伺服器就能直接點歌
     if gid == 0:
-        with state_lock:
-            if get_active_guild():
-                gid = get_active_guild()
-            else:
-                connected = [g for g, vc in voice_clients.items() if vc and vc.is_connected()]
-                if connected:
-                    gid = connected[0]
-                elif guild_names:
-                    gid = next(iter(guild_names))
+        gid = guildscope.default_guild()     # 自己的目前伺服器 → 在語音中的 → 第一個（只在自己有加入的伺服器裡挑）
     if gid == 0:
         return jsonify({"status": "error", "message": "機器人尚未連線到任何伺服器"}), 400
     url = data.get("url", "").strip()
@@ -105,8 +98,8 @@ def api_queue_add():
     no_play = data.get("no_play", False)
     if not url:
         return jsonify({"status": "error", "message": "請提供網址"}), 400
-    if not valid_song_url(url):
-        return jsonify({"status": "error", "message": "網址格式不正確（需要 http/https 連結）"}), 400
+    if song_url_error(url):
+        return jsonify({"status": "error", "message": song_url_error(url)}), 400
     result = _w.run_async(web_add_to_queue(gid, url, title, auto_play=not no_play, duration=data.get("duration"),
                                         actor=_w._actor()))
     if not result:
@@ -129,15 +122,7 @@ def api_queue_add_batch():
     gid = int(data.get("guild_id", 0))
     # 與 /api/queue/add 相同的 fallback 邏輯
     if gid == 0:
-        with state_lock:
-            if get_active_guild():
-                gid = get_active_guild()
-            else:
-                connected = [g for g, vc in voice_clients.items() if vc and vc.is_connected()]
-                if connected:
-                    gid = connected[0]
-                elif guild_names:
-                    gid = next(iter(guild_names))
+        gid = guildscope.default_guild()     # 自己的目前伺服器 → 在語音中的 → 第一個（只在自己有加入的伺服器裡挑）
         if gid == 0:
             return jsonify({"status": "error", "message": "機器人尚未連線到任何伺服器"}), 400
     songs = data.get("songs", [])
@@ -161,14 +146,11 @@ def api_import():
     """匯入 YouTube / Spotify 歌單（背景解析，前端用 /api/import/<id> 輪詢進度）"""
     data = request.get_json() or {}
     url = (data.get("url") or "").strip()
-    if not url.startswith("http"):
+    if not url.startswith("http") or not song_host_allowed(url):
         return jsonify({"status": "error", "message": "請貼上 YouTube 或 Spotify 歌單網址"}), 400
     gid = int(data.get("guild_id", 0) or 0)
     if gid == 0:
-        with state_lock:
-            gid = get_active_guild() or next(
-                (g for g, vc in voice_clients.items() if vc and vc.is_connected()),
-                next(iter(guild_names), 0))
+        gid = guildscope.default_guild()
     if not gid:
         return jsonify({"status": "error", "message": "機器人尚未連線到任何伺服器"}), 400
     actor = _w._actor()        # 背景執行緒裡沒有 flask.g，先取好
@@ -185,7 +167,7 @@ def api_restore():
     """恢復休眠前的佇列（play=true 從上次位置繼續播）"""
     from . import idlesleep
     data = request.get_json(silent=True) or {}
-    gid = int(data.get("guild_id") or 0) or (get_active_guild() or 0)
+    gid = int(data.get("guild_id") or 0) or guildscope.chosen_guild() or 0
     if not gid:
         return jsonify({"status": "error", "message": "請先選擇伺服器"}), 400
     r = _w.run_async(idlesleep.restore(gid, play=bool(data.get("play", True))))

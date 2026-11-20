@@ -70,6 +70,38 @@ def valid_song_url(url):
     return low.startswith("https://") or low.startswith("http://")
 
 
+# 能加進佇列 / 最愛 / 歌單的網址只限這幾個網站（含子網域，例如 music.youtube.com、m.youtube.com、on.soundcloud.com）
+ALLOWED_SONG_HOSTS = ("youtube.com", "youtu.be", "spotify.com", "soundcloud.com")
+URL_NOT_ALLOWED = "只支援 YouTube、Spotify、SoundCloud 的網址"
+
+
+def song_host_allowed(url):
+    """網址的網站在白名單裡（只看主機名稱；https://youtube.com@evil.com 這種會被當成 evil.com）"""
+    try:
+        from urllib.parse import urlparse
+        u = url.strip()
+        if "://" not in u:
+            u = "https://" + u          # Discord /play 可以貼 www.youtube.com/… 或 youtu.be/… 不加 https
+        host = (urlparse(u).hostname or "").lower().rstrip(".")
+    except Exception:
+        return False
+    return any(host == h or host.endswith("." + h) for h in ALLOWED_SONG_HOSTS)
+
+
+def allowed_song_url(url):
+    """使用者輸入的歌曲網址：格式正確（http/https）而且是白名單網站"""
+    return valid_song_url(url) and song_host_allowed(url)
+
+
+def song_url_error(url):
+    """不能用的話回傳中文錯誤訊息；可以用 → None"""
+    if not valid_song_url(url):
+        return "網址格式不正確（需要 http/https 連結）"
+    if not song_host_allowed(url):
+        return URL_NOT_ALLOWED
+    return None
+
+
 def safe_title(title, url=""):
     """標題：非字串 / 空白 → 用網址；清掉無效字元並截到 200 字（避免 Discord 訊息超過 2000 字）"""
     t = clean_str(title) if isinstance(title, str) else ""

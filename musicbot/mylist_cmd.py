@@ -7,6 +7,7 @@ import random
 import discord
 from discord import app_commands
 
+from .utils import song_host_allowed
 from .bot import tree
 from . import userlists, importer
 from .discord_ux import md
@@ -106,11 +107,11 @@ async def add(interaction: discord.Interaction, name: str, url: str = None):
         if not url:
             return await _say(interaction, "目前沒有正在播放的歌，請填網址")
     from .extapi import normalize_youtube, _lookup_title
-    from .utils import valid_song_url
+    from .utils import song_url_error
     url = url.strip()
     url = normalize_youtube(url) or url             # youtu.be / shorts / &t= 都統一，去重才準
-    if not valid_song_url(url):
-        return await _say(interaction, "網址格式不正確，請貼上 YouTube 影片網址（https://…）")
+    if song_url_error(url):
+        return await _say(interaction, f"{song_url_error(url)}，請貼上 YouTube 影片網址（https://…）")
     try:
         lid = _resolve(k, name)                     # 先確認歌單存在，再去查標題（查標題要幾秒）
     except KeyError as e:
@@ -136,7 +137,7 @@ async def import_(interaction: discord.Interaction, url: str, name: str = None):
     from .userlistapi import import_into_new_list
     k = _key(interaction)
     url = (url or "").strip()
-    if not url.startswith("http") or not (importer.is_spotify(url) or "list=" in url):
+    if not url.startswith("http") or not song_host_allowed(url) or not (importer.is_spotify(url) or "list=" in url):
         return await _say(interaction, "請貼上 YouTube 播放清單（含 list=）或 Spotify 歌單／專輯網址")
     if len(userlists.list_playlists(k)) >= userlists.MAX_LISTS:
         return await _say(interaction, f"每人最多 {userlists.MAX_LISTS} 份歌單")

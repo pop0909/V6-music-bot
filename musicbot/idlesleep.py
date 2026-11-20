@@ -235,14 +235,10 @@ def snapshot():
 
 
 def save_session():
-    import json
     try:
         data = {"ts": time.time(), "guilds": snapshot()}
-        os.makedirs(os.path.dirname(SESSION_FILE), exist_ok=True)
-        tmp = SESSION_FILE + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False)
-        os.replace(tmp, SESSION_FILE)
+        from .jsonfile import write_atomic
+        write_atomic(SESSION_FILE, data)
     except Exception as e:
         log.warning(f"[語音續播] 儲存失敗：{e}")
 

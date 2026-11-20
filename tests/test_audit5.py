@@ -24,10 +24,12 @@ class PlaylistCrud(unittest.TestCase):
         self.p = [mock.patch.object(webapi, "save_local_playlist", lambda: True),
                   mock.patch.object(webapi, "save_favorites", lambda g: None)]
         for p in self.p: p.start()
+        state.guild_names[G] = "測試伺服器"         # 最愛只能存在機器人所在的伺服器
         self.c = webapi.flask_app.test_client()
 
     def tearDown(self):
         for p in self.p: p.stop()
+        state.guild_names.pop(G, None)
         state.local_playlist[:] = self.saved
         storage.favorites_cache.pop(G, None)
 

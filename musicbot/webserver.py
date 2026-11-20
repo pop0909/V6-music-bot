@@ -66,6 +66,7 @@ def sse_active():
 
 # ---------- 存取紀錄 ----------
 _access = logging.getLogger("werkzeug")
+REDACT_QUERY = ("/auth/",)      # 這些路徑的查詢字串（Discord 登入回呼的 code / state）不記
 
 
 class AccessLog:
@@ -79,6 +80,8 @@ class AccessLog:
             try:
                 path = environ.get("PATH_INFO", "")
                 qs = environ.get("QUERY_STRING", "")
+                if qs and path.startswith(REDACT_QUERY):
+                    qs = "…"        # OAuth 回呼的 code / state 不寫進日誌
                 line = f'{environ.get("REQUEST_METHOD", "-")} {path}{"?" + qs if qs else ""} {environ.get("SERVER_PROTOCOL", "HTTP/1.1")}'
                 _access.info('%s - - [%s] "%s" %s -', environ.get("REMOTE_ADDR", "-"),
                              time.strftime("%d/%b/%Y %H:%M:%S"), line, status.split(" ", 1)[0])

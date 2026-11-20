@@ -1,0 +1,87 @@
+/*!
+ * Font Awesome Free 6.5.0 by @fontawesome - https://fontawesome.com
+ * License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License)
+ * Copyright 2023 Fonticons, Inc.
+ */
+/* 自帶子集：tools/build_icons.py 產生，請勿手改。只含本專案用到的圖示。 */
+.fa{font-family:var(--fa-style-family,"Font Awesome 6 Free");font-weight:var(--fa-style,900)}
+.fa,.fa-brands,.fa-classic,.fa-regular,.fa-sharp,.fa-solid,.fab,.far,.fas{-moz-osx-font-smoothing:grayscale;-webkit-font-smoothing:antialiased;display:var(--fa-display,inline-block);font-style:normal;font-variant:normal;line-height:1;text-rendering:auto}
+.fa-classic,.fa-regular,.fa-solid,.far,.fas{font-family:"Font Awesome 6 Free"}
+.fa-brands,.fab{font-family:"Font Awesome 6 Brands"}
+.fa-spin{-webkit-animation-delay:var(--fa-animation-delay,0s);animation-delay:var(--fa-animation-delay,0s);-webkit-animation-direction:var(--fa-animation-direction,normal);animation-direction:var(--fa-animation-direction,normal)}
+.fa-spin{-webkit-animation-name:fa-spin;animation-name:fa-spin;-webkit-animation-duration:var(--fa-animation-duration,2s);animation-duration:var(--fa-animation-duration,2s);-webkit-animation-iteration-count:var(--fa-animation-iteration-count,infinite);animation-iteration-count:var(--fa-animation-iteration-count,infinite);-webkit-animation-timing-function:var(--fa-animation-timing,linear);animation-timing-function:var(--fa-animation-timing,linear)}
+.fa-pulse,.fa-spin-pulse{-webkit-animation-name:fa-spin;animation-name:fa-spin;-webkit-animation-direction:var(--fa-animation-direction,normal);animation-direction:var(--fa-animation-direction,normal);-webkit-animation-duration:var(--fa-animation-duration,1s);animation-duration:var(--fa-animation-duration,1s);-webkit-animation-iteration-count:var(--fa-animation-iteration-count,infinite);animation-iteration-count:var(--fa-animation-iteration-count,infinite);-webkit-animation-timing-function:var(--fa-animation-timing,steps(8));animation-timing-function:var(--fa-animation-timing,steps(8))}
+@media (prefers-reduced-motion:reduce){.fa-pulse,.fa-spin,.fa-spin-pulse{-webkit-animation-delay:-1ms;animation-delay:-1ms;-webkit-animation-duration:1ms;animation-duration:1ms;-webkit-animation-iteration-count:1;animation-iteration-count:1;-webkit-transition-delay:0s;transition-delay:0s;-webkit-transition-duration:0s;transition-duration:0s}}
+@-webkit-keyframes fa-spin{0%{-webkit-transform:rotate(0deg);transform:rotate(0deg)}to{-webkit-transform:rotate(1turn);transform:rotate(1turn)}}
+@keyframes fa-spin{0%{-webkit-transform:rotate(0deg);transform:rotate(0deg)}to{-webkit-transform:rotate(1turn);transform:rotate(1turn)}}
+.fa-trash-alt:before{content:"\f2ed"}
+.fa-wave-square:before{content:"\f83e"}
+.fa-right-from-bracket:before{content:"\f2f5"}
+.fa-forward-step:before{content:"\f051"}
+.fa-volume-low:before{content:"\f027"}
+.fa-list:before{content:"\f03a"}
+.fa-users:before{content:"\f0c0"}
+.fa-chevron-up:before{content:"\f077"}
+.fa-user:before{content:"\f007"}
+.fa-key:before{content:"\f084"}
+.fa-globe:before{content:"\f0ac"}
+.fa-repeat:before{content:"\f363"}
+.fa-random:before,.fa-shuffle:before{content:"\f074"}
+.fa-server:before{content:"\f233"}
+.fa-headset:before{content:"\f590"}
+.fa-pause:before{content:"\f04c"}
+.fa-arrows-rotate:before{content:"\f021"}
+.fa-arrow-up-right-from-square:before{content:"\f08e"}
+.fa-arrow-right:before{content:"\f061"}
+.fa-heart:before{content:"\f004"}
+.fa-circle:before{content:"\f111"}
+.fa-volume-high:before{content:"\f028"}
+.fa-pen:before{content:"\f304"}
+.fa-trash:before{content:"\f1f8"}
+.fa-gear:before{content:"\f013"}
+.fa-grip-vertical:before{content:"\f58e"}
+.fa-keyboard:before{content:"\f11c"}
+.fa-ellipsis-vertical:before{content:"\f142"}
+.fa-forward:before{content:"\f04e"}
+.fa-stop:before{content:"\f04d"}
+.fa-compact-disc:before{content:"\f51f"}
+.fa-sun:before{content:"\f185"}
+.fa-ellipsis-h:before{content:"\f141"}
+.fa-gauge-high:before{content:"\f625"}
+.fa-link:before{content:"\f0c1"}
+.fa-play:before{content:"\f04b"}
+.fa-magnifying-glass:before{content:"\f002"}
+.fa-chevron-down:before{content:"\f078"}
+.fa-list-ul:before{content:"\f0ca"}
+.fa-list-check:before{content:"\f0ae"}
+.fa-circle-half-stroke:before{content:"\f042"}
+.fa-copy:before{content:"\f0c5"}
+.fa-plus:before{content:"\2b"}
+.fa-times:before,.fa-xmark:before{content:"\f00d"}
+.fa-chevron-left:before{content:"\f053"}
+.fa-chevron-right:before{content:"\f054"}
+.fa-radio:before{content:"\f8d7"}
+.fa-trophy:before{content:"\f091"}
+.fa-rotate:before{content:"\f2f1"}
+.fa-spinner:before{content:"\f110"}
+.fa-robot:before{content:"\f544"}
+.fa-clock-rotate-left:before{content:"\f1da"}
+.fa-moon:before{content:"\f186"}
+.fa-music:before{content:"\f001"}
+.fa-plus-circle:before{content:"\f055"}
+.fa-book:before{content:"\f02d"}
+.fa-check:before{content:"\f00c"}
+.fa-book-open:before{content:"\f518"}
+.fa-triangle-exclamation:before{content:"\f071"}
+.sr-only,.sr-only-focusable:not(:focus){position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border-width:0}
+:host,:root{--fa-style-family-brands:"Font Awesome 6 Brands";--fa-font-brands:normal 400 1em/1 "Font Awesome 6 Brands"}
+.fa-brands,.fab{font-weight:400}
+.fa-discord:before{content:"\f392"}
+.fa-chrome:before{content:"\f268"}
+.fa-youtube:before{content:"\f167"}
+:host,:root{--fa-font-regular:normal 400 1em/1 "Font Awesome 6 Free"}
+.fa-regular,.far{font-weight:400}
+:host,:root{--fa-style-family-classic:"Font Awesome 6 Free";--fa-font-solid:normal 900 1em/1 "Font Awesome 6 Free"}
+.fa-solid,.fas{font-weight:900}
+@font-face{font-family:"Font Awesome 6 Free";font-style:normal;font-weight:900;font-display:block;src:url(/static/fonts/fa-solid-900.woff2?v=267ce160b7) format("woff2")}
+@font-face{font-family:"Font Awesome 6 Brands";font-style:normal;font-weight:400;font-display:block;src:url(/static/fonts/fa-brands-400.woff2?v=14701d52c9) format("woff2")}

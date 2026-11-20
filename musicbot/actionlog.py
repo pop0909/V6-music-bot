@@ -6,14 +6,16 @@
 - act：add 點歌 / skip 跳過 / remove 刪歌
 - src：discord（Discord 指令或按鈕）/ web（網頁面板）/ ext（Chrome 擴充功能）
 - 一次加很多首（匯入歌單、YouTube 播放清單、整份歌單播放）只記一筆，n = 首數
-寫入：先寫暫存檔再 os.replace；每次寫入和讀取都會清掉超過 7 天的，每個伺服器最多 MAX_PER_GUILD 筆。
+寫入：延後 SAVE_DELAY 秒合併寫一次（jsonfile.write_atomic，關機會 flush）；每次寫入和讀取都會清掉超過 7 天的，每個伺服器最多 MAX_PER_GUILD 筆。
 """
+import atexit
 import json
 import os
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
+from .jsonfile import write_atomic
 from .config import log
 
 FILE = (os.getenv("ACTION_LOG_FILE") or "").strip() or os.path.join(
@@ -26,11 +28,7 @@ WHO_MAX = 40
 ACTIONS = ("add", "skip", "remove")
 SOURCES = ("discord", "web", "ext")
 
-try:
-    from zoneinfo import ZoneInfo
-    TZ = ZoneInfo("Asia/Taipei")
-except Exception:           # Windows 沒裝 tzdata 時：台北沒有日光節約，固定 +8
-    TZ = timezone(timedelta(hours=8), "Asia/Taipei")
+from .tz import TAIPEI as TZ  # noqa: E402  台北時區（共用 tz.py）
 
 _lock = threading.RLock()
 _data = None                # {gid(str): [entry, ...]}；第一次用到才載入
@@ -77,19 +75,40 @@ def _load_locked():
         _save_locked()
 
 
-def _save_locked():
-    tmp = f"{FILE}.tmp"
+SAVE_DELAY = 1.0            # 秒：連續多筆紀錄合併成一次寫檔（整個檔重寫，2000 筆約 10ms，不要每筆都寫）
+_timer = [None]
+
+
+def _write_now_locked():
+    if _timer[0] is not None:
+        _timer[0].cancel()
+        _timer[0] = None
+    if _data is None:
+        return
     try:
-        os.makedirs(os.path.dirname(FILE), exist_ok=True)
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump({"v": 1, "guilds": _data}, f, ensure_ascii=False, separators=(",", ":"))
-        try:
-            os.chmod(tmp, 0o600)
-        except OSError:
-            pass
-        os.replace(tmp, FILE)
+        write_atomic(FILE, {"v": 1, "guilds": _data}, private=True)
     except Exception as e:
         log.warning(f"[操作紀錄] 寫入失敗：{e!r}")
+
+
+def _save_locked():
+    """排一次延後寫檔（SAVE_DELAY 秒內的變更合併）；關機 / 測試換檔前會 flush()"""
+    if _timer[0] is not None:
+        return
+    t = threading.Timer(SAVE_DELAY, flush)
+    t.daemon = True
+    _timer[0] = t
+    t.start()
+
+
+def flush():
+    """把還沒寫進檔案的紀錄立刻寫入（關機時、測試用）"""
+    with _lock:
+        if _timer[0] is not None:
+            _write_now_locked()
+
+
+atexit.register(flush)
 
 
 def record(gid, act, actor, title="", url=None, count=None, detail=None):
@@ -189,6 +208,7 @@ def _reset_for_tests(path=None):
     if not path:
         import tempfile
         path = os.path.join(tempfile.mkdtemp(prefix="v6act-"), "action_log.json")
+    flush()
     with _lock:
         _data = None
         FILE = path

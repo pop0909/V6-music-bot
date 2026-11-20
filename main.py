@@ -55,6 +55,11 @@ if __name__ == "__main__":
             idlesleep.save_session()
         except Exception:
             pass
+        try:
+            from musicbot import actionlog
+            actionlog.flush()       # 延後寫檔的操作紀錄先寫進去
+        except Exception:
+            pass
         alerts.mark_stopped()
         raise KeyboardInterrupt
     try:

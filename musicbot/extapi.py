@@ -33,7 +33,15 @@ def _ext_auth():
     if not extmembers.owner_token():
         return jsonify({"status": "error", "message": "伺服器未設定 EXT_TOKEN，擴充功能 API 已停用"}), 503
     if "X-Ext-Token" in request.headers:        # Chrome 擴充功能：金鑰標頭（跟以前一樣）
+        from . import webauth
+        ip = webauth.client_ip(request)
+        wait = webauth.locked_for(ip, "ext")
+        if wait:                                # 同一個 IP 一直用錯的金鑰 → 先鎖 10 分鐘（防猜金鑰）
+            return jsonify({"status": "error",
+                            "message": f"金鑰錯太多次，請 {max(1, (wait + 59) // 60)} 分鐘後再試（請確認擴充功能選項裡的金鑰）"}), 429
         ident = with_discord_name(extmembers.authenticate(request.headers.get("X-Ext-Token")))
+        if not ident:
+            webauth.record_fail(ip, "ext")
     else:                                       # 網頁面板：登入的 cookie（每次請求重新核對金鑰是否還有效）
         from . import webauth
         ident = webauth.current_user()
@@ -130,14 +138,9 @@ def ext_actor():
 
 
 def _pick_guild():
-    with state_lock:
-        gid = get_active_guild()
-        if gid:
-            return gid
-        connected = [g for g, vc in voice_clients.items() if vc and vc.is_connected()]
-        if connected:
-            return connected[0]
-        return next(iter(guild_names), 0)
+    """沒指定伺服器：這把金鑰 / 這個人的目前伺服器 → 在語音中的 → 第一個（只在自己有加入的伺服器裡挑，見 guildscope.py）"""
+    from . import guildscope
+    return guildscope.default_guild(g.get("ext_user"))
 
 
 async def _move_to_next(gid, url):

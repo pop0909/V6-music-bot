@@ -486,6 +486,13 @@ class Permissions(Base):
 
 
 class ActionLog(Base):
+    def setUp(self):
+        super().setUp()
+        # 兩個 Discord 帳號都在伺服器 G 裡（伺服器權限另外在 test_guildscope.py 測）
+        p = mock.patch("musicbot.guildscope.member_guilds", return_value={G})
+        p.start()
+        self.addCleanup(p.stop)
+
     def test_web_actions_record_discord_name_and_id(self):
         self.dlogin(FRIEND, "小美")
         r = self.c.post("/api/queue/add", json={"guild_id": G, "url": U_(1), "title": "歌一", "no_play": True},

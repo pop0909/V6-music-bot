@@ -30,18 +30,12 @@ def _client():
 
 
 async def _resolve_owner():
+    """私訊對象（int）：OWNER_ID > 應用程式擁有者（owner.py）；找到後快取到重啟"""
     if _owner_id[0]:
         return _owner_id[0]
-    raw = (os.getenv("OWNER_ID") or "").strip()
-    if raw.isdigit():
-        _owner_id[0] = int(raw)
-        return _owner_id[0]
-    try:
-        app = await _client().application_info()
-        owner = app.team.owner if app.team and app.team.owner else app.owner
-        _owner_id[0] = owner.id if owner else None
-    except Exception as e:
-        log.warning(f"[通知] 取得擁有者失敗：{e}")
+    from . import owner
+    oid = await owner.resolve(_client())
+    _owner_id[0] = int(oid) if oid else None
     return _owner_id[0]
 
 
@@ -137,8 +131,8 @@ _startup_reason = [None]
 
 def taipei_time(ts):
     """epoch → 「2026-11-20 00:52（台北時間）」"""
-    from datetime import datetime, timedelta, timezone
-    return datetime.fromtimestamp(ts, timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M") + "（台北時間）"
+    from .tz import taipei
+    return taipei(ts).strftime("%Y-%m-%d %H:%M") + "（台北時間）"
 
 
 def mark_started():

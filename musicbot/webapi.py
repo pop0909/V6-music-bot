@@ -214,13 +214,18 @@ def _wake_on_action():
     """網頁上任何操作（POST）都會把該伺服器從休眠叫醒"""
     if request.method != "POST" or not request.path.startswith("/api/"):
         return None
-    if not g.get("panel_user") and not (request.path.startswith("/api/ext/") and (
-            extmembers.authenticate(request.headers.get("X-Ext-Token")) or webauth.current_user())):
+    ident = g.get("panel_user")
+    if not ident and request.path.startswith("/api/ext/"):
+        from .extapi import with_discord_name
+        ident = with_discord_name(extmembers.authenticate(request.headers.get("X-Ext-Token"))) or webauth.current_user()
+    if not ident:
         return None     # 沒登入 / 金鑰錯誤的請求不叫醒
     try:
-        from . import idlesleep
+        from . import idlesleep, guildscope
         data = request.get_json(silent=True) or {}
-        gid = int(data.get("guild_id") or 0) or (get_active_guild() or 0)
+        gid = int(data.get("guild_id") or 0) or (guildscope.chosen_guild(ident) or 0)
+        if gid and not guildscope.may_use(gid, ident):
+            return None     # 別人的伺服器不叫醒（後面的檢查會回 403）
         if gid and gid in idlesleep.asleep:
             idlesleep.wake(gid, "網頁操作")
     except Exception:
@@ -236,6 +241,17 @@ def _renew_login(resp):
         value = webauth.make_cookie_value(ident)
         if value:
             webauth.set_login_cookie(resp, request, value)
+    return resp
+
+
+@flask_app.after_request
+def _security_headers(resp):
+    """不讓別的網站用 iframe 包面板（點擊劫持）、瀏覽器不要猜檔案類型；HTTPS 時要求之後都走 HTTPS（HSTS）"""
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("Referrer-Policy", "same-origin")
+    if webauth.is_https(request):
+        resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
     return resp
 
 
@@ -351,3 +367,7 @@ from . import webapi_library as _webapi_library  # noqa: E402,F401
 from . import extapi as _extapi  # noqa: E402,F401
 from . import userlistapi as _userlistapi  # noqa: E402,F401
 from . import webstatic as _webstatic  # noqa: E402,F401
+
+# 伺服器權限（只能看 / 操作自己有加入的伺服器）：要排在登入檢查與擴充功能金鑰檢查之後，所以最後才註冊
+from . import guildscope as _guildscope  # noqa: E402
+flask_app.before_request(_guildscope.check_request)

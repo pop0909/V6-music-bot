@@ -8,6 +8,7 @@
   Cloudflare 對瀏覽器本來就會壓縮；這裡省的是本機 → Cloudflare 隧道那段的傳輸量（app.js 183 KB → 約 55 KB）
 """
 import gzip
+import mimetypes
 import os
 import threading
 
@@ -21,6 +22,8 @@ HTML = "no-cache"
 GZIP_TYPES = ("text/css", "text/javascript", "application/javascript", "image/svg+xml",
               "application/json", "text/plain")
 MIN_GZIP = 1024
+
+mimetypes.add_type("font/woff2", ".woff2")     # 自帶的圖示字型（Windows 的 mimetypes 不一定認得）
 
 _gz_cache = {}          # 檔案路徑 -> (mtime_ns, size, gz bytes)
 _gz_lock = threading.Lock()

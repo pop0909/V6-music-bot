@@ -13,7 +13,7 @@ from flask import request, jsonify
 from .config import log
 from .state import state_lock
 from .storage import load_favorites, add_favorite_song, favorites_cache
-from .utils import clean_str, valid_song_url, safe_title
+from .utils import clean_str, song_url_error, safe_title
 from . import ytdl
 from .state import queue_skip_message
 from .webcore import web_add_to_queue, web_play_all
@@ -46,8 +46,8 @@ def api_playlist_add():
     url = (data.get("url") or "").strip()
     if not url:
         return jsonify({"status": "error", "message": "請提供網址"}), 400
-    if not valid_song_url(url):
-        return jsonify({"status": "error", "message": "網址格式不正確"}), 400
+    if song_url_error(url):
+        return jsonify({"status": "error", "message": song_url_error(url)}), 400
     title = safe_title(data.get("title"), url)
     with state_lock:
         _w.local_playlist.append({"url": url, "title": title})
@@ -62,8 +62,8 @@ def api_playlist_edit():
     title = (data.get("title") or "").strip()
     if not url or not title:
         return jsonify({"status": "error", "message": "網址和標題不能為空"}), 400
-    if not valid_song_url(url):
-        return jsonify({"status": "error", "message": "網址格式不正確"}), 400
+    if song_url_error(url):
+        return jsonify({"status": "error", "message": song_url_error(url)}), 400
     with state_lock:
         index = _resolve_index(_w.local_playlist, index, data.get("expect_url"))
         if index < 0:
@@ -137,7 +137,7 @@ def api_favorites_add():
     gid = int(data.get("guild_id", 0))
     url = (data.get("url") or "").strip()
     if not url: return jsonify({"status": "error", "message": "請提供網址"}), 400
-    if not valid_song_url(url): return jsonify({"status": "error", "message": "網址格式不正確"}), 400
+    if song_url_error(url): return jsonify({"status": "error", "message": song_url_error(url)}), 400
     title = safe_title(data.get("title"), url)
     with state_lock:
         added = add_favorite_song(gid, url, title)
@@ -165,8 +165,8 @@ def api_resolve_url():
     url = data.get("url", "").strip()
     if not url:
         return jsonify({"status": "error", "message": "請提供網址"}), 400
-    if not valid_song_url(url):
-        return jsonify({"status": "error", "message": "網址格式不正確（需要 http/https 連結）"}), 400
+    if song_url_error(url):
+        return jsonify({"status": "error", "message": song_url_error(url)}), 400
     try:
         with yt_dlp.YoutubeDL(ytdl.build_opts({
             "format": "bestaudio/best",
