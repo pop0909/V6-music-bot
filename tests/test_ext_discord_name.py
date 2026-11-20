@@ -162,8 +162,12 @@ class DiscordAuthNameTest(unittest.TestCase):
         with mock.patch.object(discordauth, "_bot", return_value=b):
             self.assertEqual(discordauth.display_name("8"), "全域名")
             self.assertIsNone(discordauth.display_name("9"))
-        discordauth.create_session({"id": "9", "name": "舊網頁名"})
-        discordauth.create_session({"id": "9", "name": "新網頁名"})
+        with mock.patch.object(discordauth.time, "time", return_value=1000.0):
+            discordauth.create_session({"id": "9", "name": "舊網頁名"})
+            discordauth.create_session({"id": "9", "name": "新網頁名"})        # 同一時間 → 後建立的勝
+        self.assertEqual(discordauth.display_name("9"), "新網頁名")
+        with mock.patch.object(discordauth.time, "time", return_value=900.0):
+            discordauth.create_session({"id": "9", "name": "更舊的"})          # 較早的不會蓋掉較新的
         with mock.patch.object(discordauth, "_bot", return_value=self.bot(ready=False)):
             self.assertEqual(discordauth.display_name("9"), "新網頁名")
         self.assertIsNone(discordauth.display_name(None))

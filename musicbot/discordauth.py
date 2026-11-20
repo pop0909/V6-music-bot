@@ -346,7 +346,9 @@ def display_name(did):
     with _lock:
         recs = [v for v in _load().values() if v.get("did") == did and v.get("name")]
     if recs:
-        return _clean_name(max(recs, key=lambda v: float(v.get("seen") or 0))["name"]) or None
+        # 最近用過的那筆；同一時間（Windows 時鐘解析度粗）→ 後建立的那筆
+        newest = max(enumerate(recs), key=lambda iv: (float(iv[1].get("seen") or 0), iv[0]))[1]
+        return _clean_name(newest["name"]) or None
     return None
 
 
