@@ -25,9 +25,29 @@ if SIM_DATA != "repo":
     idlesleep.SESSION_FILE = os.path.join(SIM_DATA, "voice_session.json")
     _al.EXIT_FILE = os.path.join(SIM_DATA, "last_exit.json")
     _wa.SECRET_FILE = os.path.join(SIM_DATA, "panel_secret")
+    from musicbot import discordauth as _da
+    _da.SESSIONS_FILE = os.path.join(SIM_DATA, "web_sessions.json")
     from musicbot import actionlog as _act
     _act._reset_for_tests(os.path.join(SIM_DATA, "action_log.json"))
     print(f"sim data: {SIM_DATA}", flush=True)
+
+# SIM_FAKE_DISCORD=1：Discord 登入整條流程用假的（不連 discord.com）。截圖 / 手動測試用；
+# 瀏覽器那端要自己把 discord.com/oauth2/authorize 攔下來導回 callback。
+if os.getenv("SIM_FAKE_DISCORD"):
+    from musicbot import discordauth as _da2
+    _FAKE_DID = os.getenv("SIM_FAKE_DISCORD_ID", "222222222222222222")
+
+    def _fake_http(method, url, data=None, headers=None, timeout=10):
+        if url == _da2.TOKEN_URL:
+            return 200, {"access_token": "sim", "token_type": "Bearer"}
+        if url == _da2.ME_URL:
+            return 200, {"id": _FAKE_DID, "username": "sim", "global_name": "模擬使用者", "avatar": "simavatar"}
+        return 0, None
+    _da2._http = _fake_http
+    _da2.lookup_member = lambda did: types.SimpleNamespace(
+        display_name=os.getenv("SIM_FAKE_DISCORD_NAME", "小美"),
+        display_avatar=types.SimpleNamespace(with_size=lambda n: types.SimpleNamespace(
+            url=f"https://cdn.discordapp.com/avatars/{did}/simavatar.png?size=64")))
 
 SONG_LEN = float(os.getenv("SIM_SONG_LEN", "4"))
 G = 111

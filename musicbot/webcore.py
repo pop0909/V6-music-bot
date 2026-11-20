@@ -82,6 +82,13 @@ async def ensure_voice_connected(gid):
         return None
 
 
+def _requester(requester, actor):
+    """網頁用 Discord 登入時，佇列「誰點的」和播放紀錄寫 Discord 名稱（金鑰登入維持「網頁」，跟以前一樣）"""
+    if requester == "網頁" and actor and len(actor) > 2 and actor[2] and actor[0]:
+        return actor[0]
+    return requester
+
+
 async def web_add_to_queue(gid, url, title, auto_play=True, duration=None, requester="網頁", actor=None):
     """從 Web 加入歌曲到 Discord 佇列
 
@@ -107,7 +114,7 @@ async def web_add_to_queue(gid, url, title, auto_play=True, duration=None, reque
     queues[gid].append((url, title))
     position = len(queues[gid])
     remember_duration(url, duration)
-    note_song_meta(gid, url, requester=requester, source="user")
+    note_song_meta(gid, url, requester=_requester(requester, actor), source="user")
     actionlog.record(gid, "add", actor, title, url=url)     # 操作紀錄（actor=None 不記）
     if gid in random_loop_guilds: random_loop_guilds[gid] = False
     if auto_play:
@@ -376,7 +383,7 @@ async def web_add_to_queue_batch(gid, songs, stats=None, actor=None, label=None)
                 continue
             queues[gid].append((url, title))
             remember_duration(url, song.get("duration"))
-            note_song_meta(gid, url, requester="網頁", source="user")
+            note_song_meta(gid, url, requester=_requester("網頁", actor), source="user")
             added.append((url, title))
             count += 1
     actionlog.record_add(gid, actor, added, label)     # 多首只記一筆
@@ -569,7 +576,7 @@ async def web_import_songs(gid, songs, requester="網頁", stats=None, actor=Non
             continue
         q.append((url, safe_title(s.get("title"), url)))
         remember_duration(url, s.get("duration"))
-        note_song_meta(gid, url, requester=requester, source="user")
+        note_song_meta(gid, url, requester=_requester(requester, actor), source="user")
         added.append(q[-1])
         count += 1
     actionlog.record_add(gid, actor, added, label)     # 匯入 / 整份歌單：只記一筆

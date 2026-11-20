@@ -96,9 +96,13 @@ def _lookup_title(url):
 
 
 def ext_actor():
-    """操作紀錄用：(金鑰成員名稱, 來源)。帶 X-Ext-Token 標頭 = Chrome 擴充功能；用登入 cookie = 網頁面板"""
-    who = (getattr(g, "ext_user", None) or {}).get("name") or "未知"
-    return (who, "ext" if "X-Ext-Token" in request.headers else "web")
+    """操作紀錄用：(名稱, 來源, Discord id)。帶 X-Ext-Token 標頭 = Chrome 擴充功能（金鑰成員名稱）；
+    用登入 cookie = 網頁面板（Discord 登入 → Discord 名稱與 id）"""
+    u = getattr(g, "ext_user", None) or {}
+    who = u.get("name") or "未知"
+    if "X-Ext-Token" in request.headers:
+        return (who, "ext", None)
+    return (who, "web", u.get("discord_id"))
 
 
 def _pick_guild():

@@ -1,7 +1,8 @@
 """操作紀錄：誰點歌加進佇列、跳過、刪歌（每個伺服器各一份，只保留 7 天）。
 
 存在 data/action_log.json（.gitignore 已排除 data/）：
-    {"v": 1, "guilds": {"<guild_id>": [ {ts, act, who, src, title, url?, n?, detail?}, ... 舊 → 新 ]}}
+    {"v": 1, "guilds": {"<guild_id>": [ {ts, act, who, src, title, uid?, url?, n?, detail?}, ... 舊 → 新 ]}}
+- uid：操作者的 Discord 使用者 id（Discord 指令 / 用 Discord 登入的網頁才有；金鑰登入、擴充功能沒有）
 - act：add 點歌 / skip 跳過 / remove 刪歌
 - src：discord（Discord 指令或按鈕）/ web（網頁面板）/ ext（Chrome 擴充功能）
 - 一次加很多首（匯入歌單、YouTube 播放清單、整份歌單播放）只記一筆，n = 首數
@@ -92,15 +93,18 @@ def _save_locked():
 
 
 def record(gid, act, actor, title="", url=None, count=None, detail=None):
-    """記一筆。actor = (名字, 來源)；actor 是 None（內部 / 自動操作）就不記。不會丟例外。"""
+    """記一筆。actor = (名字, 來源) 或 (名字, 來源, Discord id)；actor 是 None（內部 / 自動操作）就不記。不會丟例外。"""
     global _rev
     try:
         if not actor or not gid or act not in ACTIONS:
             return None
-        who, src = actor
+        who, src = actor[0], actor[1]
+        uid = str(actor[2]) if len(actor) > 2 and actor[2] and str(actor[2]).isdigit() else None
         src = src if src in SOURCES else "web"
         e = {"ts": round(time.time(), 3), "act": act, "who": _clip(who, WHO_MAX) or "未知",
              "src": src, "title": _clip(title, TITLE_MAX)}
+        if uid:
+            e["uid"] = uid[:20]
         if url:
             e["url"] = _clip(url, 500)
         if count is not None and count != 1:
@@ -172,9 +176,11 @@ def recent(gid, limit=200):
 
 
 def discord_actor(interaction):
-    """Discord 指令 / 按鈕：伺服器暱稱"""
+    """Discord 指令 / 按鈕：(伺服器暱稱, "discord", 使用者 id)"""
     u = getattr(interaction, "user", None)
-    return (getattr(u, "display_name", None) or getattr(u, "name", None) or "Discord 使用者", "discord")
+    uid = getattr(u, "id", None)
+    return (getattr(u, "display_name", None) or getattr(u, "name", None) or "Discord 使用者", "discord",
+            uid if isinstance(uid, int) else None)
 
 
 def _reset_for_tests(path=None):

@@ -30,6 +30,17 @@ button:disabled { opacity: .5; cursor: default; }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .err { min-height: 1.5em; margin: 10px 0 0; color: var(--err); font-size: 13.5px; }
 .hint { margin: 16px 0 0; padding-top: 14px; border-top: 1px solid var(--line); color: var(--sub); font-size: 12.5px; }
+a.discord { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; margin-top: 4px; border-radius: 12px; padding: 12px 16px; min-height: 52px; background: #5865F2; color: #fff; font-weight: 700; font-size: 16.5px; text-decoration: none; }
+a.discord:hover { background: #4752c4; }
+a.discord:focus-visible { outline: 2px solid var(--accent2); outline-offset: 2px; }
+a.discord svg { width: 24px; height: 24px; flex: none; }
+details.keybox { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+details.keybox summary { cursor: pointer; color: var(--sub); font-size: 13.5px; list-style: none; display: inline-flex; align-items: center; gap: 6px; min-height: 32px; }
+details.keybox summary::-webkit-details-marker { display: none; }
+details.keybox summary::before { content: "›"; display: inline-block; transition: transform .15s; font-size: 16px; }
+details.keybox[open] summary::before { transform: rotate(90deg); }
+details.keybox summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+details.keybox form { margin-top: 8px; }
 </style></head>
 <body><div class="stroke-bg" aria-hidden="true"><svg viewBox="0 0 1400 900" fill="none" preserveAspectRatio="xMidYMid slice">
 <path class="s-pink" d="M120 80c40-30 90-10 110 40 18 46-10 88-50 96" stroke-width="1.6" stroke-linecap="round"/>
@@ -47,17 +58,33 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 <path class="s-pink" d="M60 300c30-80 120-70 140-10 16 48-30 70-70 58" stroke-width="1.3" stroke-linecap="round"/>
 <path class="s-cyan" d="M1320 360c-80-20-70 70-20 90 46 18 80-24 62-58" stroke-width="1.3" stroke-linecap="round"/>
 </svg></div><main>
-<form class="card" method="post" action="/login" autocomplete="off">
+<div class="card">
   <div class="brand"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path class="s-cyan" d="M14.1 25.6c.4-7.2-.2-14.1 1.1-21.2 2.8 1 6.6 2.4 9.4 4.8-1.6 1.4-3.8 2.6-6.2 3.3" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path class="s-pink" d="M13.8 24.8c-3.6 2.2-7.2-.4-5.4-3.5 1.5-2.4 5.2-1.6 6.6.8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
     <span class="brand-text">Music<span>Bot</span></span></div>
+{% if discord_on %}
+  <h1>登入才能使用</h1>
+  <p class="sub">用你的 Discord 帳號登入，點歌、跳過等操作會記上你的 Discord 名字。只要登入一次，這個瀏覽器會一直記住。</p>
+  <a class="discord" id="discordLogin" href="/auth/discord{% if next and next != '/' %}?next={{ next|urlencode }}{% endif %}"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M20.32 4.37a19.8 19.8 0 0 0-4.89-1.52.07.07 0 0 0-.08.04c-.21.38-.44.87-.61 1.25a18.27 18.27 0 0 0-5.49 0 12.64 12.64 0 0 0-.62-1.25.08.08 0 0 0-.08-.04 19.74 19.74 0 0 0-4.89 1.52.07.07 0 0 0-.03.03C.53 9.05-.32 13.58.1 18.06a.08.08 0 0 0 .03.05 19.9 19.9 0 0 0 5.99 3.03.08.08 0 0 0 .08-.03c.46-.63.87-1.3 1.23-1.99a.08.08 0 0 0-.04-.11 13.1 13.1 0 0 1-1.87-.89.08.08 0 0 1-.01-.13c.13-.09.25-.19.37-.29a.07.07 0 0 1 .08-.01c3.93 1.79 8.18 1.79 12.06 0a.07.07 0 0 1 .08.01c.12.1.25.2.37.29a.08.08 0 0 1-.01.13c-.6.35-1.22.65-1.87.89a.08.08 0 0 0-.04.11c.36.7.77 1.36 1.22 1.99a.08.08 0 0 0 .09.03 19.84 19.84 0 0 0 6-3.03.08.08 0 0 0 .03-.05c.5-5.18-.84-9.67-3.55-13.66a.06.06 0 0 0-.03-.03zM8.02 15.33c-1.18 0-2.16-1.08-2.16-2.42 0-1.33.96-2.42 2.16-2.42 1.21 0 2.18 1.1 2.16 2.42 0 1.34-.96 2.42-2.16 2.42zm7.97 0c-1.18 0-2.15-1.08-2.15-2.42 0-1.33.95-2.42 2.15-2.42 1.21 0 2.18 1.1 2.16 2.42 0 1.34-.95 2.42-2.16 2.42z"/></svg>用 Discord 登入</a>
+  {% if not key_open and error %}<p class="err" id="err" role="alert">{{ error }}</p>{% endif %}
+  <details class="keybox"{% if key_open %} open{% endif %}>
+  <summary>改用金鑰登入</summary>
+{% else %}
   <h1>輸入金鑰才能使用</h1>
   <p class="sub">用你的個人金鑰登入（跟 Chrome 擴充功能用的同一把），只要輸入一次，這個瀏覽器會一直記住。</p>
+{% endif %}
+  <form method="post" action="/login" autocomplete="off">
   <input type="hidden" name="next" value="{{ next }}">
   <label for="key">金鑰</label>
-  <input id="key" name="key" type="password" required autofocus spellcheck="false" autocapitalize="off" placeholder="貼上你的金鑰"{% if locked %} disabled{% endif %}>
-  <p class="err" id="err" role="alert">{{ error or '' }}</p>
+  <input id="key" name="key" type="password" required{% if not discord_on %} autofocus{% endif %} spellcheck="false" autocapitalize="off" placeholder="貼上你的金鑰"{% if locked %} disabled{% endif %}>
+  {% if key_open %}<p class="err" id="err" role="alert">{{ error or '' }}</p>{% endif %}
   <button type="submit"{% if locked %} disabled{% endif %}>進入</button>
+  </form>
+{% if discord_on %}
+  </details>
+  <p class="hint">用 Discord 登入要是機器人所在伺服器的成員。金鑰跟 Chrome 擴充功能用的是同一把，可以向擁有者索取。</p>
+{% else %}
   <p class="hint">沒有金鑰？請向機器人的擁有者索取。</p>
-</form>
+{% endif %}
+</div>
 </main>
 </body></html>

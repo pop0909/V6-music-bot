@@ -132,7 +132,7 @@ class LoginFlow(Base):
         self.assertNotIn(OWN, sc)                       # cookie 不含金鑰本身
         self.assertEqual(self.get("/").status_code, 200)
         me = self.get("/api/me").get_json()
-        self.assertEqual(me, {"status": "ok", "name": "擁有者", "owner": True})
+        self.assertEqual(me, {"status": "ok", "name": "擁有者", "owner": True, "via": "key", "avatar": None})
 
     def test_http_cookie_not_secure(self):
         sc = self.login(OWN).headers["Set-Cookie"]

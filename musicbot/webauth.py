@@ -1,9 +1,11 @@
-"""網頁面板登入：用每個人自己的擴充功能金鑰（extmembers）登入，只要輸入一次（長期記住，每次使用自動續期）。
+"""網頁面板登入：用 Discord 帳號（discordauth.py，有設定時）或每個人自己的擴充功能金鑰（extmembers）登入，
+只要登入一次（長期記住，每次使用自動續期）。
 
 - Cookie 只存「身分 id + 金鑰指紋」並簽章（itsdangerous），不存金鑰本身；httponly、SameSite=Lax、HTTPS 時加 Secure。
 - 每個請求都重新核對：成員被停用 / 刪除 / 重設金鑰、或 .env 的 EXT_TOKEN 換掉 → 立刻失效（等於被登出）。
 - 同一個 IP（優先看 Cloudflare 的 CF-Connecting-IP）連續輸錯 5 次 → 鎖 10 分鐘。
-- 擁有者（.env 的 EXT_TOKEN）才能用：更新 / 重啟、成員管理。
+- 擁有者（.env 的 EXT_TOKEN，或 Discord 擁有者帳號）才能用：更新 / 重啟、成員管理。
+- Discord 登入的 cookie 只放隨機 session id（{"s": …}），身分在伺服器端（discordauth）查。
 """
 import hashlib
 import hmac
@@ -87,12 +89,32 @@ def _token_hash_for(user_key):
 
 # ---------- 登入 / 驗證 ----------
 def make_cookie_value(ident):
-    """身分（authenticate 的結果）→ 簽章後的 cookie 值"""
+    """身分（authenticate 的結果，或 Discord 登入的身分）→ 簽章後的 cookie 值"""
+    if ident.get("via") == "discord":
+        return session_cookie_value(ident.get("_sid"))
     uk = "owner" if ident.get("owner") else ident["id"]
     th = _token_hash_for(uk)
     if not th:
         return None
     return _serializer().dumps({"u": uk, "f": _fingerprint(uk, th)})
+
+
+def session_cookie_value(sid):
+    """Discord 登入的 session id → 簽章後的 cookie 值"""
+    if not isinstance(sid, str) or not sid:
+        return None
+    return _serializer().dumps({"s": sid})
+
+
+def session_id_from_cookie(value):
+    """登出用：cookie 裡的 Discord session id（金鑰登入 / 偽造 → None）"""
+    if not value or len(value) > 512:
+        return None
+    try:
+        data = _serializer().loads(value)
+    except Exception:
+        return None
+    return data.get("s") if isinstance(data, dict) and isinstance(data.get("s"), str) else None
 
 
 def ident_from_cookie(value):
@@ -120,6 +142,9 @@ def needs_renew(issued_ts):
 
 
 def _ident_for(data):
+    if "s" in data:
+        from . import discordauth
+        return discordauth.ident_for_session(data.get("s"))
     uk, fp = data.get("u"), data.get("f")
     if not isinstance(uk, str) or not isinstance(fp, str):
         return None

@@ -14,13 +14,13 @@ from .state import local_playlist, notify_change  # noqa: F401  local_playlist�
 from .storage import save_favorites, save_local_playlist  # noqa: F401  同上
 from .webcore import run_async, get_active_guild, get_full_app_state  # noqa: F401  同上
 from . import importer  # noqa: F401  測試用 webapi.importer 替換
-from . import webauth, extmembers
+from . import webauth, extmembers, discordauth
 
 
 def _actor():
-    """操作紀錄用：網頁面板登入的金鑰成員名稱（擁有者 = 「擁有者」），來源 = 網頁面板"""
+    """操作紀錄用：(名字, 來源, Discord id)。Discord 登入 = Discord 顯示名稱；金鑰登入 = 金鑰成員名稱（擁有者 = 「擁有者」）"""
     u = getattr(g, "panel_user", None) or {}
-    return (u.get("name") or "網頁", "web")
+    return (u.get("name") or "網頁", "web", u.get("discord_id"))
 
 # 模組化後 Flask 位於套件內，需明確指向專案根目錄的 templates/ 與 static/
 _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -50,7 +50,7 @@ def _check_host():
 
 # ================== 登入（每個人用自己的擴充功能金鑰） ==================
 # 不用登入：登入頁、登出、靜態檔；/api/ext/* 交給 extapi（X-Ext-Token 金鑰，或網頁登入的 cookie）
-_PUBLIC_PATHS = {"/login", "/logout", "/favicon.ico"}
+_PUBLIC_PATHS = {"/login", "/logout", "/favicon.ico", "/auth/discord", discordauth.CALLBACK_PATH}
 
 
 def _auth_fail(path):
@@ -92,22 +92,25 @@ def login():
         if webauth.current_user():
             return redirect(nxt)
         wait = webauth.locked_for(ip)
-        return render_template("login.html", next=nxt, error=_lock_msg(wait) if wait else None, locked=bool(wait))
+        derr = _DISCORD_ERR.get(request.args.get("err") or "")
+        if wait:
+            return _login_page(nxt, _lock_msg(wait), locked=True, key_open=True)
+        return _login_page(nxt, derr)
     if not extmembers.owner_token():
-        return render_template("login.html", next=nxt, error="伺服器還沒設定 EXT_TOKEN，暫時無法登入", locked=True), 503
+        return _login_page(nxt, "伺服器還沒設定 EXT_TOKEN，暫時無法登入", locked=True, key_open=True), 503
     wait = webauth.locked_for(ip)
     if wait:
-        return render_template("login.html", next=nxt, error=_lock_msg(wait), locked=True), 429
+        return _login_page(nxt, _lock_msg(wait), locked=True, key_open=True), 429
     if not webauth.same_origin(request):
-        return render_template("login.html", next=nxt, error="來源不符，請重新整理再試", locked=False), 403
+        return _login_page(nxt, "來源不符，請重新整理再試", key_open=True), 403
     ident = extmembers.authenticate(request.form.get("key"))
     value = webauth.make_cookie_value(ident) if ident else None
     if not value:
         left, lock = webauth.record_fail(ip)
         log.info(f"[登入] 金鑰錯誤（{ip}，剩 {left} 次）")
         if lock:
-            return render_template("login.html", next=nxt, error=_lock_msg(lock), locked=True), 429
-        return render_template("login.html", next=nxt, error=f"金鑰錯誤或已停用，還可以再試 {left} 次", locked=False), 401
+            return _login_page(nxt, _lock_msg(lock), locked=True, key_open=True), 429
+        return _login_page(nxt, f"金鑰錯誤或已停用，還可以再試 {left} 次", key_open=True), 401
     webauth.clear_fails(ip)
     extmembers.record_use(ident)
     log.info(f"[登入] {ident.get('name')} 登入面板（{ip}）")
@@ -120,9 +123,81 @@ def _lock_msg(secs):
     return f"輸錯太多次，請 {max(1, (secs + 59) // 60)} 分鐘後再試"
 
 
+def _login_page(nxt, error=None, locked=False, key_open=False):
+    on = discordauth.enabled()
+    return render_template("login.html", next=nxt, error=error, locked=locked, discord_on=on,
+                           key_open=key_open or not on)
+
+
+# Discord 登入失敗：網址只帶代號，頁面顯示固定的中文（不把網址上的文字直接顯示出來）
+_DISCORD_ERR = {
+    "denied": "你取消了 Discord 登入",
+    "state": "登入逾時或來源不符，請再按一次「用 Discord 登入」",
+    "bad_code": "登入資料不完整，請再按一次「用 Discord 登入」",
+    "exchange": "跟 Discord 連線失敗，請再試一次",
+    "notmember": "你不在機器人所在的 Discord 伺服器裡，無法登入",
+    "notready": "機器人還沒連上 Discord，請稍後再試",
+    "off": "Discord 登入還沒設定好，請改用金鑰登入",
+}
+
+
+def _clear_state_cookie(resp):
+    resp.delete_cookie(discordauth.STATE_COOKIE, path="/auth/discord", httponly=True,
+                       secure=webauth.is_https(request), samesite="Lax")
+
+
+@flask_app.route("/auth/discord")
+def discord_login():
+    nxt = webauth.safe_next(request.args.get("next"))
+    if not discordauth.enabled():
+        return redirect("/login?err=off")
+    if webauth.current_user():
+        return redirect(nxt)
+    state, cookie = discordauth.new_state(nxt)
+    resp = redirect(discordauth.authorize_url(state))
+    resp.set_cookie(discordauth.STATE_COOKIE, cookie, max_age=discordauth.STATE_MAX_AGE, httponly=True,
+                    secure=webauth.is_https(request), samesite="Lax", path="/auth/discord")
+    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    return resp
+
+
+@flask_app.route(discordauth.CALLBACK_PATH)
+def discord_callback():
+    ip = webauth.client_ip(request)
+    if not discordauth.callback_allowed(ip):
+        log.warning(f"[登入] Discord 登入回呼太頻繁（{ip}）")
+        return _login_page("/", "嘗試太多次，請 10 分鐘後再試", key_open=True), 429
+
+    def fail(code):
+        resp = redirect("/login?err=" + code)
+        _clear_state_cookie(resp)
+        resp.headers["Referrer-Policy"] = "no-referrer"
+        return resp
+    if not discordauth.enabled():
+        return fail("off")
+    nxt = discordauth.check_state(request.cookies.get(discordauth.STATE_COOKIE), request.args.get("state"))
+    if request.args.get("error"):
+        return fail("denied" if nxt is not None or request.args.get("error") == "access_denied" else "state")
+    if nxt is None:
+        return fail("state")
+    try:
+        sid, name = discordauth.login_from_code(request.args.get("code"))
+    except discordauth.OAuthError as e:
+        return fail(e.code if e.code in _DISCORD_ERR else "exchange")
+    log.info(f"[登入] {name} 用 Discord 登入面板（{ip}）")
+    resp = redirect(nxt)
+    _clear_state_cookie(resp)
+    webauth.set_login_cookie(resp, request, webauth.session_cookie_value(sid))
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    return resp
+
+
 @flask_app.route("/logout", methods=["POST"])
 def logout():
     resp = redirect("/login")
+    if webauth.same_origin(request):        # 別的網站偷送的登出不刪伺服器端紀錄（cookie 一樣清掉，跟以前相同）
+        discordauth.delete_session(webauth.session_id_from_cookie(request.cookies.get(webauth.COOKIE)))
     webauth.clear_login_cookie(resp, request)
     return resp
 
@@ -130,7 +205,8 @@ def logout():
 @flask_app.route("/api/me")
 def api_me():
     u = g.panel_user
-    return jsonify({"status": "ok", "name": u.get("name"), "owner": bool(u.get("owner"))})
+    return jsonify({"status": "ok", "name": u.get("name"), "owner": bool(u.get("owner")),
+                    "via": u.get("via") or "key", "avatar": u.get("avatar") or None})
 
 
 @flask_app.before_request

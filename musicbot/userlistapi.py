@@ -13,6 +13,19 @@ from .webcore import run_async, web_import_songs
 P = "/api/ext/lists"
 
 
+@flask_app.before_request
+def _need_linked():
+    """用 Discord 登入、但擁有者還沒把這個 Discord 帳號連結到成員的人：沒有個人歌單（跟 Discord /mylist 一樣）"""
+    if not request.path.startswith(P) or request.method == "OPTIONS":
+        return None
+    u = g.get("ext_user") or {}
+    if u.get("via") == "discord" and not u.get("linked"):
+        return jsonify({"status": "error", "code": "not_linked",
+                        "message": "你的 Discord 帳號還沒連結到個人歌單。請擁有者到「成員管理」幫你連結 Discord 使用者 ID"
+                                   f"（你的 ID：{u.get('discord_id')}）"}), 403
+    return None
+
+
 def user_key(ident=None):
     ident = ident or g.ext_user
     return "owner" if ident.get("owner") else ident["id"]
