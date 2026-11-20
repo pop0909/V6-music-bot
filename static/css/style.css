@@ -2172,8 +2172,9 @@ html[data-theme="light"] .list-item.q-lift { box-shadow: 0 14px 30px -14px rgba(
     .item-btn { width: 36px; }                             /* 高度維持 32（清單列不變高、看得到的列數不變） */
     .item-btn::before { inset: -6px -4px; }                /* 36×32 → 44×44；間距 8 → 相鄰剛好接上不重疊 */
     .btn-search::before { inset: -7px; }                   /* 32 → 46 */
-    .btn-sm::before { inset: -5px -2px; }                  /* 高 35 → 45 */
-    .tab-btn::before { inset: -5px 0; }                    /* 高 34~36 → 44 以上 */
+    /* 高度隨系統字型差幾 px（Windows 的微軟正黑體比較矮）：點擊範圍直接保證至少 44，不靠字型高度 */
+    .btn-sm::before { inset: auto -2px; top: 50%; height: max(calc(100% + 10px), 44px); transform: translateY(-50%); }
+    .tab-btn::before { inset: auto 0; top: 50%; height: max(calc(100% + 10px), 44px); transform: translateY(-50%); }
     .np-close::before { inset: -3px; }                     /* 40 → 46 */
     .hdr-btn::before { inset: -5px; }                      /* 36 → 46 */
     .cdd-btn::before { inset: -3px 0; }                    /* 高 40 → 46 */
