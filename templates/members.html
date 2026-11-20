@@ -18,6 +18,7 @@ main { max-width: 1100px; margin: 32px auto; padding: 0 16px; }
 h1 { font-size: 20px; color: var(--accent); margin: 0 0 4px; display: flex; align-items: center; gap: 8px; } .muted { color: var(--sub); } a { color: var(--accent); }
 h1 i { font-size: 18px; }
 .muted a { display: inline-block; padding: 8px 4px; margin-left: 4px; }
+.dc-id { font-size: 11px; display: block; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-top: 14px; }
 input { background: var(--bg); color: var(--text); border: 1px solid var(--in); border-radius: 8px; padding: 7px 9px; font: inherit; min-height: 36px; box-sizing: border-box; }
 button { border: 0; border-radius: 8px; padding: 7px 12px; background: var(--accent); color: var(--on); cursor: pointer; font: inherit; min-height: 34px; }
@@ -82,7 +83,8 @@ td:first-child, th:first-child { overflow-wrap: normal; word-break: keep-all; }
     <div class="tbl-wrap"><table><thead><tr><th>名字</th><th>狀態</th><th>點歌</th><th>Discord</th><th>最後使用</th><th>建立</th><th></th></tr></thead><tbody id="rows"></tbody></table></div>
     <div id="empty" class="muted" hidden>還沒有成員。</div>
     <div class="row muted" style="margin-top:10px">我的 Discord：<span id="ownerDc">—</span><button class="ghost" id="ownerDcBtn">連結</button></div>
-    <div class="muted" style="font-size:12px">每個 Discord 帳號都自動有自己的個人歌單（網頁用 Discord 登入、Discord <code>/mylist</code> 共用）。把成員連結到他的 Discord 使用者 ID 後，擴充功能、網頁和 <code>/mylist</code> 會用同一份歌單，他原本在 Discord 帳號下的歌單會合併進來；刪除有連結的成員時，歌單會留給他的 Discord 帳號（Discord 設定 → 進階 → 開啟開發者模式，對自己按右鍵「複製使用者 ID」）。</div>
+    <div class="row muted" style="margin-top:4px">擴充功能用主金鑰點歌時，紀錄寫成：<b id="ownerKeyName">—</b></div>
+    <div class="muted" style="font-size:12px">每個 Discord 帳號都自動有自己的個人歌單（網頁用 Discord 登入、Discord <code>/mylist</code> 共用）。把成員連結到他的 Discord 使用者 ID 後，擴充功能、網頁和 <code>/mylist</code> 會用同一份歌單，他原本在 Discord 帳號下的歌單會合併進來；他用擴充功能點歌時，紀錄也會寫他的 Discord 名字（沒連結就寫上面的成員名字）；刪除有連結的成員時，歌單會留給他的 Discord 帳號（Discord 設定 → 進階 → 開啟開發者模式，對自己按右鍵「複製使用者 ID」）。</div>
   </div>
 </div>
 <div id="msg"></div>
@@ -121,7 +123,7 @@ async function load() {
   for (const m of j.members) {
     const tr = document.createElement('tr');
     if (!m.enabled) tr.className = 'off';
-    tr.innerHTML = `<td data-label="名字">${esc(m.name)}</td><td data-label="狀態"><span class="pill">${m.enabled ? '啟用' : '停用'}</span></td><td data-label="點歌">${m.add_count || 0}</td><td data-label="Discord">${m.discord_id ? esc(m.discord_id) : '—'}</td>
+    tr.innerHTML = `<td data-label="名字">${esc(m.name)}</td><td data-label="狀態"><span class="pill">${m.enabled ? '啟用' : '停用'}</span></td><td data-label="點歌">${m.add_count || 0}</td><td data-label="Discord">${m.discord_id ? (m.discord_name ? `${esc(m.discord_name)} <span class="muted dc-id">${esc(m.discord_id)}</span>` : esc(m.discord_id)) : '—'}</td>
       <td data-label="最後使用">${fmt(m.last_used)}</td><td data-label="建立">${fmt(m.created)}</td>
       <td class="acts-cell" data-label="操作"><div class="acts"><button class="ghost" data-a="rename">改名</button><button class="ghost" data-a="${m.enabled ? 'disable' : 'enable'}">${m.enabled ? '停用' : '啟用'}</button>
       <button class="ghost" data-a="discord">連結 Discord</button><button class="ghost" data-a="reset">重設金鑰</button><button class="danger" data-a="delete">刪除</button></div></td>`;
@@ -130,6 +132,8 @@ async function load() {
   }
   ownerDc = j.owner_discord_id || '';
   $('ownerDc').textContent = ownerDc || '未連結';
+  // 主金鑰（.env 的 EXT_TOKEN）用擴充功能點歌時記成誰：「我的 Discord」連結 > OWNER_ID > 機器人應用程式的擁有者
+  $('ownerKeyName').textContent = j.owner_key_discord_name || (j.owner_key_discord_id ? j.owner_key_discord_id : '擁有者（沒有對應的 Discord 帳號）');
 }
 let ownerDc = '';
 async function linkDc(id, name, cur) {

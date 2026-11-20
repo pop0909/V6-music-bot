@@ -1,6 +1,6 @@
-# Music Bot V5 — 由 deploy/install.sh 產生（@APP_DIR@）
+# Music Bot V6 — 由 deploy/install.sh 產生（@APP_DIR@）
 [Unit]
-Description=Music Bot V5 (Discord music bot + web panel)
+Description=Music Bot V6 (Discord music bot + web panel)
 After=network-online.target
 Wants=network-online.target
 # 10 分鐘內失敗超過 10 次就放棄（避免設定錯誤時無限重啟）；恢復：systemctl reset-failed musicbot

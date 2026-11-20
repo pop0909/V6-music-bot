@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Music Bot V5 — Linux 安裝腳本（建立 venv、安裝套件、安裝並啟用 systemd 服務）
+# Music Bot V6 — Linux 安裝腳本（建立 venv、安裝套件、安裝並啟用 systemd 服務）
 #
 # 系統層級（預設，開機就啟動，不需登入）：
 #   sudo ./deploy/install.sh [--user 執行帳號] [--dir 專案路徑] [--no-start]

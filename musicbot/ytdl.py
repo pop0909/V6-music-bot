@@ -57,20 +57,42 @@ COOKIE_QUALITY_HINT = (
 )
 
 
+def _cookie_rows(path):
+    """逐行讀 Netscape cookies 檔 → (網域, 到期 epoch 秒, 名稱)；不回傳、不記錄值。
+    「#HttpOnly_.youtube.com」開頭的是 HttpOnly cookie（yt-dlp / curl 匯出格式），不是註解。"""
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            if line.startswith("#HttpOnly_"):
+                line = line[len("#HttpOnly_"):]
+            elif not line or line[0] == "#":
+                continue
+            parts = line.rstrip("\r\n").split("\t")
+            if len(parts) >= 6 and parts[5]:
+                try:
+                    exp = int(float(parts[4] or 0))
+                except ValueError:
+                    exp = 0
+                yield parts[0], exp, parts[5]
+
+
 def cookie_names(path):
     """讀 Netscape cookies 檔的名稱（不回傳、不記錄值）。"""
-    names = set()
     try:
-        with open(path, encoding="utf-8", errors="replace") as f:
-            for line in f:
-                if not line or line[0] == "#":
-                    continue
-                parts = line.rstrip("\n").split("\t")
-                if len(parts) >= 6 and parts[5]:
-                    names.add(parts[5])
+        return {name for _, _, name in _cookie_rows(path)}
+    except OSError:
+        return set()
+
+
+def cookie_expiries(path, names):
+    """names 裡每個 cookie 最早的到期時間 {名稱: epoch 秒}（同名多個網域取最早；0 = 工作階段 cookie，略過）。只讀名稱和到期欄。"""
+    out = {}
+    try:
+        for _, exp, name in _cookie_rows(path):
+            if name in names and exp > 0:
+                out[name] = min(exp, out.get(name, exp))
     except OSError:
         pass
-    return names
+    return out
 
 
 def has_session_cookies(path):
@@ -182,11 +204,17 @@ def cookie_status():
         return {"configured": False, "session_ok": False, "warning": None}
     _ensure_runtime()
     ok = bool(_runtime.get("session_ok"))
-    return {
+    out = {
         "configured": True,
         "session_ok": ok,
         "warning": None if ok else COOKIE_QUALITY_HINT,
     }
+    try:
+        from . import selfcheck
+        out["expiry"] = selfcheck.cookie_expiry(path)
+    except Exception:
+        out["expiry"] = None
+    return out
 
 
 def cookie_opts():

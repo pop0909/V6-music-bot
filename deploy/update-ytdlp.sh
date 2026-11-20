@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Music Bot V5 - 更新 yt-dlp（給 systemd 用，輸出進 journald）
+# Music Bot V6 - 更新 yt-dlp（給 systemd 用，輸出進 journald）
 #
 #   update-ytdlp.sh                       只更新（musicbot.service 的 ExecStartPre 用；bot 本來就要啟動）
 #   update-ytdlp.sh --restart-if-changed  更新；版本有變才重啟 bot（musicbot-update.service 用）

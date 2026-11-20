@@ -1,5 +1,5 @@
 /**
- * 🎵 Music Bot V5 — 前端控制面板 JS
+ * 🎵 Music Bot V6 — 前端控制面板 JS
  * Discord 機器人 + 網頁控制面板
  * 支援多伺服器選擇與管理
  */
@@ -3932,13 +3932,22 @@ setShuffleUI(!!state.shuffleMode);
         set('bitrate', state.bitrate ? `Opus ${state.bitrate} kbps` : '未在語音中');
         set('ytdlp', r.ytdlp || '—');
         const ck = r.cookies || {};
+        // 到期日（只有擁有者拿得到 ck.expiry）：剩 ≤7 天 / 已過期 → 標黃並在下方說明
+        const ex = ck.expiry, exSoon = !!(ex && ex.level != null);
+        const exDate = ex ? new Date(ex.earliest * 1000).toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei' }) : '';
+        const exText = !ex ? '' : ex.days_left <= 0 ? ` · 已過期（${exDate}）` : ` · ${exDate} 到期（剩 ${ex.days_left < 1 ? '不到 1' : Math.floor(ex.days_left)} 天）`;
         if (!ck.configured) set('cookies', '未設定', 'st-warn');
-        else if (ck.session_ok) set('cookies', '已設定（含登入工作階段）', 'st-ok');
-        else set('cookies', '已設定（缺 LOGIN_INFO / SID）', 'st-warn');
+        else if (ck.session_ok) set('cookies', '已設定（含登入工作階段）' + exText, exSoon ? 'st-warn' : 'st-ok');
+        else set('cookies', '已設定（缺 LOGIN_INFO / SID）' + exText, 'st-warn');
         const cw = $('cookieWarn');
         if (cw) {
-            cw.textContent = (ck.configured && !ck.session_ok) ? (ck.warning || '') : '';
-            cw.className = 'update-msg cookie-warn' + (ck.configured && !ck.session_ok ? ' st-warn' : '');
+            const msgs = [];
+            if (ck.configured && !ck.session_ok && ck.warning) msgs.push(ck.warning);
+            if (ck.configured && exSoon) msgs.push(ex.days_left <= 0
+                ? `cookies 的 ${ex.name} 已過期：請重新匯出 cookies.txt 覆寫主檔。`
+                : `cookies 的 ${ex.name} 快過期了：請在到期前重新匯出 cookies.txt 覆寫主檔（Google 也可能提早讓登入失效）。`);
+            cw.textContent = msgs.join(' ');
+            cw.className = 'update-msg cookie-warn' + (msgs.length ? ' st-warn' : '');
         }
         if (window.setFlyPlace) requestAnimationFrame(() => window.setFlyPlace('statusPop'));   // 內容高度變了 → 重新貼齊、不超出畫面
         set('ffmpeg', r.ffmpeg && r.ffmpeg.ok ? ('有' + (r.ffmpeg.version ? `（${r.ffmpeg.version}）` : '')) : '找不到！', r.ffmpeg && r.ffmpeg.ok ? '' : 'st-bad');

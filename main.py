@@ -1,5 +1,5 @@
 """
-🎵 Music Bot V5 — 入口
+🎵 Music Bot V6 — 入口
 啟動順序：載入歌單 → 背景執行緒跑 Flask → 主執行緒跑 Discord bot
 
 模組結構：
@@ -28,7 +28,7 @@ from musicbot.webapi import start_flask
 
 if __name__ == "__main__":
     log.info("=" * 30)
-    log.info("Music Bot V5 啟動中...")
+    log.info("Music Bot V6 啟動中...")
     log.info("=" * 30)
 
     # 載入歌單

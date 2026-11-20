@@ -154,8 +154,13 @@ def api_seek():
 
 @flask_app.route("/api/system")
 def api_system():
+    from flask import g
     from . import sysinfo
-    return jsonify(sysinfo.status(request.args.get("guild_id", 0, type=int) or None))
+    data = sysinfo.status(request.args.get("guild_id", 0, type=int) or None)
+    u = getattr(g, "panel_user", None) or {}
+    if not u.get("owner") and isinstance(data.get("cookies"), dict):
+        data["cookies"].pop("expiry", None)     # cookies 到期日只給擁有者看
+    return jsonify(data)
 
 
 @flask_app.route("/api/system/update", methods=["POST"])

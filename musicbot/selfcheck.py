@@ -12,6 +12,9 @@ cookies 主檔（.env 的 YTDLP_COOKIES）只「讀」，永遠不寫、不交�
 3. Discord gateway 延遲
 當天跑過就記在 data/selfcheck.json，重啟不會再跑；錯過時間（例如當時在重啟）啟動後補跑一次。
 全部正常只寫 log；有任何一項失敗才私訊。
+
+cookies 到期提醒：主檔裡登入 cookie（LOGIN_INFO、SID、__Secure-1PSID…）最早的到期日剩 ≤7 天、≤2 天、已過期
+各私訊一次（記在 data/selfcheck.json；換新主檔重新計算）。啟動時 + 每小時檢查。
 """
 import asyncio
 import json
@@ -96,6 +99,68 @@ def check_cookies(path=None):
 COOKIE_FIX_HINT = "請用已登入的拋棄式 Google 帳號重新匯出 cookies.txt 覆寫主檔（機器人不會改寫主檔）。"
 
 
+# ---------------- cookies 到期提醒 ----------------
+# 登入工作階段的 cookie：任何一個過期，YouTube 就會當成沒登入（→ 機器人驗證 / 年齡限制影片放不了）。
+# 不看 __Secure-*PSIDTS / *PSIDCC：那些是 Google 自己會一直輪替的短效 cookie，匯出檔裡的到期日沒有參考價值。
+EXPIRY_WATCH = frozenset({"LOGIN_INFO", "SID", "HSID", "SSID", "APISID", "SAPISID",
+                          "__Secure-1PSID", "__Secure-3PSID", "__Secure-1PAPISID", "__Secure-3PAPISID"})
+EXPIRY_LEVELS = (7, 2, 0)            # 剩 7 天、剩 2 天、已過期；每個門檻（同一份主檔）只私訊一次
+
+
+def cookie_expiry(path=None, now=None):
+    """主檔裡登入 cookie 最早的到期資訊；沒設定 / 讀不到 / 沒有登入 cookie → None。
+    {"earliest": epoch 秒, "name": 哪個 cookie, "days_left": 剩幾天（可為負）, "level": 7 / 2 / 0 / None}"""
+    path = path or master_path()
+    if not path or not os.path.isfile(path):
+        return None
+    from . import ytdl
+    exp = ytdl.cookie_expiries(path, EXPIRY_WATCH)
+    if not exp:
+        return None
+    name = min(exp, key=lambda k: (exp[k], k))
+    now = time.time() if now is None else now
+    days = (exp[name] - now) / 86400
+    crossed = [lv for lv in EXPIRY_LEVELS if days <= lv]
+    return {"earliest": exp[name], "name": name, "days_left": round(days, 2), "level": min(crossed) if crossed else None}
+
+
+def _fmt_taipei(ts):
+    return datetime.fromtimestamp(ts, TZ).strftime("%Y-%m-%d %H:%M")
+
+
+def check_cookie_expiry(now=None, send=None, path=None):
+    """快過期就私訊擁有者：剩 ≤7 天一次、≤2 天一次、過期一次（換了新的主檔 → 重新計算）。
+    一次跨過好幾個門檻（例如開機時已剩 1 天）只發最嚴重的那則。回傳這次送出的門檻或 None。"""
+    info = cookie_expiry(path, now)
+    if not info or info["level"] is None:
+        return None
+    level = info["level"]
+    with _lock:
+        state = _load_state()
+        rec = state.get("cookie_expiry") or {}
+        sent = set(rec.get("sent") or []) if rec.get("sig") == info["earliest"] else set()
+        if level in sent:
+            return None
+        days = info["days_left"]
+        when = _fmt_taipei(info["earliest"])
+        if level == 0:
+            head = f"⛔ YouTube cookies 已經過期（{info['name']}，{when} 台北時間）"
+        else:
+            left = f"約 {days:.0f} 天" if days >= 1 else f"不到 1 天（約 {max(days * 24, 0):.0f} 小時）"
+            head = f"⏳ YouTube cookies 快過期了：還剩{left}（最早到期：{info['name']}，{when} 台北時間）"
+        text = "\n".join([head, "到期日是匯出時寫在檔案裡的；Google 也可能更早讓登入失效（改密碼、登出、異常登入偵測）。",
+                          COOKIE_FIX_HINT])
+        if send is None:
+            from . import alerts
+            send = lambda t: alerts.alert(f"cookie_expiry:{level}", t, force=True)
+        if not send(text):
+            return None                 # bot 還沒就緒 → 不記錄，下次再試
+        state["cookie_expiry"] = {"sig": info["earliest"], "sent": sorted(sent | {lv for lv in EXPIRY_LEVELS if lv >= level})}
+        _save_state(state)
+    log.warning(f"[自我檢查] cookies 到期提醒（門檻 {level} 天）已私訊：{info['name']} 剩 {days} 天")
+    return level
+
+
 def _due(state, kind, now):
     last = (state.get("alerts") or {}).get(kind)
     return last is None or now - float(last) >= REPEAT_AFTER
@@ -132,6 +197,10 @@ def startup_cookie_check():
     if problems:
         log.warning("[自我檢查] cookies 主檔有問題：" + "；".join(t for _, t in problems))
         notify(problems, "⚠️ 啟動檢查：YouTube cookies 主檔有問題")
+    try:
+        check_cookie_expiry()
+    except Exception as e:
+        log.warning(f"[自我檢查] cookies 到期檢查失敗：{e!r}")
     return problems
 
 
@@ -215,9 +284,14 @@ async def run_daily(now=None):
 
 async def loop_task():
     while True:
+        try:
+            check_cookie_expiry()          # 每小時看一次主檔到期日（只讀檔案，很便宜）
+        except Exception as e:
+            log.warning(f"[自我檢查] cookies 到期檢查失敗：{e!r}")
         hour = _hour()
-        if hour is None:
-            return
+        if hour is None:                   # 每日檢查關閉：仍然每小時看 cookies 到期
+            await asyncio.sleep(3600)
+            continue
         wait = seconds_until_due(hour=hour, last_day=_load_state().get("last_day"))
         if wait > 0:
             await asyncio.sleep(min(wait, 3600))   # 最多睡 1 小時再重算（電腦睡眠 / 時鐘調整也不會錯過太久）

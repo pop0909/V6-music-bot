@@ -293,6 +293,63 @@ def is_owner(did):
     return str(did) in owner_ids()
 
 
+def owner_discord_id():
+    """擁有者金鑰（.env 的 EXT_TOKEN）是哪個 Discord 帳號：成員管理的「我的 Discord」連結 > OWNER_ID > 應用程式擁有者；不知道 → None"""
+    try:
+        from . import userlists
+        did = userlists.discord_links().get("owner")
+        if did and str(did).isdigit():
+            return str(did)
+    except Exception:
+        pass
+    raw = (os.getenv("OWNER_ID") or "").strip()
+    if raw.isdigit():
+        return raw
+    try:
+        app = _bot().application
+        if app:
+            owner = app.team.owner if getattr(app, "team", None) and app.team.owner else app.owner
+            if owner:
+                return str(owner.id)
+    except Exception:
+        pass
+    return None
+
+
+def display_name(did):
+    """Discord 顯示名稱（跟網頁登入一樣：伺服器暱稱優先）。只查快取、不連網（擴充功能每個請求都會呼叫）：
+    機器人的成員快取（目前在用的伺服器優先）→ 使用者快取 → 這個人網頁登入時存的名字；都沒有 → None"""
+    did = str(did or "")
+    if not did.isdigit():
+        return None
+    if bot_ready():
+        try:
+            client = _bot()
+            try:
+                from .webcore import get_active_guild
+                active = get_active_guild()
+            except Exception:
+                active = None
+            for gd in sorted(client.guilds, key=lambda g: g.id != active):
+                m = gd.get_member(int(did))
+                if m:
+                    n = _clean_name(getattr(m, "display_name", None))
+                    if n:
+                        return n
+            u = client.get_user(int(did))
+            if u:
+                n = _clean_name(getattr(u, "global_name", None) or getattr(u, "name", None))
+                if n:
+                    return n
+        except Exception:
+            pass
+    with _lock:
+        recs = [v for v in _load().values() if v.get("did") == did and v.get("name")]
+    if recs:
+        return _clean_name(max(recs, key=lambda v: float(v.get("seen") or 0))["name"]) or None
+    return None
+
+
 # ---------- session ----------
 def _hash(sid):
     return hashlib.sha256(sid.encode()).hexdigest()

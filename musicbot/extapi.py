@@ -33,7 +33,7 @@ def _ext_auth():
     if not extmembers.owner_token():
         return jsonify({"status": "error", "message": "伺服器未設定 EXT_TOKEN，擴充功能 API 已停用"}), 503
     if "X-Ext-Token" in request.headers:        # Chrome 擴充功能：金鑰標頭（跟以前一樣）
-        ident = extmembers.authenticate(request.headers.get("X-Ext-Token"))
+        ident = with_discord_name(extmembers.authenticate(request.headers.get("X-Ext-Token")))
     else:                                       # 網頁面板：登入的 cookie（每次請求重新核對金鑰是否還有效）
         from . import webauth
         ident = webauth.current_user()
@@ -95,13 +95,37 @@ def _lookup_title(url):
         return None
 
 
+def with_discord_name(ident):
+    """擴充功能的金鑰 → 有連結 Discord 帳號就改用 Discord 名字（操作紀錄 / 佇列「誰點的」/ 擴充功能顯示的「我是」）。
+    擁有者金鑰 = 擁有者的 Discord（「我的 Discord」連結 > OWNER_ID > 應用程式擁有者）；成員金鑰 = 成員管理裡連結的 Discord。
+    沒連結或查不到名字 → 照舊用金鑰名稱。身分 id（歌單、點歌次數）不變。"""
+    if not ident:
+        return ident
+    try:
+        from . import discordauth, userlists
+        if ident.get("owner"):
+            did = discordauth.owner_discord_id()
+        else:
+            did = userlists.discord_links().get(ident.get("id"))
+        if not did:
+            return ident
+        out = dict(ident, discord_id=str(did), key_name=ident.get("name"))
+        name = discordauth.display_name(did)
+        if name:
+            out["name"] = name
+        return out
+    except Exception as e:
+        log.info(f"[擴充功能] 查 Discord 名字失敗：{e!r}")
+        return ident
+
+
 def ext_actor():
-    """操作紀錄用：(名稱, 來源, Discord id)。帶 X-Ext-Token 標頭 = Chrome 擴充功能（金鑰成員名稱）；
+    """操作紀錄用：(名稱, 來源, Discord id)。帶 X-Ext-Token 標頭 = Chrome 擴充功能（有連結 Discord → Discord 名字，否則金鑰名稱）；
     用登入 cookie = 網頁面板（Discord 登入 → Discord 名稱與 id）"""
     u = getattr(g, "ext_user", None) or {}
     who = u.get("name") or "未知"
     if "X-Ext-Token" in request.headers:
-        return (who, "ext", None)
+        return (who, "ext", u.get("discord_id"))
     return (who, "web", u.get("discord_id"))
 
 
@@ -157,6 +181,7 @@ def ext_status():
         "queue_length": len(queues.get(gid, [])),
         "voice_channel": (ch or {}).get("name"),
         "you": g.ext_user.get("name"),
+        "you_discord": bool(g.ext_user.get("discord_id")),
         "asleep": _is_asleep(gid),
         "owner": bool(g.ext_user.get("owner")),
     })
@@ -212,8 +237,12 @@ def _err(e, code=400):
 def ext_members_list():
     from . import userlists
     links = userlists.discord_links()
-    members = [dict(m, discord_id=links.get(m["id"])) for m in extmembers.list_members()]
-    return jsonify({"status": "ok", "members": members, "owner_discord_id": links.get("owner")})
+    from . import discordauth
+    members = [dict(m, discord_id=links.get(m["id"]), discord_name=discordauth.display_name(links.get(m["id"])) if links.get(m["id"]) else None)
+               for m in extmembers.list_members()]
+    own = discordauth.owner_discord_id()
+    return jsonify({"status": "ok", "members": members, "owner_discord_id": links.get("owner"),
+                    "owner_key_discord_id": own, "owner_key_discord_name": discordauth.display_name(own) if own else None})
 
 
 @flask_app.route(PREFIX + "members", methods=["POST"])

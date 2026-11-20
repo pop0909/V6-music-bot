@@ -1,6 +1,6 @@
-# Music Bot V5 — 每天凌晨 5 點左右更新 yt-dlp
+# Music Bot V6 — 每天凌晨 5 點左右更新 yt-dlp
 [Unit]
-Description=Daily yt-dlp update for Music Bot V5
+Description=Daily yt-dlp update for Music Bot V6
 
 [Timer]
 OnCalendar=*-*-* 05:00:00

@@ -1,4 +1,4 @@
-# Music Bot V5 — 依賴清單
+# Music Bot V6 — 依賴清單
 # 安裝：pip install -r requirements.txt
 
 # Discord 機器人（[voice] 含語音所需的 PyNaCl）

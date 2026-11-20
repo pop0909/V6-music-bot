@@ -253,6 +253,16 @@ async def normalize_checks(R, pg, w):
     await pg.keyboard.press("Escape"); await pg.wait_for_timeout(150)
 
 
+async def wait_status(pg, text, want, timeout=25000):
+    """等頂欄狀態文字變成（want=True）/ 不再是（want=False）text；逾時 → False"""
+    try:
+        await pg.wait_for_function("([t, w]) => { const e = document.getElementById('statusText'); return !!e && ((e.textContent === t) === w); }",
+                                   arg=[text, want], timeout=timeout, polling=200)
+        return True
+    except Exception:
+        return False
+
+
 async def open_modes(R, pg):
     """打開播放模式 ⋮ 選單（已開就不動）；回傳是否打開"""
     if not await R.hidden("#modeMenu"): return True
@@ -794,13 +804,15 @@ async def scenario(br, theme, w):
     m = await ctx.new_page(); R2 = Run(m, theme, w)
     await m.goto(BASE + "/members"); await m.wait_for_timeout(800); await R2.audit("15_members")
     # 斷線狀態
+    # 等條件成立（最多 25 秒；正常約 3 秒 = EventSource 失敗 2 次）而不是固定等 7 秒：機器忙的時候會慢一點，固定時間會偶爾誤報
     await ctx.set_offline(True)
     await R.J("() => connectProgressStream(state.guildId)")
-    await pg.wait_for_timeout(7000)
-    if await R.J("() => document.getElementById('statusText').textContent") != "離線": R.bad("斷線後狀態沒有顯示「離線」")
+    if not await wait_status(pg, "離線", True):
+        diag = await R.J("() => JSON.stringify({guild: state.guildId, fails: sseFails, rs: sseSource ? sseSource.readyState : null, text: document.getElementById('statusText').textContent})")
+        R.bad(f"斷線後 25 秒內狀態沒有顯示「離線」{diag}")
     await R.audit("16_offline")
-    await ctx.set_offline(False); await pg.wait_for_timeout(9000)
-    if await R.J("() => document.getElementById('statusText').textContent") == "離線": R.bad("網路恢復後仍顯示「離線」")
+    await ctx.set_offline(False)
+    if not await wait_status(pg, "離線", False, 40000): R.bad("網路恢復後仍顯示「離線」")
     # 登出：齒輪選單裡的「登出」；之後回到登入頁、再開面板也會被擋
     await pg.reload(); await pg.wait_for_timeout(1200)
     await R.menu("#btnLogout")

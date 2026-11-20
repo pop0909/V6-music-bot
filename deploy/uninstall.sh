@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Music Bot V5 — 移除 systemd 服務
+# Music Bot V6 — 移除 systemd 服務
 #   sudo ./deploy/uninstall.sh [--purge-venv]
 #   ./deploy/uninstall.sh --user-mode [--purge-venv]
 # 不會刪除 .env、list.txt、favorites/
