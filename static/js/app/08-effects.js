@@ -128,7 +128,6 @@ function fxWrapList(fn, getList) {
     };
 }
 renderQueueList = fxWrapList(renderQueueList, (q, v) => (v || QV.np).list);
-renderFavList = fxWrapList(renderFavList, (f, v) => (v || FV.home).list);
 renderPlaylistList = fxWrapList(renderPlaylistList, () => el.playlistList);
 
 // ---- 分頁滑動膠囊 ----

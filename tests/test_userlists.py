@@ -164,7 +164,7 @@ class Api(Base):
         self.assertEqual(userlists.list_playlists(m["id"]), [])
         self.assertIsNone(userlists.key_for_discord("123456789012345678"))
 
-    def test_separate_from_local_playlist_and_favorites(self):
+    def test_separate_from_local_playlist(self):
         before = list(state.local_playlist)
         self.c.post("/api/ext/lists", json={"name": "z", "songs": [{"url": U % 1, "title": "a"}]}, headers=self.h())
         self.assertEqual(state.local_playlist, before)
@@ -219,7 +219,7 @@ class Frontend(unittest.TestCase):
         html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
         self.assertIn('data-tab="mylists"', html)
         self.assertIn('id="tabMylists"', html)
-        self.assertIn("/static/js/app/01-core.js?v=20261122fix3", html)
+        self.assertIn("/static/js/app/01-core.js?v=20261122nofav1", html)
         js = read_app_js()
         self.assertIn("'/api/ext/lists'", js)
 
@@ -290,7 +290,7 @@ class LiveUpdate(Base):
         self.assertGreater(st.change_version(), v1)
 
     def test_api_no_store(self):
-        for path in ("/api/ext/lists", "/api/playlist", "/api/favorites?guild_id=1", "/api/status?guild_id=1"):
+        for path in ("/api/ext/lists", "/api/playlist", "/api/status?guild_id=1"):
             r = self.c.get(path, headers=self.h())
             self.assertEqual(r.headers.get("Cache-Control"), "no-store", path)
         self.assertNotEqual(self.c.get("/").headers.get("Cache-Control"), "no-store")

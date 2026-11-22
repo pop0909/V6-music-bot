@@ -19,7 +19,9 @@ from musicbot.bot import client
 if SIM_DATA != "repo":
     from musicbot import storage as _st0, extmembers as _em, userlists as _ul, alerts as _al, webauth as _wa
     _st0.LIST_FILE = os.path.join(SIM_DATA, "list.txt")
-    _st0.FAVORITES_DIR = os.path.join(SIM_DATA, "favorites")
+    from musicbot import favmigrate as _fm
+    _fm.FAVORITES_DIR = os.path.join(SIM_DATA, "favorites")
+    _fm.MARKER = os.path.join(SIM_DATA, "fav_migrated.json")
     _em.FILE = os.path.join(SIM_DATA, "ext_members.json")
     _ul.FILE = os.path.join(SIM_DATA, "user_playlists.json")
     idlesleep.SESSION_FILE = os.path.join(SIM_DATA, "voice_session.json")
@@ -195,6 +197,9 @@ patches = [
 for p in patches: p.start()
 from musicbot import storage as _st; _st.load_local_playlist()
 state.guild_names[G] = GUILD.name
+if SIM_DATA != "repo":
+    from musicbot import favmigrate as _fm2
+    _fm2.run(dict(state.guild_names))      # 跟正式啟動一樣：暫存資料夾裡的舊最愛 → 擁有者的「我的歌單」（只搬一次）
 state.current_voice_channel[G] = {"id": 999, "name": "語音一"}
 
 

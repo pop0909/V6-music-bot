@@ -1,4 +1,4 @@
-"""網頁 API：共用歌單、最愛、網址解析、搜尋。
+"""網頁 API：共用歌單、網址解析、搜尋。
 
 從 webapi.py 拆出，路由與行為不變；由 webapi.py 最後載入（flask_app、登入檢查等 hook 都在 webapi.py）。
 
@@ -12,7 +12,6 @@ from flask import request, jsonify
 
 from .config import log
 from .state import state_lock
-from .storage import load_favorites, add_favorite_song, favorites_cache
 from .utils import clean_str, song_url_error, safe_title
 from . import ytdl
 from .state import queue_skip_message
@@ -123,40 +122,6 @@ def api_playlist_play_all():
     count = _w.run_async(web_play_all(gid, songs, stats=stats, actor=_w._actor(), label="本地歌單"))
     skipped = stats.get("full_skipped", 0)
     return jsonify({"status": "ok", "count": count or 0, "full_skipped": skipped, "message": queue_skip_message(skipped)})
-
-@flask_app.route("/api/favorites", methods=["GET"])
-def api_favorites():
-    gid = request.args.get("guild_id", 0, type=int)
-    with state_lock:
-        favs = load_favorites(gid)
-    return jsonify({"favorites": favs, "count": len(favs)})
-
-@flask_app.route("/api/favorites/add", methods=["POST"])
-def api_favorites_add():
-    data = request.get_json() or {}
-    gid = int(data.get("guild_id", 0))
-    url = (data.get("url") or "").strip()
-    if not url: return jsonify({"status": "error", "message": "請提供網址"}), 400
-    if song_url_error(url): return jsonify({"status": "error", "message": song_url_error(url)}), 400
-    title = safe_title(data.get("title"), url)
-    with state_lock:
-        added = add_favorite_song(gid, url, title)
-    return jsonify({"status": "added" if added else "exists", "title": title})
-
-@flask_app.route("/api/favorites/remove", methods=["POST"])
-def api_favorites_remove():
-    data = request.get_json() or {}
-    gid = int(data.get("guild_id", 0))
-    index = int(data.get("index", -1))
-    with state_lock:
-        favs = load_favorites(gid)
-        index = _resolve_index(favs, index, data.get("expect_url"))
-        if index < 0:
-            return (jsonify({"status": "error", "code": "stale", "message": "最愛已變動（可能已移除），請重新整理"}), 409) if data.get("expect_url") else (jsonify({"status": "error", "message": "無效索引"}), 400)
-        favs.pop(index)
-        favorites_cache[gid] = favs
-        _w.save_favorites(gid)
-    return jsonify({"status": "ok"})
 
 @flask_app.route("/api/resolve-url", methods=["POST"])
 def api_resolve_url():

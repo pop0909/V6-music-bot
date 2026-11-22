@@ -134,49 +134,8 @@ el.btnPlaylistPlayAll.addEventListener('click', async () => {
     setTimeout(refreshAll, 1000);
 });
 
-async function playAllFavorites() {
-    if (!state.guildId) { showToast('請先選擇伺服器', 'error'); return; }
-    const data = await API.getFavorites();
-    if (!data.favorites || data.favorites.length === 0) {
-        showToast('最愛清單為空', 'error');
-        return;
-    }
-    const shuffled = [...data.favorites].sort(() => Math.random() - 0.5);
-    await API.queueClear();
-    let added = 0, fullMsg = '';
-    for (const s of shuffled) {
-        const r = await API.queueAdd(s.url, s.title);
-        if (r && r.code === 'queue_full') { fullMsg = r.message; break; }
-        if (r && r.status === 'added') added++;
-    }
-    if (fullMsg) showToast(`▶ 已加入 ${added} 首最愛（${fullMsg}）`, 'warning');
-    else showToast(`▶ 正在播放 ${shuffled.length} 首最愛`, 'success');
-}
-el.btnFavPlayAll.addEventListener('click', playAllFavorites);
-
-let _favAdding = false;
-async function addCurrentToFavorites(e) {
-    if (!state.guildId || !state.currentUrl) { showToast('目前沒有播放的歌曲', 'error'); return; }
-    if (_favAdding) return;                      // 連點兩下只送一次
-    _favAdding = true;
-    const btn = e && e.currentTarget;
-    // 按下立刻有反應（愛心變色 + 輕跳一下），不必等伺服器回應
-    if (btn) { btn.classList.add('fav-busy'); btn.setAttribute('aria-busy', 'true'); }
-    try {
-        const data = await API.favAdd(state.currentUrl, state.currentTitle);
-        if (!data || data.status === 'error') showToast((data && data.message) || '加入最愛失敗', 'error');
-        else showToast(data.status === 'exists' ? '❤️ 已存在於最愛' : '❤️ 已加入最愛', 'success');
-        await renderFavorites();
-    } finally {
-        _favAdding = false;
-        if (btn) { btn.classList.remove('fav-busy'); btn.removeAttribute('aria-busy'); }
-    }
-}
-el.btnFavAddCurrent.addEventListener('click', addCurrentToFavorites);
-if (el.btnBarFav) el.btnBarFav.addEventListener('click', addCurrentToFavorites);
-
 // ==================== 標籤頁 ====================
-// 分頁按鈕只影響「自己所在的面板」：寬螢幕三欄模式下，播放佇列與歌單/最愛分屬兩個面板
+// 分頁按鈕只影響「自己所在的面板」：寬螢幕下本地歌單與我的歌單分屬兩個面板
 function tabIdOf(name) { return 'tab' + name.charAt(0).toUpperCase() + name.slice(1); }
 function isTabShown(name) {
     const t = document.getElementById(tabIdOf(name));
@@ -195,8 +154,8 @@ function activateTab(btn, { render = true, instant = false, pill = true } = {}) 
     if (!render || already) return;
     fxListStagger = true;
     if (btn.dataset.tab === 'playlist') renderPlaylist();
-    else if (btn.dataset.tab === 'favorites') renderFavorites();
-    else if (btn.dataset.tab === 'mylists') ML.render();
+    // 寬螢幕一載入就顯示「我的歌單」（右側面板）：這時 11-mylist.js 還沒載入，由它載入後自己畫
+    else if (btn.dataset.tab === 'mylists' && typeof ML !== 'undefined') ML.render();
 }
 document.querySelectorAll('.tab-btn[data-tab]').forEach(btn => {
     btn.addEventListener('click', () => activateTab(btn));
@@ -204,16 +163,16 @@ document.querySelectorAll('.tab-btn[data-tab]').forEach(btn => {
 
 // ==================== 分頁配置（主畫面寬螢幕 / 窄螢幕） ====================
 // 只搬移既有的分頁按鈕與內容（ID、事件綁定都不變），只在視窗寬度跨過 1280px 時發生：
-// - 寬螢幕（>= 1280px）：左＝本地歌單，右＝最愛歌曲（並排）
+// - 寬螢幕（>= 1280px）：左＝本地歌單，右＝我的歌單（並排）
 // - 窄螢幕：兩個分頁在同一個面板
 // （播放佇列 / 播放紀錄只在展開的播放畫面，有自己的清單）
 const wideMQ = window.matchMedia('(min-width: 1280px)');
-const tabPref = { homePanel: 'playlist', sidePanel: 'favorites' };
+const tabPref = { homePanel: 'playlist', sidePanel: 'mylists' };
 let _tabLayoutKey = null;
 function tabPlan() {
     // （展開畫面有自己的清單，開關時不再搬移；這裡只處理視窗寬度變化）
-    if (wideMQ.matches) return { homePanel: ['playlist'], sidePanel: ['favorites', 'mylists'] };
-    return { homePanel: ['playlist', 'favorites', 'mylists'], sidePanel: [] };
+    if (wideMQ.matches) return { homePanel: ['playlist'], sidePanel: ['mylists'] };
+    return { homePanel: ['playlist', 'mylists'], sidePanel: [] };
 }
 function layoutTabs(force) {
     const plan = tabPlan();
@@ -275,7 +234,6 @@ async function refreshAll() {
     // 從 SSE 快取渲染所有分頁（不會發送 API）
     renderQueueFromCache();
     renderPlaylistFromCache();
-    renderFavoritesFromCache();
     if (Date.now() - shelfState.last > 5000) scheduleShelfReload(0);
     scheduleIdle(prebuildNp, { timeout: 3000 });
 }

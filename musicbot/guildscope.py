@@ -18,7 +18,6 @@ from . import state as _state
 from .state import guild_names, state_lock, voice_clients
 
 FORBIDDEN = "你不在這個 Discord 伺服器裡，不能查看或操作它"
-NO_GUILD = "找不到這個伺服器（機器人不在裡面）"
 
 _active = {}            # 使用者 → 自己選的伺服器 id
 
@@ -168,11 +167,8 @@ def requested_guild_ids():
     return out
 
 
-FAVORITE_PATHS = ("/api/favorites",)
-
-
 def check_request():
-    """before_request：帶了別人的伺服器 → 403；最愛清單的伺服器必須是機器人所在的伺服器"""
+    """before_request：帶了別人的伺服器 → 403"""
     if not request.path.startswith("/api/") or request.method == "OPTIONS":
         return None
     ident = current_ident()
@@ -180,13 +176,9 @@ def check_request():
         return None
     gids = requested_guild_ids()
     if not gids:
-        if request.path.startswith(FAVORITE_PATHS):     # 最愛一定屬於某個伺服器：不能存到 favorites/0.txt
-            return jsonify({"status": "error", "error": "no_guild", "message": "請先選擇伺服器"}), 400
         return None
     allowed = allowed_guilds(ident)
     for gid in gids:
-        if request.path.startswith(FAVORITE_PATHS) and gid not in guild_names:
-            return jsonify({"status": "error", "error": "no_guild", "message": NO_GUILD}), 404
         if not may_use(gid, ident, allowed):
             return jsonify({"status": "error", "error": "forbidden_guild", "message": FORBIDDEN}), 403
     return None

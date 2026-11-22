@@ -504,14 +504,9 @@ async def feel_checks(R, pg, w):
         await pg.wait_for_timeout(2500)
         if count("/api/queue/add-batch") != 1: R.bad(f"貼網址連按兩次 Enter 加了 {count('/api/queue/add-batch')} 次")
         await pg.unroute("**/api/resolve-url", slow)
-        # 愛心連點：只送一次，而且按下就變色
-        await pg.route("**/api/favorites/add", slow)
-        posts.clear()
-        busy = await R.J("() => { const b = document.getElementById('btnBarFav'); b.click(); const on = b.classList.contains('fav-busy'); setTimeout(() => b.click(), 120); return on; }")
-        await pg.wait_for_timeout(1500)
-        if not busy: R.bad("按愛心沒有立刻反應（要等伺服器回應）")
-        if count("/api/favorites/add") != 1: R.bad(f"愛心連點送了 {count('/api/favorites/add')} 次")
-        await pg.unroute("**/api/favorites/add", slow)
+        # 最愛已拿掉：播放列沒有愛心、主畫面沒有「最愛歌曲」分頁
+        if await R.J("() => !!document.getElementById('btnBarFav') || !!document.querySelector('[data-tab=\"favorites\"]')"):
+            R.bad("最愛歌曲還在（播放列愛心 / 分頁）")
         # 新增本地歌曲：確定連按兩下只新增一首
         await pg.route("**/api/playlist/add", slow)
         await R.J("() => document.getElementById('btnPlaylistAdd').click()"); await pg.wait_for_timeout(300)
@@ -630,8 +625,8 @@ async def scenario(br, theme, w):
     await pg.fill("#searchInput", "測試"); await pg.keyboard.press("Enter"); await pg.wait_for_timeout(1500)
     await R.audit("06_search")
     await pg.keyboard.press("Escape"); await pg.fill("#searchInput", "")
-    # 分頁：最愛 / 我的歌單
-    for tab in ("favorites", "mylists", "playlist"):
+    # 分頁：我的歌單 / 本地歌單
+    for tab in ("mylists", "playlist"):
         loc = pg.locator(f'.tab-btn[data-tab="{tab}"]:visible').first
         if await loc.count():
             if await loc.evaluate("e => getComputedStyle(e).pointerEvents") == "none": continue
@@ -714,8 +709,10 @@ async def scenario(br, theme, w):
     await R.J("() => closeNpView()"); await pg.wait_for_timeout(600)
     # 個人歌單：依登入身分（不用再貼金鑰）→ 新增 → 出現在清單
     tab = pg.locator('.tab-btn[data-tab="mylists"]:visible').first
-    if await tab.count() and await tab.evaluate("e => getComputedStyle(e).pointerEvents") != "none":
-        await tab.click(); await pg.wait_for_timeout(400)
+    if await tab.count():
+        if await tab.evaluate("e => getComputedStyle(e).pointerEvents") != "none":
+            await tab.click(); await pg.wait_for_timeout(400)
+        # （寬螢幕：我的歌單獨佔右側面板，分頁鈕只當標題，本來就顯示著）
         if await pg.locator("#mlToken").count(): R.bad("我的歌單還在要求貼金鑰（應該直接用登入身分）")
         if not await pg.locator("#btnMlNew:visible").count(): R.bad("我的歌單沒有顯示「新增」（登入身分沒帶過去）")
         name = f"煙霧{theme}{w}"

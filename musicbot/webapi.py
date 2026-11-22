@@ -1,7 +1,7 @@
 """Flask 網頁伺服器：建立 flask_app、主機 / 登入檢查、共用 hook、錯誤處理、首頁、啟動。
 
 API 路由拆在 webapi_player.py（播放控制 / 狀態 / SSE）、webapi_queue.py（佇列 / 紀錄）、
-webapi_library.py（歌單 / 最愛 / 搜尋），由本檔最後載入。
+webapi_library.py（歌單 / 搜尋），由本檔最後載入。
 """
 import os
 import time
@@ -11,7 +11,7 @@ from flask import Flask, render_template, request, jsonify, Response, redirect, 
 
 from .config import log
 from .state import local_playlist, notify_change  # noqa: F401  local_playlist：路由經 _w. 取用（測試會替換）
-from .storage import save_favorites, save_local_playlist  # noqa: F401  同上
+from .storage import save_local_playlist  # noqa: F401  同上
 from .webcore import run_async, get_active_guild, get_full_app_state  # noqa: F401  同上
 from . import importer  # noqa: F401  測試用 webapi.importer 替換
 from . import webauth, extmembers, discordauth

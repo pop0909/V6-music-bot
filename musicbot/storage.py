@@ -1,7 +1,7 @@
-"""本機歌單（list.txt）與各伺服器最愛清單的存取"""
+"""本機歌單（list.txt）的存取（伺服器最愛已拿掉，舊檔由 favmigrate.py 搬到擁有者的個人歌單）"""
 import os
 
-from .config import LIST_FILE, FAVORITES_DIR, log
+from .config import LIST_FILE, log
 from .state import local_playlist, state_lock
 from .utils import clean_str
 
@@ -21,17 +21,12 @@ def _atomic_write_lines(path, items):
     os.replace(tmp, path)
 
 
-# 版本號：歌單 / 最愛每次存檔（或重新載入）+1。即時更新（SSE）只在版本變了才重送整份清單
+# 版本號：歌單每次存檔（或重新載入）+1。即時更新（SSE）只在版本變了才重送整份清單
 _pl_rev = [0]
-_fav_rev = {}
 
 
 def playlist_rev():
     return _pl_rev[0]
-
-
-def favorites_rev(guild_id):
-    return _fav_rev.get(guild_id, 0)
 
 
 def load_local_playlist():
@@ -64,52 +59,3 @@ def save_local_playlist():
     except Exception as e:
         log.error(f"儲存 list.txt 錯誤: {e}")
         return False
-
-
-favorites_cache = {}
-
-
-def _get_fav_path(guild_id):
-    return os.path.join(FAVORITES_DIR, f"{guild_id}.txt")
-
-
-def load_favorites(guild_id):
-    if guild_id in favorites_cache:
-        return favorites_cache[guild_id]
-    favs = []
-    path = _get_fav_path(guild_id)
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#"):
-                    parts = line.split(" ", 1)
-                    url = parts[0]
-                    title = parts[1] if len(parts) > 1 else url
-                    favs.append({"url": url, "title": clean_str(title)})
-    except FileNotFoundError:
-        pass
-    favorites_cache[guild_id] = favs
-    return favs
-
-
-def save_favorites(guild_id):
-    _fav_rev[guild_id] = _fav_rev.get(guild_id, 0) + 1
-    favs = favorites_cache.get(guild_id, [])
-    path = _get_fav_path(guild_id)
-    os.makedirs(FAVORITES_DIR, exist_ok=True)
-    try:
-        _atomic_write_lines(path, favs)
-    except Exception as e:
-        log.error(f"儲存最愛錯誤: {e}")
-
-
-def add_favorite_song(guild_id, url, title):
-    favs = load_favorites(guild_id)
-    for f in favs:
-        if f["url"] == url:
-            return False
-    favs.append({"url": url, "title": title})
-    favorites_cache[guild_id] = favs
-    save_favorites(guild_id)
-    return True

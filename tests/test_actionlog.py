@@ -484,15 +484,19 @@ class DiscordPaths(unittest.TestCase):
         e = self.last()
         self.assertEqual((e["n"], e["detail"], e["src"], e["who"]), (9, "匯入：清單名", "discord", "阿明"))
 
-    def test_favorite_random_button(self):
-        it = interaction()
-        vc = self.vc()
-        vc.is_connected.return_value = True
-        it.guild.voice_client = vc
-        with mock.patch.object(views, "load_favorites", return_value=[{"url": U % 3, "title": "最愛歌"}]):
-            asyncio.run(views.MusicControlView(G).fav_play.callback(it))
-        e = self.last()
-        self.assertEqual((e["act"], e["title"], e["detail"], e["src"]), ("add", "最愛歌", "隨機最愛", "discord"))
+    def test_retired_favorite_buttons_explain_and_do_nothing(self):
+        """舊面板上的 ❤️ / 🎵（最愛已拿掉）：回說明、不加歌、不記紀錄"""
+        v = views.RetiredButtonsView()
+        self.assertEqual(sorted(i.custom_id for i in v.children), ["mb:add_favorite", "mb:fav_play"])
+        n0, q0 = len(actionlog.recent(G)), list(state.queues.get(G) or [])
+        for cb in (v.add_favorite, v.fav_play):
+            it = interaction()
+            asyncio.run(cb.callback(it))
+            msg = it.response.send_message.call_args
+            self.assertIn("我的歌單", msg[0][0])
+            self.assertTrue(msg[1].get("ephemeral"))
+        self.assertEqual(len(actionlog.recent(G)), n0)
+        self.assertEqual(list(state.queues.get(G) or []), q0)
 
     def test_autoplay_and_internal_adds_not_logged(self):
         with mock.patch.object(webcore._prefetch, "ensure", mock.Mock()), \

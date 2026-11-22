@@ -192,23 +192,6 @@ function applyLiveState(data) {
         }
     }
 
-    // === 最愛快取（來自 SSE） ===
-    if (data.favorites !== undefined) {
-        // 內容有變才重繪，避免播放中每秒重建 DOM 導致動畫重播
-        const favKey = JSON.stringify(data.favorites);
-        if (favKey !== state._favKey) {
-            state._favKey = favKey;
-            state.favorites = data.favorites;
-            if (!npOpen && isTabShown('favorites')) {
-                scheduleFrame(renderFavoritesFromCache);
-            } else {
-                homeDirty.favorites = true;   // 被展開畫面蓋住 / 分頁沒顯示：之後再補畫
-            }
-        } else {
-            state.favorites = data.favorites;
-        }
-    }
-    
     // === 本地歌單快取（來自 SSE） ===
     if (data.playlist !== undefined) {
         const plKey = JSON.stringify(data.playlist);
@@ -450,9 +433,9 @@ state._skelUntil = performance.now() + 8000;
 function stillLoading(key) { return state[key] === undefined && performance.now() < state._skelUntil; }
 let _skelTimer = 0;
 function resetListCaches() {
-    state._plKey = state._favKey = state._queueKey = undefined;
+    state._plKey = state._queueKey = undefined;
     state._skelUntil = performance.now() + 8000;
     clearTimeout(_skelTimer);
-    _skelTimer = setTimeout(() => { renderPlaylistFromCache(); renderFavoritesFromCache(); renderQueueFromCache(); }, 8100);
+    _skelTimer = setTimeout(() => { renderPlaylistFromCache(); renderQueueFromCache(); }, 8100);
 }
 

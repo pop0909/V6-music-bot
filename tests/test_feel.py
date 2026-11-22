@@ -29,12 +29,6 @@ class DoubleSubmit(unittest.TestCase):
         self.assertIn("if (_resolving) return;", body)
         self.assertIn("addFromUrl(query)", body)
 
-    def test_fav_guard_and_instant_feedback(self):
-        body = func(self.js, "async function addCurrentToFavorites(")
-        self.assertIn("if (_favAdding) return;", body)
-        self.assertIn("fav-busy", body)
-        self.assertLess(body.index("fav-busy"), body.index("await API.favAdd"))   # 先有反應才等伺服器
-
     def test_modal_confirm_disabled_while_saving(self):
         i = self.js.index("$('modalConfirm').addEventListener")
         block = self.js[i:i + 700]
@@ -43,10 +37,10 @@ class DoubleSubmit(unittest.TestCase):
         self.assertIn("finally { btn.disabled = false; }", block)
 
     def test_list_add_buttons_guarded(self):
-        # 搜尋結果、首頁卡片、最愛 / 本地歌單的「加入佇列」：送出中再按不會重送
+        # 搜尋結果、首頁卡片、本地歌單的「加入佇列」：送出中再按不會重送
         self.assertIn("if (div.classList.contains('is-adding')) return;", self.js)
         self.assertIn("if (card.classList.contains('is-adding')) return;", self.js)
-        self.assertGreaterEqual(self.js.count("const b = ev.currentTarget; if (b.disabled) return; b.disabled = true;   // 連點兩下只加一次"), 2)
+        self.assertGreaterEqual(self.js.count("const b = ev.currentTarget; if (b.disabled) return; b.disabled = true;   // 連點兩下只加一次"), 1)
 
 
 class StateHold(unittest.TestCase):

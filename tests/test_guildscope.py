@@ -1,4 +1,4 @@
-"""伺服器權限：只能看 / 操作自己有加入的伺服器；每個人各自的「目前伺服器」；最愛的伺服器檢查；擴充功能金鑰。"""
+"""伺服器權限：只能看 / 操作自己有加入的伺服器；每個人各自的「目前伺服器」；擴充功能金鑰。"""
 import os
 import shutil
 import sys
@@ -9,7 +9,7 @@ from unittest import mock
 os.environ.setdefault("DISCORD_TOKEN", "test-dummy")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from musicbot import webapi, extapi, extmembers, userlists, webauth, state, guildscope, storage  # noqa: E402
+from musicbot import webapi, extapi, extmembers, userlists, webauth, state, guildscope  # noqa: E402
 
 OWN = "g" * 40
 HOST = "musbot.kdns.fr"
@@ -66,7 +66,6 @@ class Base(unittest.TestCase):
         for p in reversed(self.p): p.stop()
         for gid in (G1, G2, G3, 999):
             state.guild_names.pop(gid, None)
-            storage.favorites_cache.pop(gid, None)
         state.active_guild_id = self._saved_active
         guildscope.reset_for_tests()
         extmembers._cache.update(mtime=None, members=[])
@@ -125,14 +124,14 @@ class Listing(Base):
 class Control(Base):
     def test_other_guild_forbidden_everywhere(self):
         c = self.panel(self.member("愛麗絲", ALICE))
-        for path in (f"/api/status?guild_id={G2}", f"/api/guilds/{G2}/voice-channels", f"/api/favorites?guild_id={G2}",
+        for path in (f"/api/status?guild_id={G2}", f"/api/guilds/{G2}/voice-channels",
                      f"/api/progress-stream?guild_id={G2}", f"/api/queue?guild_id={G2}", f"/api/history?guild_id={G2}"):
             r = self.get(c, path)
             self.assertEqual(r.status_code, 403, path)
             self.assertEqual(r.get_json()["message"], guildscope.FORBIDDEN)
         for path, body in (("/api/skip", {}), ("/api/stop", {}), ("/api/volume", {"level": 10}),
                            ("/api/join", {"channel_id": 5}), ("/api/queue/add", {"url": "https://youtu.be/abcdefghijk"}),
-                           ("/api/queue/clear", {}), ("/api/favorites/add", {"url": "https://youtu.be/abcdefghijk"}),
+                           ("/api/queue/clear", {}),
                            ("/api/active-guild", {}), ("/api/sleep-timer", {"mode": "off"})):
             r = self.post(c, path, dict(body, guild_id=str(G2)))
             self.assertEqual(r.status_code, 403, path)
@@ -142,15 +141,13 @@ class Control(Base):
         self.assertEqual(self.get(c, f"/api/status?guild_id={G1}").status_code, 200)
         self.assertEqual(self.post(c, "/api/active-guild", {"guild_id": str(G1)}).get_json()["active_guild_id"], str(G1))
 
-    def test_favorites_guild_must_exist_and_be_given(self):
+    def test_favorites_api_removed(self):
+        """最愛功能已拿掉：舊的 /api/favorites* 一律 404（不會再寫 favorites/*.txt）"""
         c = self.panel(OWN)
-        with mock.patch.dict(os.environ, {"OWNER_ID": ""}):        # 擁有者後備：全部伺服器
-            r = self.post(c, "/api/favorites/add", {"guild_id": 999, "url": "https://youtu.be/abcdefghijk"})
-            self.assertEqual(r.status_code, 404)
-            self.assertFalse(os.path.exists(storage._get_fav_path(999)))
-            r = self.post(c, "/api/favorites/add", {"url": "https://youtu.be/abcdefghijk"})
-            self.assertEqual(r.status_code, 400)
-            self.assertEqual(self.get(c, "/api/favorites").status_code, 400)
+        self.assertEqual(self.get(c, f"/api/favorites?guild_id={G1}").status_code, 404)
+        for path in ("/api/favorites/add", "/api/favorites/remove"):
+            r = self.post(c, path, {"guild_id": str(G1), "url": "https://youtu.be/abcdefghijk", "index": 0})
+            self.assertEqual(r.status_code, 404, path)
 
     def test_missing_guild_id_defaults_inside_allowed(self):
         alice = self.panel(self.member("愛麗絲", ALICE))

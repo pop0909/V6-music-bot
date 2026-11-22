@@ -43,10 +43,15 @@ async def on_ready():
         return
     _synced_once = True
     try:  # 持久化面板按鈕：重啟前發出的面板仍可按
-        from .views import MusicControlView
+        from .views import MusicControlView, RetiredButtonsView
         client.add_view(MusicControlView(None))
+        client.add_view(RetiredButtonsView())     # 舊面板上已拿掉的 ❤️ / 🎵：按了回說明
     except Exception as e:
         log.warning(f"[面板] 註冊持久化按鈕失敗：{e!r}")
+    from . import favmigrate
+    with state_lock:
+        names = dict(guild_names)
+    favmigrate.run(names)         # 舊的伺服器最愛 → 擁有者的「我的歌單」（只搬一次，原檔保留）
     from . import history
     history.preload_durations()   # 佇列總長度用（背景執行緒，不阻塞；只在第一次 on_ready）
     await _sync_commands()

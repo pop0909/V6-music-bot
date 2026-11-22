@@ -258,7 +258,7 @@ def api_progress_stream():
         ver = change_version()
         mine = guildscope.chosen_guild(ident)
         last_ver = ver
-        known = {}                       # 這條連線已送過的最愛 / 歌單版本（沒變就不再送整份；重連 = 新連線 → 全送）
+        known = {}                       # 這條連線已送過的本地歌單版本（沒變就不再送整份；重連 = 新連線 → 全送）
         while True:
             if disconnected is not None and disconnected():
                 break                    # 分頁已關：結束串流、歸還執行緒與名額
@@ -276,7 +276,7 @@ def api_progress_stream():
                 if payload != last_payload:
                     yield payload
                     last_payload = payload
-                    known = {"fav": data.get("fav_rev"), "pl": data.get("pl_rev")}
+                    known = {"pl": data.get("pl_rev")}
                     last_sent = time.monotonic()
                 elif time.monotonic() - last_sent >= 30:
                     # 每 30 秒強制推送一次心跳，避免中間設備（Nginx/Tunnel）把閒置連線掐掉

@@ -64,12 +64,12 @@ class Marquee(unittest.TestCase):
 
 class Skeleton(unittest.TestCase):
     def test_template_starts_with_skeletons(self):
-        for lid in ("shelfRow", "playlistList", "favList", "npQueueList"):
+        for lid in ("shelfRow", "playlistList", "npQueueList"):
             i = HTML.index(f'id="{lid}"')
             self.assertIn('<div class="skel-wrap" role="status" aria-busy="true" aria-label="載入中">', HTML[i:i + 200], lid)
 
     def test_lists_wait_for_first_push(self):
-        for key, lst in (("_plKey", "el.playlistList"), ("_favKey", "el.favList")):
+        for key, lst in (("_plKey", "el.playlistList"),):
             self.assertIn(f"if (stillLoading('{key}')) {{ showSkeleton({lst}, 'row', 6); return; }}", JS)
         self.assertIn("if (stillLoading('_queueKey') && !(state.queue || []).length)", JS)
         self.assertEqual(JS.count("resetListCaches();"), 2)   # 手動換伺服器、自動跟隨

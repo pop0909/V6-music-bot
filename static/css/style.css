@@ -1097,7 +1097,7 @@ html.low-power .np-card.is-playing .np-cover-wrap::before { animation: none; }
 .home-panels > .card-panel { min-height: 0; height: clamp(440px, 72vh, 980px); }
 .home-panels .list-container { max-height: none; min-height: 0; }
 @media (min-width: 1280px) {
-    /* 本地歌單 / 最愛歌曲左右並排，高度填滿到底部播放列（頁面欄位改為 flex 直欄，面板吃剩餘高度） */
+    /* 本地歌單 / 我的歌單左右並排，高度填滿到底部播放列（頁面欄位改為 flex 直欄，面板吃剩餘高度） */
     .app-main-wrapper { display: flex; flex-direction: column; min-height: 0; }
     .main-content.home { flex: 1 1 auto; }
     .home-panels { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); flex: 1 1 0; min-height: 460px; }
@@ -1152,7 +1152,6 @@ html.low-power .player-bar .progress-fill::before { display: none; }
 .pb-title { font-size: 14.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pb-sub { font-size: 12px; color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .player-bar:not(.has-song) .pb-title { color: var(--sub); }
-.pb-fav:hover { color: var(--accent-2); }
 .pb-right { display: flex; align-items: center; justify-content: flex-end; gap: 4px; min-width: 0; }
 .pb-extras { display: flex; align-items: center; gap: 2px; min-width: 0; }
 .player-bar .volume-row { margin: 0 6px 0 0; padding: 0 6px; gap: 8px; background: none; }
@@ -1262,7 +1261,7 @@ html.low-power .player-bar .progress-fill::before { display: none; }
     .pb-center { grid-area: center; justify-content: flex-start; gap: 10px; }
     .pb-left { grid-area: left; gap: 2px; }
     .pb-right { grid-area: right; }
-    .pb-time, .pb-fav { display: none; }
+    .pb-time { display: none; }
     .pb-art { width: 44px; height: 44px; }
     .pb-title { font-size: 14px; }
     .player-bar .ctrl-play { width: 42px; height: 42px; font-size: 15px; }
@@ -2178,11 +2177,6 @@ html[data-theme="light"] .list-item.q-lift { box-shadow: 0 14px 30px -14px rgba(
 .search-result-item.is-adding .result-add { color: var(--sub); transform: none; }
 .shelf-card.is-adding { cursor: progress; }
 .shelf-card.is-adding .shelf-play { opacity: 1; transform: none; }
-/* 加入最愛：按下就變色、輕跳一下（伺服器回應後吐司再說明結果） */
-.pb-fav.fav-busy { color: var(--accent-2); }
-.pb-fav.fav-busy i { animation: favPop .35s var(--ease-out, ease-out); }
-@keyframes favPop { 0% { transform: scale(1); } 45% { transform: scale(1.3); } 100% { transform: scale(1); } }
-@media (prefers-reduced-motion: reduce) { .pb-fav.fav-busy i { animation: none; } }
 
 /* 觸控裝置：每個按鈕至少 44×44 的點擊範圍。
    外觀尺寸不變的，用透明的 ::before 往外延伸（不影響排版）；彼此太近的才稍微放大 / 拉開間距 */

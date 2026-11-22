@@ -244,60 +244,6 @@ $('btnPlaylistAdd').addEventListener('click', () => {
 $('editUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('editTitle').focus(); });
 $('editTitle').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('modalConfirm').click(); });
 
-function renderFavList(favs, view = FV.home) {
-    const list = view.list;
-    cancelChunks(list);
-    list.innerHTML = '';
-    if (!favs || favs.length === 0) {
-        list.innerHTML = '<div class="empty-state"><i class="fas fa-heart"></i><p>最愛清單為空</p></div>';
-        view.count.textContent = '0 首';
-        return;
-    }
-    view.count.textContent = `${favs.length} 首`;
-    appendChunked(list, favs.length, (i) => {
-        const song = favs[i];
-        const div = document.createElement('div');
-        div.className = 'list-item';
-        div.innerHTML = `
-            <span class="item-index"><i class="fas fa-heart" style="color:var(--danger);font-size:11px;"></i></span>
-            <span class="item-title">${escapeHtml(song.title)}${song.by ? `<span class="item-by">👤 ${escapeHtml(song.by)}</span>` : ''}</span>
-            <div class="item-actions">
-                <button class="item-btn btn-play" data-action="play" title="加入佇列" aria-label="加入佇列"><i class="fas fa-play" aria-hidden="true"></i></button>
-                <button class="item-btn btn-remove" data-action="remove" title="從最愛移除" aria-label="從最愛移除"><i class="fas fa-times" aria-hidden="true"></i></button>
-            </div>`;
-        div.querySelector('.item-title').title = song.title || '';
-        div.querySelector('[data-action="play"]').addEventListener('click', async (ev) => {
-            const b = ev.currentTarget; if (b.disabled) return; b.disabled = true;   // 連點兩下只加一次
-            try {
-                const r = await API.playUrl(song.url, song.title, null, true);
-                toastAdded(r, song.title);
-            } finally { b.disabled = false; }
-        });
-        div.querySelector('[data-action="remove"]').addEventListener('click', async (ev) => {
-            const b = ev.currentTarget; if (b.disabled) return; b.disabled = true;   // 連點不會刪到下一首
-            const r = await API.favRemove(i, null, song.url);
-            if (r && r.status === 'error') showToast(r.message || '移除失敗', 'error');
-            else showToast('\u{1F494} 已移除', 'warning');
-            await renderFavorites();
-        });
-        return div;
-    });
-}
-
-function renderFavoritesFromCache() {
-    if (!state.guildId) { el.favList.innerHTML = '<div class="empty-state"><i class="fas fa-heart"></i><p>選擇伺服器以檢視最愛</p></div>'; return; }
-    if (npOpen) { homeDirty.favorites = true; return; }   // 主畫面被蓋住：收合後再補畫
-    if (stillLoading('_favKey')) { showSkeleton(el.favList, 'row', 6); return; }
-    renderFavList(state.favorites || [], FV.home); homeDirty.favorites = false;
-}
-
-// ==================== 最愛歌曲 UI ====================
-async function renderFavorites() {
-    if (!state.guildId) { el.favList.innerHTML = '<div class="empty-state"><i class="fas fa-heart"></i><p>選擇伺服器以檢視最愛</p></div>'; return; }
-    renderFavoritesFromCache();
-}
-
-
 function renderPlaylistFromCache() {
     if (!state.guildId) { el.playlistList.innerHTML = '<div class="empty-state"><i class="fas fa-book"></i><p>選擇伺服器以檢視歌單</p></div>'; return; }
     if (stillLoading('_plKey')) { showSkeleton(el.playlistList, 'row', 6); return; }

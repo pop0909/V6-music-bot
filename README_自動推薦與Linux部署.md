@@ -45,6 +45,7 @@ sudo loginctl enable-linger $USER    # 沒登入（開機後）也要跑才需�
 | 每日更新 | `musicbot-update.timer` 每天**台北時間 05:00**（`OnCalendar=… Asia/Taipei`，伺服器時鐘是 UTC 也一樣；錯過會補跑）。先問本機面板 `/api/ext/status`（`.env` 的 `EXT_TOKEN`）有沒有人在聽：**機器人在任何語音頻道裡、或判斷不出來 → 今天整個跳過**；沒人在聽才更新，**版本有變而且還是沒人在聽才重啟 bot**。dcbot（`/root/v6`）用的 unit 檔在 `deploy/systemd/dcbot/` |
 | 日誌 | journald：`journalctl -u musicbot -f`、`journalctl -u musicbot-update` |
 | 檔案路徑 | `list.txt`、`favorites/` 以專案資料夾為準，不受工作目錄影響 |
+| 最愛歌曲（已拿掉） | 只留「我的歌單」。舊的 `favorites/<伺服器 id>.txt` 在第一次啟動時自動搬進擁有者的「我的歌單」（每個伺服器一份「最愛（伺服器名）」，超過 500 首接著放「…2」），記號在 `data/fav_migrated.json`，只搬一次；原檔保留不刪 |
 
 ### 選用的 .env 設定
 ```
@@ -190,7 +191,7 @@ Chrome / Edge 執行中時 cookies 資料庫可能被鎖住或加密而讀不到
 ## Discord 指令
 
 只保留 10 個常用指令：`/play`、`/import`、`/skip`、`/stop`（清空佇列、留在語音）、`/leave`、`/queue`、`/volume`、`/web`、`/join`、`/panel`。另外還有 `/mylist` 指令群組（`show`／`play`／`add`／`import`）管理個人歌單。
-暫停 / 繼續、跳轉、移除 / 排序佇列、最愛、歌單、循環、自動推薦、音量平衡、播放紀錄 / 排行、休眠後恢復，都在網頁面板（`/web`）或 Discord 控制面板按鈕（`/panel`）。
+暫停 / 繼續、跳轉、移除 / 排序佇列、本地歌單 / 我的歌單、循環、自動推薦、音量平衡、播放紀錄 / 排行、休眠後恢復，都在網頁面板（`/web`）或 Discord 控制面板按鈕（`/panel`）。
 指令在每次啟動時自動同步到伺服器，並清掉 Discord 上殘留的全域指令，不會重複出現。
 
 ## 測試（改完程式先跑這個）
@@ -209,5 +210,5 @@ python -m unittest discover -s tests   # 只跑單元測試（UI 測試預設略
 ## 程式結構（播放與網頁 API）
 
 - `musicbot/player.py`：play_next、進度更新、狀態清理、控制面板；`player_seek.py`（跳轉 / 換濾鏡 / 恢復播放）、`player_voice.py`（語音連線、停止、離開、點歌解析）、`player_sleep.py`（睡眠計時器）從它拆出，名字照舊可從 `player` 取用。
-- `musicbot/webapi.py`：flask_app、登入 / 主機檢查、共用 hook、首頁、啟動；路由在 `webapi_player.py`（播放控制 / 狀態 / SSE）、`webapi_queue.py`（佇列 / 紀錄）、`webapi_library.py`（歌單 / 最愛 / 搜尋）。
+- `musicbot/webapi.py`：flask_app、登入 / 主機檢查、共用 hook、首頁、啟動；路由在 `webapi_player.py`（播放控制 / 狀態 / SSE）、`webapi_queue.py`（佇列 / 紀錄）、`webapi_library.py`（歌單 / 搜尋）。
 - 拆出去的模組呼叫原模組的函式時用 `_p.X` / `_w.X`（呼叫時才取），測試 `mock.patch.object(player, ...)`／`(webapi, ...)` 照樣生效。

@@ -18,7 +18,6 @@ from .state import (
     is_playing_state, is_paused_state, loop_modes,
     saved_queues, local_playlist, random_loop_guilds,
 )
-from .storage import load_favorites
 from . import autoplay as _autoplay
 from . import prefetch as _prefetch
 from . import audio as _audio
@@ -551,24 +550,18 @@ def get_full_app_state(gid, known=None):
     """
     統一的全狀態函式 — 一次打包所有前端需要的資料。
     取代前端所有輪詢，透過 SSE 每秒推送。
-    known：這條 SSE 連線上次送出的清單版本 {"fav": ..., "pl": ...}；版本沒變就不附整份最愛 / 歌單
+    known：這條 SSE 連線上次送出的清單版本 {"pl": ...}；版本沒變就不附整份本地歌單
     （前端沿用手上那份）。不給 = 全部都附（新連線 / 重連一定拿到完整資料）。
     """
     gid = int(gid)
     state_data = get_guild_status(gid)
-    from .storage import favorites_rev, playlist_rev
+    from .storage import playlist_rev
     with state_lock:
-        favs = load_favorites(gid)
         # 版本 + 長度：就算有地方改了清單卻沒走存檔，長度變了也會重送
-        fav_key = f"{favorites_rev(gid)}.{len(favs)}"
         pl_key = f"{playlist_rev()}.{len(local_playlist)}"
-        state_data["fav_rev"] = fav_key
         state_data["pl_rev"] = pl_key
-        if not known or known.get("fav") != fav_key:
-            state_data["favorites"] = list(favs)
         if not known or known.get("pl") != pl_key:
             state_data["playlist"] = local_playlist.copy()
-        state_data["favorites_count"] = len(favs)
         state_data["playlist_count"] = len(local_playlist)
         state_data["sleep"] = _sleep_info(gid)
     from . import idlesleep

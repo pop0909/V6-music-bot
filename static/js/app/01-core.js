@@ -15,7 +15,6 @@ const state = {
     currentUrl: '',
     thumbnail: '',
     queue: [],
-    favorites: [],
     playlist: [],
     volume: 100,
     shuffleMode: false,
@@ -52,13 +51,9 @@ const el = {
     btnSearch: $('btnSearch'),
     searchResults: $('searchResults'),
     playlistList: $('playlistList'),
-    favList: $('favList'),
     playlistCount: $('playlistCount'),
-    favCount: $('favCount'),
     btnPlaylistPlayAll: $('btnPlaylistPlayAll'),
     btnPlaylistAdd: $('btnPlaylistAdd'),
-    btnFavPlayAll: $('btnFavPlayAll'),
-    btnFavAddCurrent: $('btnFavAddCurrent'),
     autoplayToggle: $('autoplayToggle'),
     normalizeToggle: $('normalizeToggle'),
     // YouTube Music 式版面：底部播放列 / 展開的播放畫面 / 再聽一次
@@ -66,7 +61,6 @@ const el = {
     barArt: $('barArt'),
     barTitle: $('barTitle'),
     barSub: $('barSub'),
-    btnBarFav: $('btnBarFav'),
     btnExpand: $('btnExpand'),
     btnCollapse: $('btnCollapse'),
     npView: $('npView'),
@@ -79,13 +73,10 @@ const el = {
 
 // ==================== 主畫面 / 展開畫面各有一份清單（不搬移 DOM） ====================
 // 展開畫面常駐在 DOM 裡；收合時不立即更新它的清單（只標記 dirty），閒置時 / 開啟時才補畫。
-// 播放佇列與播放紀錄只存在於展開畫面；最愛在主畫面與展開畫面各一份。
+// 播放佇列與播放紀錄只存在於展開畫面。
 const QV = { np: { list: $('npQueueList'), count: $('npQueueCount') } };
-// 最愛歌曲只在主畫面（展開畫面只有播放佇列 / 播放紀錄）
-const FV = { home: { list: el.favList, count: el.favCount } };
 const HV = { np: $('npHistoryList') };
 const npDirty = { queue: true, history: true, actions: true };
-const homeDirty = { favorites: false };
 let npOpen = false;
 let npTab = 'queue';
 let _npTimeText = '0:00 / 0:00';
@@ -361,9 +352,6 @@ const API = {
     playlistDelete: (i, ex) => api('POST', '/api/playlist/delete', { index: i, expect_url: ex }),
     playlistPlay: (i, g, ex) => api('POST', '/api/playlist/play', { guild_id: g || gid(), index: i, expect_url: ex }),
     playlistPlayAll: (s, g) => api('POST', '/api/playlist/play-all', { guild_id: g || gid(), shuffle: s }),
-    getFavorites: (g) => api('GET', `/api/favorites?guild_id=${g || gid()}`),
-    favAdd: (u, t, g) => api('POST', '/api/favorites/add', { guild_id: g || gid(), url: u, title: t }),
-    favRemove: (i, g, ex) => api('POST', '/api/favorites/remove', { guild_id: g || gid(), index: i, expect_url: ex }),
     search: (q) => api('POST', '/api/search', { query: q }),
     importStart: (u, g) => api('POST', '/api/import', { guild_id: g || gid(), url: u }),
     importStatus: (j) => api('GET', `/api/import/${j}`),

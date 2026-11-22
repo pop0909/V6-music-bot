@@ -70,7 +70,7 @@ def valid_song_url(url):
     return low.startswith("https://") or low.startswith("http://")
 
 
-# 能加進佇列 / 最愛 / 歌單的網址只限這幾個網站（含子網域，例如 music.youtube.com、m.youtube.com、on.soundcloud.com）
+# 能加進佇列 / 歌單的網址只限這幾個網站（含子網域，例如 music.youtube.com、m.youtube.com、on.soundcloud.com）
 ALLOWED_SONG_HOSTS = ("youtube.com", "youtu.be", "spotify.com", "soundcloud.com")
 URL_NOT_ALLOWED = "只支援 YouTube、Spotify、SoundCloud 的網址"
 

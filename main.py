@@ -6,7 +6,7 @@
   musicbot/config.py   設定（logging、env、yt-dlp）
   musicbot/state.py    所有 guild 狀態 + 全域鎖
   musicbot/utils.py    clean_str / format_time
-  musicbot/storage.py  list.txt 歌單與最愛清單
+  musicbot/storage.py  list.txt 歌單
   musicbot/bot.py      Discord client 與事件
   musicbot/views.py    按鈕面板與 Modal
   musicbot/player.py   播放引擎核心
@@ -14,7 +14,6 @@
   musicbot/webcore.py  Web 控制輔助函數
   musicbot/webapi.py   Flask API + SSE
 """
-import os
 import threading
 
 # 先 import bot（建立 client），再 import commands（註冊 slash 指令）
@@ -22,7 +21,6 @@ from musicbot.bot import run as run_bot, client
 from musicbot import commands as _commands  # noqa: F401 — 觸發指令註冊
 from musicbot.config import log
 from musicbot.storage import load_local_playlist
-from musicbot.config import FAVORITES_DIR
 from musicbot.webapi import start_flask
 
 
@@ -33,7 +31,6 @@ if __name__ == "__main__":
 
     # 載入歌單
     load_local_playlist()
-    os.makedirs(FAVORITES_DIR, exist_ok=True)
     # 操作紀錄：啟動時清掉超過 7 天的
     from musicbot import actionlog
     actionlog.prune()

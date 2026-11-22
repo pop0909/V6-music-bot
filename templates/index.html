@@ -13,8 +13,8 @@
       if (t === 'light') document.querySelector('meta[name="theme-color"]').content = '#f7f6fb'; })();
     </script>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none'%3E%3Cpath d='M14.1 25.6c.4-7.2-.2-14.1 1.1-21.2 2.8 1 6.6 2.4 9.4 4.8-1.6 1.4-3.8 2.6-6.2 3.3' stroke='%23ff2e97' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M13.8 24.8c-3.6 2.2-7.2-.4-5.4-3.5 1.5-2.4 5.2-1.6 6.6.8' stroke='%2300e5ff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
-    <link rel="stylesheet" href="/static/css/icons.css?v=20261122fix3">
-    <link rel="stylesheet" href="/static/css/style.css?v=20261122fix3">
+    <link rel="stylesheet" href="/static/css/icons.css?v=20261122nofav1">
+    <link rel="stylesheet" href="/static/css/style.css?v=20261122nofav1">
 </head>
 <body>
     <div class="stroke-bg" aria-hidden="true"><svg viewBox="0 0 1400 900" fill="none" preserveAspectRatio="xMidYMid slice">
@@ -152,13 +152,12 @@
                 </section>
 
                 <div class="home-panels">
-                    <!-- 主畫面清單：本地歌單 / 最愛歌曲（寬螢幕左右並排，窄螢幕同一面板切換分頁）。
+                    <!-- 主畫面清單：本地歌單 / 我的歌單（寬螢幕左右並排，窄螢幕同一面板切換分頁）。
                          播放佇列與播放紀錄只在展開的播放畫面（點底部播放列開啟） -->
                     <section class="lists-col card-panel glass" id="homePanel">
                         <div class="tabs-head">
                             <div class="tabs" id="homeTabs">
                                 <button class="tab-btn active" data-tab="playlist"><i class="fas fa-book-open"></i><span>本地歌單</span></button>
-                                <button class="tab-btn" data-tab="favorites"><i class="fas fa-heart"></i><span>最愛歌曲</span></button>
                                 <button class="tab-btn" data-tab="mylists"><i class="fas fa-user"></i><span>我的歌單</span></button>
                             </div>
                         </div>
@@ -175,19 +174,7 @@
                         <div class="list-container playlist-list" id="playlistList"><div class="skel-wrap" role="status" aria-busy="true" aria-label="載入中"><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:72%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:54%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:86%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:61%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:47%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:79%"></span></div></div></div>
                     </div>
 
-                    <!-- 最愛歌曲 -->
-                    <div class="tab-content" id="tabFavorites">
-                        <div class="tab-toolbar">
-                            <span class="tab-count" id="favCount">0 首</span>
-                            <div class="toolbar-actions">
-                                <button class="btn-sm" id="btnFavPlayAll"><i class="fas fa-play"></i> 全部播放</button>
-                                <button class="btn-sm gold" id="btnFavAddCurrent"><i class="fas fa-heart"></i> 加入目前</button>
-                            </div>
-                        </div>
-                        <div class="list-container fav-list" id="favList"><div class="skel-wrap" role="status" aria-busy="true" aria-label="載入中"><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:72%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:54%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:86%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:61%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:47%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:79%"></span></div></div></div>
-                    </div>
-
-                    <!-- 我的歌單（個人；依登入身分，跟本地歌單 / 最愛分開） -->
+                    <!-- 我的歌單（個人；依登入身分，跟本地歌單分開） -->
                     <div class="tab-content" id="tabMylists">
                         <div class="tab-toolbar">
                             <span class="tab-count" id="mlCount">—</span>
@@ -200,7 +187,7 @@
                     </div>
                     </section>
 
-                    <!-- 寬螢幕（>= 1280px）右側面板：最愛歌曲 -->
+                    <!-- 寬螢幕（>= 1280px）右側面板：我的歌單 -->
                     <section class="side-col card-panel glass" id="sidePanel" hidden>
                         <div class="tabs-head">
                             <div class="tabs" id="sideTabs"></div>
@@ -307,7 +294,6 @@
                 <div class="pb-title" id="barTitle">尚未播放</div>
                 <div class="pb-sub" id="barSub">點擊展開播放畫面</div>
             </div>
-            <button class="ctrl-btn pb-fav has-tip" id="btnBarFav" data-tip="加入最愛" aria-label="加入最愛"><i class="fas fa-heart"></i></button>
         </div>
         <div class="pb-right">
             <div class="pb-extras" id="barExtras">
@@ -404,16 +390,16 @@
     </div>
 
     <!-- 前端程式拆成多個一般 <script>（不用 module / 不用建置）：依序載入、共用同一個全域範圍，順序不能改 -->
-    <script src="/static/js/app/01-core.js?v=20261122fix3"></script>
-    <script src="/static/js/app/02-guilds.js?v=20261122fix3"></script>
-    <script src="/static/js/app/03-artwork.js?v=20261122fix3"></script>
-    <script src="/static/js/app/04-live.js?v=20261122fix3"></script>
-    <script src="/static/js/app/05-lists.js?v=20261122fix3"></script>
-    <script src="/static/js/app/06-controls.js?v=20261122fix3"></script>
-    <script src="/static/js/app/07-tabs-init.js?v=20261122fix3"></script>
-    <script src="/static/js/app/08-effects.js?v=20261122fix3"></script>
-    <script src="/static/js/app/09-npview.js?v=20261122fix3"></script>
-    <script src="/static/js/app/10-panels.js?v=20261122fix3"></script>
-    <script src="/static/js/app/11-mylist.js?v=20261122fix3"></script>
+    <script src="/static/js/app/01-core.js?v=20261122nofav1"></script>
+    <script src="/static/js/app/02-guilds.js?v=20261122nofav1"></script>
+    <script src="/static/js/app/03-artwork.js?v=20261122nofav1"></script>
+    <script src="/static/js/app/04-live.js?v=20261122nofav1"></script>
+    <script src="/static/js/app/05-lists.js?v=20261122nofav1"></script>
+    <script src="/static/js/app/06-controls.js?v=20261122nofav1"></script>
+    <script src="/static/js/app/07-tabs-init.js?v=20261122nofav1"></script>
+    <script src="/static/js/app/08-effects.js?v=20261122nofav1"></script>
+    <script src="/static/js/app/09-npview.js?v=20261122nofav1"></script>
+    <script src="/static/js/app/10-panels.js?v=20261122nofav1"></script>
+    <script src="/static/js/app/11-mylist.js?v=20261122nofav1"></script>
 </body>
 </html>

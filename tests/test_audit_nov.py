@@ -58,7 +58,6 @@ class AllowlistRoutes(unittest.TestCase):
         state.guild_names[G] = "測試"
         self.saved = list(state.local_playlist)
         self.p = [mock.patch.object(webapi, "save_local_playlist", lambda: True),
-                  mock.patch.object(webapi, "save_favorites", lambda g: None),
                   mock.patch("musicbot.guildscope.allowed_guilds", return_value=None)]
         for p in self.p: p.start()
 
@@ -66,13 +65,11 @@ class AllowlistRoutes(unittest.TestCase):
         for p in self.p: p.stop()
         state.guild_names.pop(G, None)
         state.queues.pop(G, None)
-        storage.favorites_cache.pop(G, None)
         state.local_playlist[:] = self.saved
 
     def test_panel_routes_reject_other_sites(self):
         evil = "https://evil.example.com/song.mp3"
         for path, body in (("/api/queue/add", {"guild_id": G, "url": evil}),
-                           ("/api/favorites/add", {"guild_id": G, "url": evil}),
                            ("/api/playlist/add", {"url": evil}),
                            ("/api/resolve-url", {"url": evil})):
             r = self.c.post(path, json=body)
@@ -189,37 +186,31 @@ class SseRevisions(unittest.TestCase):
         state.guild_names[G] = "測試"
         self.saved = list(state.local_playlist)
         state.local_playlist[:] = [{"url": "https://youtu.be/%011d" % i, "title": "s%d" % i} for i in range(300)]
-        storage.favorites_cache[G] = [{"url": "https://youtu.be/f", "title": "最愛"}]
         self.p = [mock.patch.object(storage, "_atomic_write_lines", lambda p, items: None)]
         for p in self.p: p.start()
 
     def tearDown(self):
         for p in self.p: p.stop()
         state.guild_names.pop(G, None)
-        storage.favorites_cache.pop(G, None)
         state.local_playlist[:] = self.saved
 
     def test_lists_only_sent_when_changed(self):
         first = webcore.get_full_app_state(G, {})
         self.assertIn("playlist", first)
-        self.assertIn("favorites", first)
-        known = {"fav": first["fav_rev"], "pl": first["pl_rev"]}
+        for gone in ("favorites", "fav_rev", "favorites_count"):          # 最愛已拿掉：SSE 不再帶
+            self.assertNotIn(gone, first)
+        known = {"pl": first["pl_rev"]}
         again = webcore.get_full_app_state(G, known)
         self.assertNotIn("playlist", again)
-        self.assertNotIn("favorites", again)
-        self.assertEqual((again["playlist_count"], again["favorites_count"]), (300, 1))
+        self.assertEqual(again["playlist_count"], 300)
         self.assertLess(len(json.dumps(again)), len(json.dumps(first)) / 5)
-        storage.add_favorite_song(G, "https://youtu.be/g", "新")                # 最愛變了 → 只送最愛
-        changed = webcore.get_full_app_state(G, known)
-        self.assertEqual(len(changed["favorites"]), 2)
-        self.assertNotIn("playlist", changed)
         state.local_playlist.append({"url": "https://youtu.be/new", "title": "新歌"})
         storage.save_local_playlist()
         self.assertEqual(len(webcore.get_full_app_state(G, known)["playlist"]), 301)
 
     def test_length_change_without_save_still_resent(self):
         first = webcore.get_full_app_state(G)
-        known = {"fav": first["fav_rev"], "pl": first["pl_rev"]}
+        known = {"pl": first["pl_rev"]}
         state.local_playlist.pop()
         self.assertEqual(len(webcore.get_full_app_state(G, known)["playlist"]), 299)
 
@@ -242,7 +233,7 @@ class SseRevisions(unittest.TestCase):
         state.now_playing.pop(G, None)
         self.assertIn("playlist", a)
         self.assertNotIn("playlist", b)
-        self.assertEqual(fs.call_args_list[1][0][1], {"fav": a["fav_rev"], "pl": a["pl_rev"]})
+        self.assertEqual(fs.call_args_list[1][0][1], {"pl": a["pl_rev"]})
 
 
 class PanelAssets(unittest.TestCase):

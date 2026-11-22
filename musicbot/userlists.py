@@ -1,6 +1,6 @@
 """個人歌單（每個人多份、具名）：data/user_playlists.json（原子寫入、0600）
 
-跟「本地歌單 list.txt」和「伺服器最愛」完全分開，不互相搬移。
+跟「本地歌單 list.txt」完全分開。（舊的「伺服器最愛」已拿掉，啟動時由 favmigrate.py 一次搬進擁有者名下）
 
 身分（user key）：
 - 擁有者金鑰（.env EXT_TOKEN）→ "owner"

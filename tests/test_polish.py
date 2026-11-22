@@ -134,7 +134,7 @@ class ExtStatusAsleep(unittest.TestCase):
 class PanelSource(unittest.TestCase):
     def test_list_buttons_have_names(self):
         js = read_app_js()
-        for label in ("現在播放這首", "從佇列移除", "從最愛移除", "從歌單刪除"):
+        for label in ("現在播放這首", "從佇列移除", "從歌單刪除"):
             self.assertIn(f'aria-label="{label}"', js)
 
     def test_live_and_errors(self):

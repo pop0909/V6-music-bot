@@ -113,7 +113,6 @@ npView.addEventListener('touchmove', npScrollGuard, { passive: false });
 
 function npAfterClose() {
     if (npOpen) return;
-    homeCatchUp();
     if (npDirty.queue) scheduleIdle(prebuildNp);
 }
 function refreshNpTab(name, quiet = !npView.classList.contains('open')) {
@@ -125,9 +124,6 @@ function refreshNpTabInner(name) {
     if (name === 'queue' && npDirty.queue) { renderQueueList(state.queue || [], QV.np); npDirty.queue = false; }
     else if (name === 'history' && npDirty.history) { loadHistory(); }
     else if (name === 'actions') { loadActions(); }      // 切到操作紀錄一律重抓（換過伺服器也會對）
-}
-function homeCatchUp() {
-    if (homeDirty.favorites && isTabShown('favorites')) { renderFavList(state.favorites || [], FV.home); homeDirty.favorites = false; }
 }
 function activateNpTab(name, { instant = false } = {}) {
     const btn = document.querySelector(`#npTabs .tab-btn[data-np="${name}"]`);

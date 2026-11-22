@@ -122,8 +122,7 @@ class PlaybackStateTest(unittest.IsolatedAsyncioTestCase):
         self.assertLess(s["elapsed"], 2)
         self.assertTrue(s["is_connected"])
         # SSE 推送的是 get_full_app_state：同一份資料也要帶歌曲資訊
-        with mock.patch.object(webcore, "load_favorites", return_value=[]):
-            full = webcore.get_full_app_state(G)
+        full = webcore.get_full_app_state(G)
         self.assertEqual(full["current_title"], title)
         self.assertEqual(full["duration"], DUR[vid])
         # 播放器拿到的是對應的串流網址

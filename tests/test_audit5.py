@@ -1,4 +1,4 @@
-"""Audit 5：歌單 / 最愛 CRUD 驗證與連點防誤刪、yt-dlp 更新訊息、成員頁手機版、擴充功能 content.js。"""
+"""Audit 5：歌單 CRUD 驗證與連點防誤刪、yt-dlp 更新訊息、成員頁手機版、擴充功能 content.js。"""
 import os
 import shutil
 import subprocess
@@ -10,7 +10,7 @@ os.environ.setdefault("DISCORD_TOKEN", "test-dummy")
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
 
-from musicbot import webapi, state, storage, sysinfo  # noqa: E402
+from musicbot import webapi, state, sysinfo  # noqa: E402
 from appjs import read_app_js  # noqa: E402
 webapi.flask_app.config["LOGIN_DISABLED"] = True   # 這裡測 API 本身；登入另外在 test_webauth.py 測
 
@@ -22,17 +22,15 @@ class PlaylistCrud(unittest.TestCase):
     def setUp(self):
         self.saved = list(state.local_playlist)
         state.local_playlist[:] = [{"url": U % i, "title": "s%d" % i} for i in range(3)]
-        self.p = [mock.patch.object(webapi, "save_local_playlist", lambda: True),
-                  mock.patch.object(webapi, "save_favorites", lambda g: None)]
+        self.p = [mock.patch.object(webapi, "save_local_playlist", lambda: True)]
         for p in self.p: p.start()
-        state.guild_names[G] = "測試伺服器"         # 最愛只能存在機器人所在的伺服器
+        state.guild_names[G] = "測試伺服器"
         self.c = webapi.flask_app.test_client()
 
     def tearDown(self):
         for p in self.p: p.stop()
         state.guild_names.pop(G, None)
         state.local_playlist[:] = self.saved
-        storage.favorites_cache.pop(G, None)
 
     def test_add_rejects_bad_url_and_caps_title(self):
         self.assertEqual(self.c.post("/api/playlist/add", json={"url": "javascript:alert(1)"}).status_code, 400)
@@ -60,14 +58,6 @@ class PlaylistCrud(unittest.TestCase):
         r = self.c.post("/api/playlist/edit", json={"index": 0, "url": U % 7, "title": "t", "expect_url": U % 99})
         self.assertEqual(r.status_code, 409)
 
-    def test_favorites(self):
-        storage.favorites_cache[G] = [{"url": U % i, "title": "f"} for i in range(2)]
-        self.assertEqual(self.c.post("/api/favorites/add", json={"guild_id": G, "url": "nope"}).status_code, 400)
-        for _ in range(2):
-            r = self.c.post("/api/favorites/remove", json={"guild_id": G, "index": 0, "expect_url": U % 0})
-        self.assertEqual(r.status_code, 409)
-        self.assertEqual([f["url"] for f in storage.favorites_cache[G]], [U % 1])
-
 
 class UpdateMsg(unittest.TestCase):
     def test_non_systemd_says_restart_needed(self):
@@ -88,7 +78,6 @@ class Frontend(unittest.TestCase):
     def test_app_js_sends_expect_url(self):
         js = read_app_js()
         self.assertIn("API.playlistDelete(i, song.url)", js)
-        self.assertIn("API.favRemove(i, null, song.url)", js)
 
     @unittest.skipUnless(shutil.which("node") and os.path.isfile(os.path.join(ROOT, "chrome-extension", "test_content.js")), "需要 node")
     def test_extension_content_js(self):

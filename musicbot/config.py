@@ -46,7 +46,7 @@ except ValueError:
 # 以專案根目錄為基準（不依賴啟動時的工作目錄；systemd / cron / 其他目錄啟動都能找到）
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 LIST_FILE = os.path.join(PROJECT_ROOT, "list.txt")
-FAVORITES_DIR = os.path.join(PROJECT_ROOT, "favorites")
+FAVORITES_DIR = os.path.join(PROJECT_ROOT, "favorites")   # 舊的伺服器最愛（功能已拿掉；只剩 favmigrate.py 讀一次、備份照樣打包）
 
 # ffmpeg 執行檔（預設從 PATH 找；Linux 通常是 /usr/bin/ffmpeg，可用 FFMPEG_PATH 覆寫）
 FFMPEG_PATH = os.getenv("FFMPEG_PATH", "ffmpeg")
