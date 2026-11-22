@@ -15,6 +15,7 @@ sys.path.insert(0, ROOT)
 from musicbot import userlists, userlistapi, extmembers, webapi, importer, state  # noqa: E402
 
 from musicbot import actionlog as _actionlog  # noqa: E402
+from appjs import read_app_js  # noqa: E402
 _actionlog._reset_for_tests()   # 操作紀錄寫到暫存資料夾，不碰專案的 data/
 webapi.flask_app.config["LOGIN_DISABLED"] = True   # 這裡測 API 本身；登入另外在 test_webauth.py 測
 
@@ -218,8 +219,8 @@ class Frontend(unittest.TestCase):
         html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
         self.assertIn('data-tab="mylists"', html)
         self.assertIn('id="tabMylists"', html)
-        self.assertIn("app.js?v=20261121audit3", html)
-        js = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
+        self.assertIn("/static/js/app/01-core.js?v=20261122split1", html)
+        js = read_app_js()
         self.assertIn("'/api/ext/lists'", js)
 
 
@@ -260,7 +261,7 @@ class FollowUps(Base):
         self.assertIn('not (importer.is_spotify(url) or "list=" in url)', src)
 
     def test_mobile_more_menu_markup(self):
-        js = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
+        js = read_app_js()
         css = open(os.path.join(ROOT, "static", "css", "style.css"), encoding="utf-8").read()
         self.assertIn('data-a="more"', js)
         self.assertIn('class="ml-menu"', js)
@@ -307,14 +308,14 @@ class LiveUpdate(Base):
         self.assertEqual(j["status"], "duplicate")
 
     def test_frontend_listens(self):
-        js = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
+        js = read_app_js()
         self.assertIn("ML.onRev(data.ul_rev)", js)
         self.assertIn("cache: 'no-store'", js)
 
 
 class HeadCount(unittest.TestCase):
     def test_header_count_synced_from_fetched_songs(self):
-        js = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
+        js = read_app_js()
         self.assertIn("function syncHead(pl, wrap, fresh)", js)
         i = js.index("songsCache.set(pl.id, j.list.songs);")
         self.assertIn("syncHead(pl, wrap, j.list);", js[i:i + 200])
@@ -385,7 +386,7 @@ class Chaos(Base):
         self.assertIn("Chill", i.response.send_message.await_args.args[0])
 
     def test_frontend_logout_sticks_and_long_names(self):
-        js = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
+        js = read_app_js()
         # 登入改成 cookie：我的歌單不再送 X-Ext-Token、不再把金鑰存在 localStorage（舊的會被清掉）
         self.assertIn("localStorage.removeItem('musbot-my-token')", js)
         self.assertNotIn("'X-Ext-Token': tok()", js)
@@ -400,7 +401,7 @@ class UxPass(Base):
         userlists.link_discord("m1", "1" * 17); userlists.link_discord("m1", "2" * 20)
 
     def test_frontend_ux_fixes(self):
-        js = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
+        js = read_app_js()
         self.assertIn("ic.hidden = _TOAST_EMOJI.test(String(msg));", js)
         self.assertIn("e.target.closest('.ml-menu, .ml-more')", js)
         self.assertNotIn("nextMode === 'none' ? 'warning'", js)
@@ -422,7 +423,7 @@ class CyberPalette(unittest.TestCase):
 
 class PopoverLayering(unittest.TestCase):
     def test_popovers_exclusive_and_tip_hidden(self):
-        js = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
+        js = read_app_js()
         css = open(os.path.join(ROOT, "static", "css", "style.css"), encoding="utf-8").read()
         self.assertIn("if (window.setStatusOpen) window.setStatusOpen(false);", js)   # 開快捷鍵 → 收起狀態
         self.assertIn("if (o) { setKbdHelp(false);", js)
@@ -430,7 +431,7 @@ class PopoverLayering(unittest.TestCase):
         self.assertIn("--pop-border:", css)
 
     def test_popovers_close_outside_and_esc(self):
-        js = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
+        js = read_app_js()
         self.assertIn("open(false); }, { capture: true, passive: true });", js)
         self.assertIn("if (e.key === 'Escape') closeMenus();", js)
         self.assertIn("$('editModal').classList.contains('active')) $('editModal').classList.remove('active');", js)
@@ -438,7 +439,7 @@ class PopoverLayering(unittest.TestCase):
 
 class CustomDropdown(unittest.TestCase):
     def test_dropdown_wiring(self):
-        js = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
+        js = read_app_js()
         css = open(os.path.join(ROOT, "static", "css", "style.css"), encoding="utf-8").read()
         html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
         self.assertIn("enhance(el.voiceChannelSelect, 'voice');", js)
@@ -463,7 +464,7 @@ class MembersButton(unittest.TestCase):
 
     def test_topbar_buttons_all_in_one_gear_menu(self):
         html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
-        js = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
+        js = read_app_js()
         header = html[html.index('<header class="app-header">'):html.index("</header>")]
         menu = header[header.index('id="setMenu"'):]
         # 頂欄只剩一顆圓形按鈕（齒輪），五個功能都在選單裡、每項有圖示 + 中文
@@ -489,7 +490,7 @@ class MembersButton(unittest.TestCase):
 
     def test_status_and_shortcuts_are_flyout_submenus(self):
         html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
-        js = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
+        js = read_app_js()
         css = open(os.path.join(ROOT, "static", "css", "style.css"), encoding="utf-8").read()
         wrap = html[html.index('id="setWrap"'):html.index('<div class="live-pill"')]
         # 兩個子選單放在齒輪選單旁（同一個 wrap 裡），只有這兩列有 ›
@@ -515,7 +516,7 @@ class BugHuntRegressionTest(unittest.TestCase):
     """全面巡檢修正：便宜的字串檢查，防止回退"""
     def setUp(self):
         r = lambda *p: open(os.path.join(ROOT, *p), encoding="utf-8").read()
-        self.css, self.js, self.members = r("static", "css", "style.css"), r("static", "js", "app.js"), r("templates", "members.html")
+        self.css, self.js, self.members = r("static", "css", "style.css"), read_app_js(), r("templates", "members.html")
 
     def test_hidden_attr_wins(self):
         self.assertIn("[hidden] { display: none !important; }", self.css)
@@ -548,7 +549,7 @@ class BugHuntRegressionTest2(unittest.TestCase):
 
 class DropdownAlignTest(unittest.TestCase):
     def test_menu_matches_trigger_width(self):
-        js = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
+        js = read_app_js()
         css = open(os.path.join(ROOT, "static", "css", "style.css"), encoding="utf-8").read()
         self.assertIn("list.style.width = `${br.width}px`;", js)
         self.assertIn("list.style.left = `${br.left - pr.left", js)
@@ -557,7 +558,7 @@ class DropdownAlignTest(unittest.TestCase):
 
 class DropdownShortNameTest(unittest.TestCase):
     def test_seven_grapheme_limit_with_title(self):
-        js = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
+        js = read_app_js()
         self.assertIn("granularity: 'grapheme'", js)
         self.assertIn("g.length > max ? g.slice(0, max).join('') + '…' : name", js)
         self.assertIn('title="${escapeHtml(p.name)}">${escapeHtml(shortName(p.name))}', js)

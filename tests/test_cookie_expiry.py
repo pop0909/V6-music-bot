@@ -13,6 +13,7 @@ os.environ.setdefault("DISCORD_TOKEN", "test-dummy")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from musicbot import selfcheck, ytdl  # noqa: E402
+from appjs import read_app_js  # noqa: E402
 
 DAY = 86400
 NOW = 1_800_000_000          # 2027-01-15 台北時間
@@ -172,7 +173,7 @@ class PanelTest(Base):
         self.assertNotIn("expiry", r.get_json()["cookies"])
 
     def test_frontend_shows_expiry(self):
-        js = (pathlib.Path(__file__).resolve().parent.parent / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        js = read_app_js()
         self.assertIn("ck.expiry", js)
         self.assertIn("快過期了", js)
 

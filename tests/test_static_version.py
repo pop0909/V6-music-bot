@@ -1,4 +1,4 @@
-"""靜態檔版本 ?v=：同一個值不能對應到不同內容的 style.css / app.js（舊值被重用 → 瀏覽器快取拿到舊檔）。
+"""靜態檔版本 ?v=：同一個值不能對應到不同內容的 style.css / icons.css / static/js/app/*.js（舊值被重用 → 瀏覽器快取拿到舊檔）。
 比對 git 歷史裡每個改過這些檔的 commit；沒有 git 就略過。"""
 import pathlib
 import re
@@ -6,8 +6,9 @@ import subprocess
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-PAT = re.compile(r"/static/(?:css/style\.css|css/icons\.css|js/app\.js)\?v=([0-9A-Za-z_.-]+)")
-FILES = ("static/css/style.css", "static/css/icons.css", "static/js/app.js")
+PAT = re.compile(r"/static/(?:css/style\.css|css/icons\.css|js/app/[\w.-]+\.js)\?v=([0-9A-Za-z_.-]+)")
+FILES = ("static/css/style.css", "static/css/icons.css",
+         *sorted("static/js/app/" + p.name for p in (ROOT / "static" / "js" / "app").glob("*.js")))
 
 
 def git(*args, inp=None):

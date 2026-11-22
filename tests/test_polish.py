@@ -19,6 +19,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
 
 from musicbot import ytdl, webapi, webcore, alerts, extapi, idlesleep, state  # noqa: E402
+from appjs import read_app_js  # noqa: E402
 
 CJK = re.compile(r"[\u4e00-\u9fff]")
 
@@ -132,19 +133,19 @@ class ExtStatusAsleep(unittest.TestCase):
 
 class PanelSource(unittest.TestCase):
     def test_list_buttons_have_names(self):
-        js = src("static", "js", "app.js")
+        js = read_app_js()
         for label in ("現在播放這首", "從佇列移除", "從最愛移除", "從歌單刪除"):
             self.assertIn(f'aria-label="{label}"', js)
 
     def test_live_and_errors(self):
-        js = src("static", "js", "app.js")
+        js = read_app_js()
         self.assertIn("function totalText(", js)
         self.assertIn("'直播'", js)
         self.assertIn("function httpErrorText(", js)
         self.assertIn("連不到機器人，請檢查網路後再試", js)
 
     def test_queue_total_says_yishang(self):
-        js = src("static", "js", "app.js")
+        js = read_app_js()
         body = js[js.index("function queueSummary("):]
         body = body[:body.index("\n}\n")]
         self.assertIn("'以上'", body)
@@ -156,7 +157,7 @@ class PanelSource(unittest.TestCase):
         node = shutil.which("node")
         if not node:
             self.skipTest("沒有 node")
-        js = src("static", "js", "app.js")
+        js = read_app_js()
         a = js.index("function fmtTotal("); b = js.index("\n}\n", js.index("function queueSummary(")) + 3
         prog = js[a:b] + """
 console.log(JSON.stringify([

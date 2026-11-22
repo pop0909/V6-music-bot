@@ -5,7 +5,7 @@
     python tools/build_icons.py --src 資料夾    # 或用已下載的 all.min.css 與 webfonts/*.woff2
 
 需要 fontTools + brotli（pip install fonttools brotli）；不需要 Node.js。
-做法：掃 templates/*.html、static/js/app.js、static/css/style.css 用到的 fa-* 類別 →
+做法：掃 templates/*.html、static/js/app/*.js、static/css/style.css 用到的 fa-* 類別 →
 - static/css/icons.css：只留用到的圖示規則 + 共用的 .fa/.fas/.fab/動畫規則（原樣取自 all.min.css）
 - static/fonts/fa-solid-900.woff2、fa-brands-400.woff2：只含用到的字形
 字型網址帶內容雜湊（?v=…），換了圖示瀏覽器就會拿新檔；tests/test_icons.py 會檢查每個用到的圖示都有規則。
@@ -20,7 +20,8 @@ import urllib.request
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 CDN = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/"
-SCAN = ["templates/index.html", "templates/members.html", "templates/login.html", "static/js/app.js", "static/css/style.css"]
+SCAN = ["templates/index.html", "templates/members.html", "templates/login.html", "static/css/style.css",
+        *sorted("static/js/app/" + n for n in os.listdir(os.path.join(ROOT, "static", "js", "app")) if n.endswith(".js"))]
 # 不是圖示名稱的通用類別（樣式 / 大小 / 動畫），規則照樣保留
 GENERIC = {"fa", "fas", "fab", "far", "fa-solid", "fa-brands", "fa-regular", "fa-classic", "fa-sharp"}
 TOKEN = re.compile(r"\bfa-[a-z0-9-]+")

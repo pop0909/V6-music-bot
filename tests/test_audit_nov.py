@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT))
 
 from musicbot import (webapi, webcore, webserver, webauth, extmembers, userlists, utils, storage, state,  # noqa: E402
                       jsonfile, tz, owner, player, commands, discordauth)
+from appjs import app_js_paths  # noqa: E402
 webapi.flask_app.config["LOGIN_DISABLED"] = True
 
 HOST = "musbot.kdns.fr"
@@ -254,7 +255,7 @@ class PanelAssets(unittest.TestCase):
     def test_every_used_icon_has_a_rule(self):
         css = (ROOT / "static" / "css" / "icons.css").read_text(encoding="utf-8")
         used = set()
-        for f in ("templates/index.html", "templates/members.html", "templates/login.html", "static/js/app.js"):
+        for f in ("templates/index.html", "templates/members.html", "templates/login.html", *app_js_paths(rel=True)):
             used |= set(re.findall(r"\bfa-([a-z0-9-]+)", (ROOT / f).read_text(encoding="utf-8")))
         generic = {"solid", "brands", "regular", "pulse", "spin", "fw", "lg", "xs", "sm", "xl", "2x", "3x"}
         missing = sorted(n for n in used - generic if not re.search(r"\.fa-" + re.escape(n) + r"[{:,.]", css))

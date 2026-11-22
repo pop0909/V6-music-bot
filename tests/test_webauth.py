@@ -12,6 +12,7 @@ os.environ.setdefault("DISCORD_TOKEN", "test-dummy")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from musicbot import webapi, extapi, userlistapi, extmembers, userlists, webauth, state, sysinfo  # noqa: E402,F401
+from appjs import read_app_js  # noqa: E402
 
 OWN = "o" * 40
 HOST = "musbot.kdns.fr"
@@ -413,7 +414,7 @@ class Frontend(unittest.TestCase):
         self.assertIn("stroke-bg", html)                  # 隨意筆劃主題
         self.assertNotIn("30 天", html)
         self.assertIn("只要輸入一次", html)
-        js = self.read("static", "js", "app.js")
+        js = read_app_js()
         self.assertIn("function goLogin()", js)
         self.assertIn("res.status === 401", js)
         self.assertIn("addEventListener('auth'", js)

@@ -1,13 +1,14 @@
-"""封面縮圖：依顯示大小挑 YouTube 縮圖解析度（app.js 的 thumbCandidates / loadThumb / measureBars）"""
+"""封面縮圖：依顯示大小挑 YouTube 縮圖解析度（前端 static/js/app/*.js 的 thumbCandidates / loadThumb / measureBars）"""
 import json
 import os
 import re
 import shutil
 import subprocess
 import unittest
+from appjs import read_app_js  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-JS = open(os.path.join(ROOT, "static", "js", "app.js"), encoding="utf-8").read()
+JS = read_app_js()
 
 
 def _slice(start, end):

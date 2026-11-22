@@ -2,7 +2,7 @@
 
 - 固定數量的工作執行緒（WEB_THREADS，預設 24）：人多時排隊，不會像開發伺服器一樣每個請求開一條新執行緒
 - 即時更新（SSE /api/progress-stream）每個分頁會一直佔一條執行緒 → 同時最多 sse_max() 條，
-  至少留 RESERVED 條給一般請求，超過的回 503，前端會退避後重連（見 app.js connectProgressStream）
+  至少留 RESERVED 條給一般請求，超過的回 503，前端會退避後重連（見 static/js/app/04-live.js connectProgressStream）
 - 不讓 waitress 清掉 X-Forwarded-* 標頭（clear_untrusted_proxy_headers=False）：
   登入 cookie 的 secure 判斷看 X-Forwarded-Proto、輸錯鎖定看 CF-Connecting-IP / X-Forwarded-For，跟以前一樣由程式自己讀
 - 分頁關掉時 SSE 迴圈約 1 秒內就會結束（channel_request_lookahead + waitress.client_disconnected）

@@ -4,6 +4,7 @@
 import os
 import re
 import unittest
+from appjs import read_app_js  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -21,7 +22,7 @@ def func(js, name):
 
 class DoubleSubmit(unittest.TestCase):
     def setUp(self):
-        self.js = src("static", "js", "app.js")
+        self.js = read_app_js()
 
     def test_url_enter_twice(self):
         body = func(self.js, "async function doSearch(")
@@ -50,7 +51,7 @@ class DoubleSubmit(unittest.TestCase):
 
 class StateHold(unittest.TestCase):
     def test_shuffle_not_bounced_by_sse(self):
-        js = src("static", "js", "app.js")
+        js = read_app_js()
         self.assertIn("data.shuffle_mode !== undefined && performance.now() > _shuffleHoldUntil", js)
         i = js.index("el.btnShuffle.addEventListener('click'")
         self.assertIn("_shuffleHoldUntil = performance.now() + 3000;", js[i:i + 600])
@@ -58,12 +59,12 @@ class StateHold(unittest.TestCase):
 
 class FocusAndToasts(unittest.TestCase):
     def test_focus_leaves_closed_np_view(self):
-        body = func(src("static", "js", "app.js"), "function setNpOpen(")
+        body = func(read_app_js(), "function setNpOpen(")
         self.assertIn("!open && npView.contains(document.activeElement)", body)
         self.assertIn("focus({ preventScroll: true })", body)
 
     def test_toast_cap(self):
-        body = func(src("static", "js", "app.js"), "function showToast(")
+        body = func(read_app_js(), "function showToast(")
         self.assertIn("const maxShown = innerWidth < 600 ? 3 : 4;", body)
 
 
@@ -85,10 +86,10 @@ class TouchTargets(unittest.TestCase):
         # 按鈕本身 overflow: hidden 會把往外延伸的點擊範圍裁掉；漣漪改放在 .fx-ripple-clip
         self.assertNotRegex(self.css, r"\.btn-sm, \.tab-btn, \.btn-search \{[^}]*overflow: hidden")
         self.assertIn(".fx-ripple-clip {", self.css)
-        self.assertIn("fx-ripple-clip", src("static", "js", "app.js"))
+        self.assertIn("fx-ripple-clip", read_app_js())
 
     def test_volume_fill_keeps_clip(self):
-        js = src("static", "js", "app.js")
+        js = read_app_js()
         self.assertIn("el.volumeSlider.style.backgroundImage =", js)
         self.assertNotRegex(js, r"volumeSlider\.style\.background\s*=")
 
@@ -101,7 +102,7 @@ class TouchTargets(unittest.TestCase):
 class Feel2(unittest.TestCase):
     """第二輪：跳過防連點、手機播放列上緣展開、錯誤提示停久一點"""
     def setUp(self):
-        self.js = src("static", "js", "app.js")
+        self.js = read_app_js()
         self.css = src("static", "css", "style.css")
 
     def test_skip_guard(self):

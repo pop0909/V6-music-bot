@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import unittest
+from appjs import read_app_js  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -13,7 +14,7 @@ def _read(*p):
         return f.read()
 
 
-JS = _read("static", "js", "app.js")
+JS = read_app_js()
 CSS = _read("static", "css", "style.css")
 HTML = _read("templates", "index.html")
 

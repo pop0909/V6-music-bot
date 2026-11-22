@@ -162,8 +162,9 @@ Chrome / Edge 執行中時 cookies 資料庫可能被鎖住或加密而讀不到
 ## 面板載入
 
 - `/static/...?v=版本`：快取一年（immutable），瀏覽器與 Cloudflare 不再回源；HTML 一律 `no-cache`（換版馬上生效）。
-- 改了 `static/js/app.js` 或 `static/css/style.css` **一定要改 `templates/index.html` 兩處 `?v=`**（兩個要一樣，測試會檢查）。
-- 靜態文字檔支援 gzip（app.js 183 KB → 約 55 KB），省本機 → Cloudflare 隧道那段的傳輸量。
+- 前端程式在 `static/js/app/`，拆成依編號載入的多個一般 `<script>`（不用 module、不用建置，共用同一個全域範圍）。新增檔案要照編號加進 `templates/index.html`，順序不能亂（測試會檢查資料夾裡每個檔都有載入、且依序）。
+- 改了 `static/js/app/*.js`、`static/css/style.css` 或 `icons.css` **一定要把 `templates/index.html` 所有 `?v=`（和 `members.html` 的 icons.css）換成同一個新值**（測試會檢查）。
+- 靜態文字檔支援 gzip（前端 js 合計約 200 KB → 約 60 KB），省本機 → Cloudflare 隧道那段的傳輸量。
 
 ## 音量平衡與淡入淡出
 

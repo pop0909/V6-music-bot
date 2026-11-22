@@ -5,6 +5,7 @@ import os
 import re
 import unittest
 from html.parser import HTMLParser
+from appjs import read_app_js  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 MODE_IDS = ("btnLoop", "btnShuffle", "autoplayToggle", "normalizeToggle", "btnSleep")
@@ -89,14 +90,14 @@ class Markup(unittest.TestCase):
             self.assertIn(f'id="{i}"', menu)
 
     def test_version_bumped(self):
-        self.assertIn("style.css?v=20261121audit3", self.html)
-        self.assertIn("app.js?v=20261121audit3", self.html)
+        self.assertIn("style.css?v=20261122split1", self.html)
+        self.assertIn("/static/js/app/01-core.js?v=20261122split1", self.html)
 
 
 class Script(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.js = src("static", "js", "app.js")
+        cls.js = read_app_js()
 
     def test_every_updater_syncs_menu(self):
         for name in ("function setShuffleUI(", "function setToggleUI(", "function updateLoopButton(", "function updateSleepIndicator("):

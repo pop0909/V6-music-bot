@@ -1,11 +1,11 @@
 """面板載入速度：靜態檔快取標頭 + 預先 gzip
 
 - /static/...?v=<版本>：一年 + immutable（瀏覽器 / Cloudflare 邊緣直接用快取，不再回源驗證）。
-  改了 app.js / style.css 一定要改 templates/index.html 的 ?v=（tests/test_webstatic.py 會檢查兩個檔的 ?v= 一致）
+  改了 static/js/app/*.js / style.css 一定要改 templates/index.html 的 ?v=（tests/test_webstatic.py 會檢查所有 ?v= 一致）
 - /static/... 沒帶 v：5 分鐘
 - HTML 頁面：no-cache（每次都向伺服器確認，換版馬上生效；只多一個小請求）
 - 文字類靜態檔（js / css / svg / json / txt）用戶端支援 gzip 就回 gzip（依檔案修改時間快取壓縮結果，不重複壓）。
-  Cloudflare 對瀏覽器本來就會壓縮；這裡省的是本機 → Cloudflare 隧道那段的傳輸量（app.js 183 KB → 約 55 KB）
+  Cloudflare 對瀏覽器本來就會壓縮；這裡省的是本機 → Cloudflare 隧道那段的傳輸量（前端 js 合計約 200 KB → 約 60 KB）
 """
 import gzip
 import mimetypes

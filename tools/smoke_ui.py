@@ -568,9 +568,24 @@ async def feel_checks(R, pg, w):
         pg.remove_listener("request", on_req)
 
 
+BLOCKED = set()
+
+
+async def offline_guard(route):
+    """測試不連外：本機模擬器照常；外部圖片回 404（等於縮圖不存在），其餘外部請求直接中止"""
+    u = route.request.url
+    if u.startswith(BASE):
+        return await route.continue_()
+    BLOCKED.add(u.split("/")[2] if "://" in u else u[:40])
+    if route.request.resource_type == "image":
+        return await route.fulfill(status=404, body="")
+    return await route.abort()
+
+
 async def scenario(br, theme, w):
     ctx = await br.new_context(viewport={"width": w, "height": 900 if w > 600 else 844}, is_mobile=w < 600, has_touch=w < 600, color_scheme=theme)
     await ctx.add_init_script(f"try{{localStorage.setItem('theme','{theme}')}}catch(e){{}}")
+    await ctx.route("**/*", offline_guard)          # 只連本機模擬器；外部主機（discord.com、ytimg…）一律擋掉
     pg = await ctx.new_page(); R = Run(pg, theme, w)
     # 先登入（模擬器的擁有者金鑰）；登入頁本身也跑一次稽核
     await pg.goto(BASE + "/"); await pg.wait_for_timeout(400)
@@ -834,6 +849,7 @@ async def main():
                     PROBLEMS.append(f"[{theme} {w}] 腳本例外：{e!r}"[:300])
         await br.close()
     print(json.dumps(PROBLEMS, ensure_ascii=False, indent=1))
+    print(f"已擋下的外部主機：{sorted(BLOCKED) or '無'}")
     print(f"問題 {len(PROBLEMS)} 項；截圖在 {OUT}/")
     sys.exit(1 if PROBLEMS else 0)
 
