@@ -106,6 +106,33 @@ class Backup(unittest.TestCase):
         args, kw = user.send.call_args
         self.assertIn("金鑰", args[0]); self.assertIn("file", kw)
 
+    def test_offsite_dm_leaves_out_panel_secret(self):
+        """私訊的異地備份不含 data/panel_secret（面板簽章金鑰）；本機備份仍完整；暫存副本用完就刪"""
+        import tarfile
+        self.w("data/panel_secret", "S" * 64)
+        p = self.run_b()
+        with tarfile.open(p) as t:
+            self.assertIn("data/panel_secret", t.getnames())          # 本機備份照舊完整
+        sent = {}
+        user = mock.MagicMock()
+
+        async def send(msg, file=None):
+            with tarfile.open(file.fp.name if hasattr(file.fp, "name") else file.fp) as t:
+                sent["names"] = t.getnames()
+            sent["filename"] = file.filename
+            sent["msg"] = msg
+        user.send = send
+        cl = mock.MagicMock(); cl.fetch_user = mock.AsyncMock(return_value=user)
+        with mock.patch.object(alerts, "_resolve_owner", mock.AsyncMock(return_value=1)), \
+             mock.patch.object(alerts, "_client", return_value=cl):
+            self.assertTrue(asyncio.run(backup.send_offsite(p)))
+        self.assertNotIn("data/panel_secret", sent["names"])
+        self.assertIn("data/ext_members.json", sent["names"])
+        self.assertIn("data/history.db", sent["names"])
+        self.assertEqual(sent["filename"], os.path.basename(p))
+        self.assertIn("不含面板簽章金鑰", sent["msg"])
+        self.assertEqual(sorted(f for f in os.listdir(self.bdir) if f.startswith(".offsite-")), [])   # 暫存檔已刪
+
     def test_offsite_too_big_alerts(self):
         p = self.run_b()
         with mock.patch.object(backup, "DM_LIMIT", 1), mock.patch.object(alerts, "alert") as al:

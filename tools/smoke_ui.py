@@ -719,8 +719,12 @@ async def scenario(br, theme, w):
         if await pg.locator("#mlToken").count(): R.bad("我的歌單還在要求貼金鑰（應該直接用登入身分）")
         if not await pg.locator("#btnMlNew:visible").count(): R.bad("我的歌單沒有顯示「新增」（登入身分沒帶過去）")
         name = f"煙霧{theme}{w}"
-        pg.once("dialog", lambda d: asyncio.ensure_future(d.accept(name)))
-        await pg.click("#btnMlNew"); await pg.wait_for_timeout(1500)
+        await pg.click("#btnMlNew"); await pg.wait_for_timeout(400)
+        if not await pg.locator("#askModal.active #askInput:visible").count(): R.bad("新增歌單沒有跳出面板對話框")
+        else:
+            await pg.fill("#askInput", name); await pg.keyboard.press("Enter")
+        await pg.wait_for_timeout(1500)
+        if await pg.locator("#askModal.active").count(): R.bad("面板對話框按 Enter 後沒關")
         if name not in (await R.J("() => document.getElementById('mlList').innerText")): R.bad("新增個人歌單後清單沒出現")
         await R.audit("07_mylists_loggedin")
         more = pg.locator("#mlList .ml-more:visible").first

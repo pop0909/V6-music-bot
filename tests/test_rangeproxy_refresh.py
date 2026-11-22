@@ -139,6 +139,10 @@ class RangeProxyRecovery(unittest.TestCase):
         _Up.mode = {"first_403": 4}
         with self.assertLogs(rangeproxy.log, "INFO") as cm:
             st, body = self.get(self.local(), "bytes=0-2097151")
+            # 「重試 N 次後成功」是代理執行緒把資料送完「之後」才寫的；用戶端可能先收完 → 等那一行出現（最多 5 秒）
+            deadline = time.monotonic() + 5
+            while not any("次後成功" in x for x in cm.output) and time.monotonic() < deadline:
+                time.sleep(0.02)
         self.assertEqual(body, DATA[:2097152])
         self.assertEqual(self.resolved, [])
         self.assertTrue(all("fresh=" not in p for p, _ in _Up.seen))

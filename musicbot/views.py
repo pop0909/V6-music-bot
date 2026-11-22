@@ -13,7 +13,7 @@ from .state import (
 )
 from .storage import load_favorites, add_favorite_song
 from . import actionlog
-from .discord_ux import md, panel_text, claim_skip, reply_error, GENERIC_ERROR
+from .discord_ux import md, panel_text, claim_skip, reply_error, voice_gate, GENERIC_ERROR
 
 
 class MusicControlView(discord.ui.View):
@@ -30,15 +30,14 @@ class MusicControlView(discord.ui.View):
         if interaction.guild_id is None or (self.guild_id is not None and interaction.guild_id != self.guild_id):
             await interaction.response.send_message("此面板不屬於這個伺服器", ephemeral=True)
             return False
-        if not interaction.user.voice:
-            await interaction.response.send_message("請先加入語音頻道", ephemeral=True)
-            return False
         vc = interaction.guild.voice_client
         if not vc:
-            await interaction.response.send_message("機器人不在語音頻道中", ephemeral=True)
+            # 面板按鈕都要對語音連線動作（暫停、跳過、音量…）；機器人不在語音就沒東西可控制
+            await interaction.response.send_message("機器人不在語音頻道中（用 /join 或 /play 讓它加入）", ephemeral=True)
             return False
-        if vc.channel != interaction.user.voice.channel:
-            await interaction.response.send_message(f"請先加入機器人所在的語音頻道「{md(getattr(vc.channel, 'name', ''))}」", ephemeral=True)
+        msg = voice_gate(interaction, vc)    # 要跟機器人在同一個語音頻道（擁有者不限）
+        if msg:
+            await interaction.response.send_message(msg, ephemeral=True)
             return False
         return True
 
@@ -105,6 +104,9 @@ class MusicControlView(discord.ui.View):
         gid = self._gid(interaction)
         if gid in queues and len(queues[gid]) > 1:
             random.shuffle(queues[gid])
+            actionlog.record(gid, "shuffle", actionlog.discord_actor(interaction), f"打亂佇列（{len(queues[gid])} 首）")
+            from . import prefetch
+            prefetch.ensure(gid)   # 下一首換了 → 取消舊的預先解析、改抓新的下一首
             await interaction.response.send_message("🔀 已隨機打亂佇列", ephemeral=True)
         else:
             await interaction.response.send_message("佇列不到 2 首，不用打亂", ephemeral=True)

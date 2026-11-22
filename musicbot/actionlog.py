@@ -3,7 +3,7 @@
 存在 data/action_log.json（.gitignore 已排除 data/）：
     {"v": 1, "guilds": {"<guild_id>": [ {ts, act, who, src, title, uid?, url?, n?, detail?}, ... 舊 → 新 ]}}
 - uid：操作者的 Discord 使用者 id（Discord 指令 / 用 Discord 登入的網頁才有；金鑰登入、擴充功能沒有）
-- act：add 點歌 / skip 跳過 / remove 刪歌
+- act：add 點歌 / skip 跳過 / remove 刪歌 / shuffle 隨機（打亂佇列、開關隨機循環；title 放做了什麼）
 - src：discord（Discord 指令或按鈕）/ web（網頁面板）/ ext（Chrome 擴充功能）
 - 一次加很多首（匯入歌單、YouTube 播放清單、整份歌單播放）只記一筆，n = 首數
 寫入：延後 SAVE_DELAY 秒合併寫一次（jsonfile.write_atomic，關機會 flush）；每次寫入和讀取都會清掉超過 7 天的，每個伺服器最多 MAX_PER_GUILD 筆。
@@ -25,7 +25,7 @@ KEEP_SECONDS = KEEP_DAYS * 86400
 MAX_PER_GUILD = 2000
 TITLE_MAX = 200
 WHO_MAX = 40
-ACTIONS = ("add", "skip", "remove")
+ACTIONS = ("add", "skip", "remove", "shuffle")
 SOURCES = ("discord", "web", "ext")
 
 from .tz import TAIPEI as TZ  # noqa: E402  台北時區（共用 tz.py）

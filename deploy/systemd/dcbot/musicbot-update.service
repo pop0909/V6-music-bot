@@ -1,0 +1,17 @@
+# 由 deploy/systemd/musicbot-update.service.in 代入 /root/v6、/root/v6/venv、root 產生（dcbot 用；tests/test_update_timer.py 會檢查兩份一致）
+# Music Bot V6 — 每日更新 yt-dlp（由 musicbot-update.timer 觸發）
+# 有人在聽就跳過；沒人在聽才更新，版本有變才重啟 bot（細節見 deploy/update-ytdlp.sh）
+[Unit]
+Description=Music Bot V6 - update yt-dlp (skip if anyone is listening; restart bot only if the version changed)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# EXT_TOKEN（問本機面板有沒有人在聽）、WEB_PORT 從 .env 來
+EnvironmentFile=-/root/v6/.env
+Environment=MUSICBOT_DIR=/root/v6 MUSICBOT_PYTHON=/root/v6/venv/bin/python MUSICBOT_USER=root MUSICBOT_SERVICE=musicbot.service
+# 用 bash 執行：腳本沒有執行權限也能跑
+ExecStart=/bin/bash /root/v6/deploy/update-ytdlp.sh --restart-if-changed
+TimeoutStartSec=30min
+SyslogIdentifier=musicbot-update

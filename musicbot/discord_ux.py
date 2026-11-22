@@ -107,6 +107,32 @@ def voice_precheck(guild, channel):
 PAGE = 10
 
 
+# ---------- 跳過 / 停止 / 離開 / 控制面板按鈕：只有跟機器人在同一個語音頻道的人能按 ----------
+def _is_owner(user):
+    try:
+        from .discordauth import is_owner
+        return is_owner(getattr(user, "id", None))
+    except Exception:
+        return False
+
+
+def voice_gate(interaction, bot_vc=None):
+    """可以操作 → None；不行 → 要私下回給按的人的訊息。
+    規則：機器人不在語音 → 不限制（沒有人在聽，也就沒有人會被打擾）；擁有者 → 不限制；
+    其他人要在機器人所在的語音頻道裡。bot_vc：已知的語音連線（沒給就用 interaction.guild.voice_client）"""
+    guild = getattr(interaction, "guild", None)
+    vc = bot_vc if bot_vc is not None else getattr(guild, "voice_client", None)
+    if not vc or not vc.is_connected():
+        return None
+    if _is_owner(interaction.user):
+        return None
+    mine = getattr(getattr(interaction.user, "voice", None), "channel", None)
+    if mine is not None and mine == vc.channel:
+        return None
+    name = getattr(vc.channel, "name", "")
+    return f"你要先加入機器人所在的語音頻道「{md(name)}」才能操作" if name else "你要先加入機器人所在的語音頻道才能操作"
+
+
 def fmt_total(sec):
     m = max(1, round(sec / 60))
     if m < 60:

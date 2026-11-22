@@ -1,3 +1,89 @@
+// ==================== 面板內詢問對話框（取代瀏覽器的 prompt / confirm） ====================
+// askDialog({ title, message?, input?: { label?, value?, placeholder?, inputMode?, maxLength?, required?, validate?(v) → 錯誤文字 },
+//             okText?, cancelText?, danger? }) → Promise：有輸入框 → 輸入的文字（已去頭尾空白）；沒有 → true；取消 → null
+// 鍵盤：Enter 確定、Esc 取消、Tab 只在對話框裡循環；點外面也算取消；關掉後焦點回到原本的按鈕
+const askDialog = (() => {
+    const ov = $('askModal');
+    if (!ov) return async () => null;
+    const box = ov.querySelector('.ask-modal');
+    const title = $('askTitle'), msg = $('askMsg'), field = $('askField'), label = $('askLabel');
+    const input = $('askInput'), err = $('askErr'), ok = $('askOk'), cancel = $('askCancel'), close = $('askClose');
+    let done = null, opts = null, back = null;
+    function finish(v) {
+        if (!done) return;
+        const d = done; done = null; opts = null;
+        ov.classList.remove('active');
+        if (back && back.isConnected && typeof back.focus === 'function') { try { back.focus({ preventScroll: true }); } catch (_) {} }
+        back = null;
+        d(v);
+    }
+    function setErr(t) {
+        err.textContent = t || '';
+        if (t) input.setAttribute('aria-invalid', 'true'); else input.removeAttribute('aria-invalid');
+    }
+    function submit() {
+        if (!opts) return;
+        if (!opts.input) { finish(true); return; }
+        const v = input.value.trim();
+        const e = !v ? (opts.input.required || '請輸入內容') : (opts.input.validate ? opts.input.validate(v) : '');
+        if (e) { setErr(e); input.focus(); return; }
+        finish(v);
+    }
+    function focusables() {
+        return [close, opts && opts.input ? input : null, cancel, ok].filter(Boolean);
+    }
+    ok.addEventListener('click', submit);
+    cancel.addEventListener('click', () => finish(null));
+    close.addEventListener('click', () => finish(null));
+    ov.addEventListener('click', (e) => { if (e.target === ov) finish(null); });
+    input.addEventListener('input', () => { if (err.textContent) setErr(''); });
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); submit(); }   // 注音選字中的 Enter 不算
+    });
+    // 捕獲階段處理：Esc 不會同時觸發其他「按 Esc 收起」的功能
+    document.addEventListener('keydown', (e) => {
+        if (!done) return;
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(null); return; }
+        if (e.key === 'Tab') {
+            const f = focusables(), i = f.indexOf(document.activeElement);
+            e.preventDefault();
+            const n = i < 0 ? (e.shiftKey ? f.length - 1 : 0) : (i + (e.shiftKey ? -1 : 1) + f.length) % f.length;
+            f[n].focus();
+        }
+    }, true);
+    // 焦點跑出對話框（例如點到背景）→ 拉回來
+    document.addEventListener('focusin', (e) => {
+        if (done && !box.contains(e.target)) { const f = focusables(); (opts && opts.input ? input : f[f.length - 1]).focus(); }
+    }, true);
+    return function askDialog(o) {
+        if (done) finish(null);
+        opts = o || {};
+        back = document.activeElement;
+        title.textContent = opts.title || '';
+        msg.textContent = opts.message || '';
+        msg.hidden = !opts.message;
+        field.hidden = !opts.input;
+        setErr('');
+        if (opts.input) {
+            const c = opts.input;
+            label.textContent = c.label || '';
+            label.hidden = !c.label;
+            input.value = c.value || '';
+            input.placeholder = c.placeholder || '';
+            input.inputMode = c.inputMode || 'text';
+            if (c.maxLength) input.maxLength = c.maxLength; else input.removeAttribute('maxlength');
+            if (c.label) input.removeAttribute('aria-label'); else input.setAttribute('aria-label', opts.title || '');
+        }
+        ok.textContent = opts.okText || '確定';
+        ok.className = 'btn-sm ' + (opts.danger ? 'danger' : 'gold');
+        cancel.textContent = opts.cancelText || '取消';
+        const p = new Promise((r) => { done = r; });
+        ov.classList.add('active');
+        if (opts.input) { input.focus(); input.select(); } else ok.focus();
+        return p;
+    };
+})();
+
 // ==================== 我的歌單（個人歌單，用自己的金鑰；與本地歌單 / 最愛完全分開） ====================
 // 依登入身分（cookie）；API 走 /api/ext/lists（伺服器依身分判斷是誰，只能看 / 改自己的）
 const ML = (() => {
@@ -148,13 +234,14 @@ const ML = (() => {
     async function act(pl, a, btn) {
         if (busy) return;
         if (a === 'rename') {
-            const n = prompt('新的歌單名稱', pl.name); if (!n || n.trim() === pl.name) return;
+            const n = await askDialog({ title: '重新命名歌單', input: { label: '新的歌單名稱', value: pl.name, maxLength: 40, required: '請輸入歌單名稱' }, okText: '儲存' });
+            if (!n || n === pl.name) return;
             const j = await call('POST', '/' + pl.id, { action: 'rename', name: n });
             if (j.status === 'error') showToast(j.message, 'error'); else refresh();
             return;
         }
         if (a === 'delete') {
-            if (!confirm(`刪除歌單「${pl.name}」（${pl.count} 首）？`)) return;
+            if (!await askDialog({ title: '刪除歌單', message: `確定要刪除「${pl.name}」（${pl.count} 首）嗎？刪除後無法復原。`, okText: '刪除', danger: true })) return;
             const j = await call('DELETE', '/' + pl.id);
             if (j.status === 'error') showToast(j.message, 'error');
             else { open.delete(pl.id); songsCache.delete(pl.id); showToast('🗑️ 已刪除歌單', 'warning'); refresh(); }
@@ -163,8 +250,9 @@ const ML = (() => {
         if (a === 'addcur' || a === 'addurl') {
             let body;
             if (a === 'addurl') {
-                const u = prompt(`貼上要加入「${pl.name}」的 YouTube 網址`); if (!u || !u.trim()) return;
-                body = { action: 'add', url: u.trim() };
+                const u = await askDialog({ title: `加入歌曲到「${pl.name}」`, input: { label: 'YouTube 網址', placeholder: 'https://www.youtube.com/watch?v=…', inputMode: 'url', required: '請貼上 YouTube 網址' }, okText: '加入' });
+                if (!u) return;
+                body = { action: 'add', url: u };
             } else {
                 if (!state.currentUrl) { showToast('目前沒有正在播放的歌', 'warning'); return; }
                 body = { action: 'add', url: state.currentUrl, title: state.currentTitle };
@@ -182,13 +270,16 @@ const ML = (() => {
         } finally { busy = false; btn.disabled = false; }
     }
     async function create() {
-        const n = prompt('新歌單名稱'); if (!n || !n.trim()) return;
+        const n = await askDialog({ title: '新增歌單', input: { label: '歌單名稱', placeholder: '例如：開車聽', maxLength: 40, required: '請輸入歌單名稱' }, okText: '建立' });
+        if (!n) return;
         const j = await call('POST', '', { name: n });
         if (j.status === 'error') showToast(j.message, 'error'); else { showToast('✅ 已建立', 'success'); refresh(); }
     }
     async function importList() {
-        const url = prompt('貼上 YouTube 播放清單（含 list=）或 Spotify 歌單／專輯網址'); if (!url || !url.trim()) return;
-        const j = await call('POST', '/import', { url: url.trim() });
+        const url = await askDialog({ title: '匯入歌單', message: '貼上 YouTube 播放清單（網址含 list=）或 Spotify 歌單／專輯網址，會建立一份新的個人歌單（不會加入佇列）。',
+            input: { label: '歌單網址', placeholder: 'https://www.youtube.com/playlist?list=…', inputMode: 'url', required: '請貼上歌單網址' }, okText: '匯入' });
+        if (!url) return;
+        const j = await call('POST', '/import', { url });
         if (j.status === 'error') { showToast(j.message, 'error'); return; }
         showToast('📥 匯入中…（不會加入佇列）', 'info');
         for (let i = 0; i < 300; i++) {

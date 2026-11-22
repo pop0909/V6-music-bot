@@ -222,6 +222,23 @@ class Paths(unittest.TestCase):
         self.post("/api/queue/add", {"guild_id": G, "url": U % 2, "title": "歌二", "no_play": True}, c=c2)
         self.assertEqual((self.last()["who"], self.last()["src"]), ("小明", "web"))
 
+    def test_panel_shuffle_mode_logged_and_prefetch_retargeted(self):
+        """網頁的隨機循環開 / 關：記操作紀錄（誰按的），下一首變了 → 重新預先解析；值沒變不重複記"""
+        self.login(OWN)
+        state.random_loop_guilds.pop(G, None)
+        with mock.patch.object(webcore, "_prefetch_soon") as pf:
+            r = self.post("/api/shuffle", {"guild_id": G, "enabled": True})
+            self.assertEqual(r.get_json(), {"status": "ok", "shuffle_mode": True})
+            e = self.last()
+            self.assertEqual((e["act"], e["who"], e["src"], e["title"]), ("shuffle", "擁有者", "web", "開啟隨機循環"))
+            pf.assert_called_with(G)
+            self.post("/api/shuffle", {"guild_id": G, "enabled": True})      # 沒變 → 不再記
+            self.assertEqual(len(actionlog.recent(G)), 1)
+            self.post("/api/shuffle", {"guild_id": G, "enabled": False})
+            self.assertEqual(self.last()["title"], "關閉隨機循環")
+        self.assertFalse(state.random_loop_guilds.get(G))
+        state.random_loop_guilds.pop(G, None)
+
     def test_panel_duplicate_or_full_not_logged(self):
         self.login(OWN)
         self.post("/api/queue/add", {"guild_id": G, "url": U % 1, "title": "歌一", "no_play": True})
@@ -391,11 +408,31 @@ class DiscordPaths(unittest.TestCase):
     def test_slash_skip(self):
         it = interaction()
         it.guild.voice_client = self.vc()
+        it.guild.voice_client.channel = it.user.voice.channel   # 跳過要跟機器人在同一個語音頻道
         with mock.patch.object(commands.audio, "fade_out_stop", mock.AsyncMock()), \
              mock.patch.object(commands, "_get_output_channel", mock.AsyncMock(return_value=None)):
             asyncio.run(commands.skip.callback(it))
         e = self.last()
         self.assertEqual((e["act"], e["who"], e["src"], e["title"]), ("skip", "阿明", "discord", "正在播"))
+
+    def test_panel_shuffle_button_logged_and_prefetch(self):
+        """控制面板 🔀：打亂佇列要記操作紀錄，並讓預先解析改抓新的下一首"""
+        state.queues[G] = [(U % i, f"歌{i}") for i in range(1, 6)]
+        it = interaction()
+        view = views.MusicControlView(G)
+        with mock.patch("musicbot.prefetch.ensure") as ens:
+            asyncio.run(view.shuffle_queue.callback(it))
+        ens.assert_called_once_with(G)
+        e = self.last()
+        self.assertEqual((e["act"], e["who"], e["src"], e["title"]), ("shuffle", "阿明", "discord", "打亂佇列（5 首）"))
+        self.assertEqual(sorted(state.queues[G]), sorted((U % i, f"歌{i}") for i in range(1, 6)))
+
+    def test_panel_shuffle_button_short_queue_not_logged(self):
+        state.queues[G] = [(U % 1, "歌1")]
+        with mock.patch("musicbot.prefetch.ensure") as ens:
+            asyncio.run(views.MusicControlView(G).shuffle_queue.callback(interaction()))
+        ens.assert_not_called()
+        self.assertEqual(actionlog.recent(G), [])
 
     def test_button_skip(self):
         it = interaction("小花")

@@ -42,7 +42,7 @@ sudo loginctl enable-linger $USER    # 沒登入（開機後）也要跑才需�
 |---|---|
 | 啟動前更新 | `ExecStartPre=-deploy/update-ytdlp.sh`：每次啟動先 `pip install -U yt-dlp`；離線/失敗也照樣啟動 |
 | 當機重啟 | `Restart=on-failure`、`RestartSec=30`；10 分鐘內失敗超過 10 次就停止（`systemctl reset-failed musicbot` 後再啟動） |
-| 每日更新 | `musicbot-update.timer` 每天 05:00（隨機延遲 ≤20 分，錯過會補跑）執行更新；**版本有變才重啟 bot**；若有伺服器在語音中，每 10 分鐘再看，最多延後 6 小時 |
+| 每日更新 | `musicbot-update.timer` 每天**台北時間 05:00**（`OnCalendar=… Asia/Taipei`，伺服器時鐘是 UTC 也一樣；錯過會補跑）。先問本機面板 `/api/ext/status`（`.env` 的 `EXT_TOKEN`）有沒有人在聽：**機器人在任何語音頻道裡、或判斷不出來 → 今天整個跳過**；沒人在聽才更新，**版本有變而且還是沒人在聽才重啟 bot**。dcbot（`/root/v6`）用的 unit 檔在 `deploy/systemd/dcbot/` |
 | 日誌 | journald：`journalctl -u musicbot -f`、`journalctl -u musicbot-update` |
 | 檔案路徑 | `list.txt`、`favorites/` 以專案資料夾為準，不受工作目錄影響 |
 

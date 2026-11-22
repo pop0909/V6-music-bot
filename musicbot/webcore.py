@@ -213,11 +213,37 @@ async def web_set_volume(gid, level):
     return {"status": "ok", "volume": level}
 
 
-async def web_set_shuffle(gid, enabled):
-    """從 Web 切換隨機循環"""
-    random_loop_guilds[gid] = enabled
-    _prefetch.ensure(gid)  # 下一首可能變了 → 重新瞄準預先解析
+def set_shuffle_mode(gid, enabled, actor=None):
+    """切換隨機循環（任何執行緒都可呼叫）：有變才記操作紀錄；下一首可能變了 → 請事件迴圈重新瞄準預先解析"""
+    enabled = bool(enabled)
+    with state_lock:
+        was = bool(random_loop_guilds.get(gid, False))
+        random_loop_guilds[gid] = enabled
+    if was != enabled:
+        actionlog.record(gid, "shuffle", actor, "開啟隨機循環" if enabled else "關閉隨機循環")
+    _prefetch_soon(gid)
     return {"status": "ok", "shuffle_mode": enabled}
+
+
+def _prefetch_soon(gid):
+    """在 Discord 事件迴圈上跑 prefetch.ensure（從 Flask 執行緒呼叫也安全；迴圈還沒起來就略過）"""
+    loop = getattr(client, "loop", None)
+    try:
+        asyncio.get_running_loop()
+        _prefetch.ensure(gid)          # 已經在事件迴圈裡
+        return
+    except RuntimeError:
+        pass
+    try:
+        if loop and not loop.is_closed() and loop.is_running():
+            loop.call_soon_threadsafe(_prefetch.ensure, gid)
+    except Exception:
+        pass
+
+
+async def web_set_shuffle(gid, enabled, actor=None):
+    """從 Web 切換隨機循環"""
+    return set_shuffle_mode(gid, enabled, actor)
 
 
 async def web_set_loop(gid, mode):

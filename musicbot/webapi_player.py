@@ -19,6 +19,7 @@ from .state import (
 from .webcore import (
     web_toggle_play, web_skip, web_stop, web_set_loop, web_join_voice, web_set_autoplay,
     _set_active_guild, get_active_guild, get_guild_list, get_guild_status, web_set_normalize,
+    set_shuffle_mode,
 )
 from . import webauth
 from .webapi import flask_app
@@ -103,9 +104,8 @@ def api_shuffle():
     data = request.get_json() or {}
     gid = int(data.get("guild_id", 0))
     enabled = bool(data.get("enabled", False))
-    with state_lock:
-        random_loop_guilds[gid] = enabled
-    return jsonify({"status": "ok", "shuffle_mode": enabled})
+    # 記操作紀錄（誰開 / 關隨機循環）+ 下一首變了 → 重新預先解析
+    return jsonify(set_shuffle_mode(gid, enabled, _w._actor()))
 
 @flask_app.route("/api/autoplay", methods=["POST"])
 def api_autoplay():

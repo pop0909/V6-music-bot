@@ -1,0 +1,14 @@
+# 由 deploy/systemd/musicbot-update.timer.in 代入 /root/v6、/root/v6/venv、root 產生（dcbot 用；tests/test_update_timer.py 會檢查兩份一致）
+# Music Bot V6 — 每天台北時間凌晨 5 點更新 yt-dlp
+[Unit]
+Description=Daily yt-dlp update for Music Bot V6 (05:00 Asia/Taipei)
+
+[Timer]
+# 伺服器時鐘是 UTC：時區寫在 OnCalendar 裡，換算成台北時間 05:00
+OnCalendar=*-*-* 05:00:00 Asia/Taipei
+AccuracySec=1min
+# 關機錯過時間的話，開機後補跑（一樣會先確認沒人在聽）
+Persistent=true
+
+[Install]
+WantedBy=timers.target

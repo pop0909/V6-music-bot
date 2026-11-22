@@ -734,6 +734,26 @@ html[data-theme="light"] .stroke-bg .s-cyan { opacity: .13; }
 }
 .form-input:focus { border-color: color-mix(in srgb, var(--accent) 60%, transparent); box-shadow: 0 0 0 4px var(--gold-dim); }
 .modal-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+/* 詢問對話框（取代 prompt / confirm）：沿用編輯視窗的樣式，多一行說明、錯誤提示、刪除用的紅色按鈕 */
+.ask-modal .modal-header { margin-bottom: 14px; }
+.ask-modal .modal-header h3 { overflow-wrap: anywhere; }
+.ask-msg { font-size: 14px; line-height: 1.6; color: var(--sub); margin: 0 0 14px; overflow-wrap: anywhere; }
+.ask-msg[hidden], .ask-field[hidden], .ask-field label[hidden] { display: none; }
+.ask-field { margin-bottom: 0; }
+.ask-err { min-height: 18px; margin: 6px 2px 0; font-size: 12.5px; color: var(--danger); }
+.ask-err:empty { visibility: hidden; }
+.ask-modal .form-input[aria-invalid="true"] { border-color: color-mix(in srgb, var(--danger) 70%, transparent); }
+.ask-modal .modal-footer { margin-top: 16px; }
+.btn-sm.danger { background: var(--danger); border-color: transparent; color: #fff; }
+.btn-sm.danger:hover { background: color-mix(in srgb, var(--danger) 88%, #000); }
+@media (max-width: 600px) {
+    /* 手機：按鈕撐滿兩欄、至少 44px 高；輸入框 16px 字（iOS 小於 16px 會自動放大畫面） */
+    .ask-modal { padding: 20px 18px 18px; }
+    .ask-modal .form-input { font-size: 16px; min-height: 46px; }
+    .ask-modal .modal-footer { gap: 10px; }
+    .ask-modal .modal-footer .btn-sm { flex: 1; justify-content: center; min-height: 44px; font-size: 14px; }
+    .ask-modal .modal-close { width: 44px; height: 44px; margin: -6px -8px -6px 0; }
+}
 
 /* ================== Toast ================== */
 .toast-container {
@@ -1953,12 +1973,14 @@ html.bot-asleep .fx-particles, html.bot-asleep .album-art::before, html.bot-asle
 .act-add .act-ico { color: var(--accent-2); background: color-mix(in srgb, var(--accent-2) 14%, transparent); }
 .act-skip .act-ico { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .act-remove .act-ico { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.act-shuffle .act-ico { color: var(--warning); background: color-mix(in srgb, var(--warning) 14%, transparent); }
 .act-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 .act-line .item-title { flex: 0 1 auto; }
 .act-verb { flex: none; font-size: 12px; font-weight: 700; color: var(--sub); }
 .act-add .act-verb { color: var(--accent-2); }
 .act-skip .act-verb { color: var(--accent); }
 .act-remove .act-verb { color: var(--danger); }
+.act-shuffle .act-verb { color: var(--warning); }
 .act-count { flex: none; font-size: 11.5px; font-weight: 600; color: var(--sub); white-space: nowrap; }
 .act-meta { display: flex; gap: 8px; align-items: center; }
 .act-meta > span { flex: none; }

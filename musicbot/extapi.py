@@ -1,7 +1,7 @@
 """Chrome 擴充功能專用 API（/api/ext/*）：需要金鑰（X-Ext-Token 標頭）。
 擁有者 = .env 的 EXT_TOKEN；朋友 = 成員金鑰（extmembers.py，可在網頁「成員管理」建立 / 停用）。
 
-- GET  /api/ext/status            目前播放 + 佇列數量 + 語音頻道
+- GET  /api/ext/status            目前播放 + 佇列數量 + 語音頻道（擁有者金鑰另外回 voice_guilds：在幾個伺服器的語音中）
 - POST /api/ext/add {url, title?, next?}
         加入佇列；next=true → 插到下一首（已在佇列裡的也會移到下一首）
 允許 chrome-extension:// 來源的 CORS；沒設 EXT_TOKEN 時整組停用（503）。
@@ -187,7 +187,22 @@ def ext_status():
         "you_discord": bool(g.ext_user.get("discord_id")),
         "asleep": _is_asleep(gid),
         "owner": bool(g.ext_user.get("owner")),
+        **({"voice_guilds": _voice_guild_count()} if g.ext_user.get("owner") else {}),
     })
+
+
+def _voice_guild_count():
+    """機器人目前在幾個伺服器的語音頻道裡（只給擁有者金鑰：deploy/update-ytdlp.sh 判斷「有沒有人在聽」用）"""
+    with state_lock:
+        vcs = list(voice_clients.values())
+    n = 0
+    for vc in vcs:
+        try:
+            if vc and vc.is_connected():
+                n += 1
+        except Exception:
+            n += 1          # 判斷不出來 → 當作在用（寧可不重啟）
+    return n
 
 
 @flask_app.route(PREFIX + "add", methods=["POST"])

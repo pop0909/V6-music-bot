@@ -13,7 +13,7 @@ from .state import (
 )
 from . import audio, ytdl
 from .utils import format_time  # noqa: F401
-from .discord_ux import md, panel_text, claim_skip, announce, queue_embed, queue_pages, QueuePager, reply_error, GENERIC_ERROR
+from .discord_ux import md, panel_text, claim_skip, announce, queue_embed, queue_pages, QueuePager, reply_error, voice_gate, GENERIC_ERROR
 
 
 from .player import (  # noqa: F401  play_next / _update_panel：測試用 mock.patch.object(commands, ...) 替換
@@ -120,6 +120,10 @@ async def import_cmd(interaction: discord.Interaction, url: str):
 async def skip(interaction: discord.Interaction):
     vc = interaction.guild.voice_client
     gid = interaction.guild_id
+    msg = voice_gate(interaction, vc)    # 只有跟機器人在同一個語音頻道的人能跳（擁有者不限）
+    if msg:
+        await interaction.response.send_message(msg, ephemeral=True)
+        return
     if vc and (vc.is_playing() or vc.is_paused()):
         title = now_playing.get(gid, "")
         if not claim_skip(gid, now_playing_url.get(gid)):
@@ -141,6 +145,10 @@ async def stop(interaction: discord.Interaction):
     from .player import stop_playback
     gid = interaction.guild.id
     vc = interaction.guild.voice_client or voice_clients.get(gid)
+    msg = voice_gate(interaction, vc)
+    if msg:
+        await interaction.response.send_message(msg, ephemeral=True)
+        return
     busy = bool(vc and (vc.is_playing() or vc.is_paused())) or bool(queues.get(gid)) or bool(now_playing.get(gid))
     if not busy:
         # 沒東西可停：不要回「已停止並清空」，也不要在頻道公告
@@ -226,8 +234,13 @@ async def panel(interaction: discord.Interaction):
 async def leave(interaction: discord.Interaction):
     from .player import leave_voice
     gid = interaction.guild.id
-    if not (interaction.guild.voice_client or voice_clients.get(gid)):
+    vc = interaction.guild.voice_client or voice_clients.get(gid)
+    if not vc:
         await interaction.response.send_message("機器人不在語音頻道中", ephemeral=True)
+        return
+    msg = voice_gate(interaction, vc)
+    if msg:
+        await interaction.response.send_message(msg, ephemeral=True)
         return
     await interaction.response.send_message("✅ 已離開語音頻道", ephemeral=True)
     await leave_voice(gid, interaction.guild)

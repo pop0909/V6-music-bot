@@ -4,7 +4,8 @@
 - 上次成功備份時間存在 backups/.last_backup（沒有就看最新一份備份檔的時間），重啟不會多備份
 - 啟動後 10 分鐘先檢查一次，之後每 6 小時檢查；內容的 SHA-256 跟上次一樣就跳過
 - 存成 backups/data-YYYYmmdd-HHMMSS.tar.gz（權限 0600），只留最新 7 份
-- 異地備份：私訊擁有者附檔（小於 8MB 才傳），提醒內含成員金鑰
+- 異地備份：私訊擁有者附檔（小於 8MB 才傳），提醒內含成員金鑰；私訊的那份不含 data/panel_secret（面板簽章金鑰，
+  外流就能偽造登入），伺服器上的本機備份照舊完整。用私訊那份還原時會自動產生新金鑰，大家重新登入一次即可
 - 只是背景的 asyncio sleep＋一次 tar，休眠模式下也不會喚醒語音
 還原：systemctl stop musicbot; tar xzf backups/<檔名> -C /root/v6; systemctl start musicbot
 """
@@ -23,6 +24,7 @@ BACKUP_DIR = os.path.join(PROJECT_ROOT, "backups")
 SOURCES = ("data", "favorites", "list.txt")
 SKIP = {"last_exit.json", "voice_session.json"}   # 每次啟動都會變，不算資料
 KEEP = 7
+OFFSITE_EXCLUDE = {"data/panel_secret"}   # 私訊異地備份不放：面板簽章金鑰（拿到就能偽造任何人的登入）
 
 
 
@@ -151,10 +153,38 @@ def run_backup(root=None, backup_dir=None, force=False, interval=None, now=None)
     return path
 
 
+def offsite_copy(path):
+    """從本機備份做一份私訊用的副本（同目錄暫存檔，0600），拿掉 OFFSITE_EXCLUDE；用完由呼叫端刪掉"""
+    fd, tmp = tempfile.mkstemp(prefix=".offsite-", suffix=".tar.gz", dir=os.path.dirname(path))
+    os.close(fd)
+    os.chmod(tmp, 0o600)
+    try:
+        with tarfile.open(path, "r:gz") as src, tarfile.open(tmp, "w:gz") as dst:
+            for ti in src.getmembers():
+                if ti.name in OFFSITE_EXCLUDE or not ti.isfile():
+                    continue
+                dst.addfile(ti, src.extractfile(ti))
+    except Exception:
+        os.remove(tmp)
+        raise
+    return tmp
+
+
 async def send_offsite(path):
     import discord
     from . import alerts
-    size = os.path.getsize(path)
+    tmp = await asyncio.to_thread(offsite_copy, path)
+    try:
+        return await _send_offsite(path, tmp, discord, alerts)
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+
+
+async def _send_offsite(path, tmp, discord, alerts):
+    size = os.path.getsize(tmp)
     if size > DM_LIMIT:
         alerts.alert("backup_big", f"備份檔 {os.path.basename(path)} 有 {size // 1024} KB，超過私訊附件上限，只存在伺服器。")
         return False
@@ -162,10 +192,15 @@ async def send_offsite(path):
     if not oid:
         return False
     user = await alerts._client().fetch_user(oid)
-    await user.send(
-        f"🗄️ **定期資料備份** {os.path.basename(path)}（{max(1, size // 1024)} KB）\n"
-        "⚠️ 內含成員金鑰與個人歌單，請勿轉傳。還原：停機後 `tar xzf 檔名 -C /root/v6` 再啟動。",
-        file=discord.File(path))
+    f = discord.File(tmp, filename=os.path.basename(path))
+    try:
+        await user.send(
+            f"🗄️ **定期資料備份** {os.path.basename(path)}（{max(1, size // 1024)} KB）\n"
+            "⚠️ 內含成員金鑰與個人歌單，請勿轉傳（不含面板簽章金鑰，用這份還原後大家要重新登入一次）。"
+            "還原：停機後 `tar xzf 檔名 -C /root/v6` 再啟動。",
+            file=f)
+    finally:
+        f.close()          # Windows 上檔案開著就刪不掉暫存副本
     log.info("[備份] 已私訊擁有者異地備份")
     return True
 

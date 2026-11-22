@@ -223,8 +223,8 @@ if ($('npBtnHistoryRefresh')) $('npBtnHistoryRefresh').addEventListener('click',
 
 // ==================== 操作紀錄（誰點歌 / 跳過 / 刪歌；有金鑰的人都看得到，保留 7 天） ====================
 const actState = { filter: '', seq: 0, timer: 0, items: [], failed: false };
-const ACT_LABEL = { add: '點歌', skip: '跳過', remove: '刪歌' };
-const ACT_ICON = { add: 'fa-plus', skip: 'fa-forward', remove: 'fa-trash' };
+const ACT_LABEL = { add: '點歌', skip: '跳過', remove: '刪歌', shuffle: '隨機' };
+const ACT_ICON = { add: 'fa-plus', skip: 'fa-forward', remove: 'fa-trash', shuffle: 'fa-random' };
 const ACT_SRC = {
     discord: { label: 'Discord', icon: 'fab fa-discord' },
     web: { label: '網頁面板', icon: 'fas fa-globe' },
@@ -310,7 +310,7 @@ function renderActions() {
         verb.textContent = ACT_LABEL[it.act] || it.act;
         const title = document.createElement('span');
         title.className = 'item-title';
-        title.textContent = it.title || it.url || '（未知歌曲）';   // textContent：歌名不會被當成 HTML
+        title.textContent = it.title || it.url || (it.act === 'shuffle' ? '' : '（未知歌曲）');   // textContent：歌名不會被當成 HTML
         title.title = it.title || '';
         line.append(verb, title);
         if (it.n > 1) {
