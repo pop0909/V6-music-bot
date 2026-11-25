@@ -296,15 +296,17 @@ placeExtras();
     const items = () => [el.btnLoop, el.btnShuffle, el.autoplayToggle, el.normalizeToggle, $('btnSleep')].filter(Boolean);
     function place() {
         const r = btn.getBoundingClientRect();
-        const vw = document.documentElement.clientWidth, vh = window.innerHeight;
+        const vw = document.documentElement.clientWidth;
+        // 說明讓選單變高：優先開在 ⋮ 上方；上方不夠就限制高度、在選單裡捲動，不改開到下方、也不超出畫面
+        menu.style.maxHeight = '';
+        const spaceAbove = Math.max(120, r.top - GAP - EDGE);
+        if (menu.offsetHeight > spaceAbove) menu.style.maxHeight = Math.floor(spaceAbove) + 'px';
         const mw = menu.offsetWidth, mh = menu.offsetHeight;
         // ⋮ 在畫面右半（播放列）→ 右緣對齊；在左半（窄視窗展開畫面）→ 左緣對齊
         let left = (r.left + r.width / 2 > vw / 2) ? r.right - mw : r.left;
         left = Math.max(EDGE, Math.min(left, vw - EDGE - mw));
-        let top = r.top - GAP - mh;
-        if (top < EDGE) top = Math.min(r.bottom + GAP, vh - EDGE - mh);
         menu.style.left = Math.round(left) + 'px';
-        menu.style.top = Math.round(Math.max(EDGE, top)) + 'px';
+        menu.style.top = Math.round(Math.max(EDGE, r.top - GAP - mh)) + 'px';
     }
     function focusAt(i) {
         const list = items(); if (!list.length) return;

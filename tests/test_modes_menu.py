@@ -90,8 +90,8 @@ class Markup(unittest.TestCase):
             self.assertIn(f'id="{i}"', menu)
 
     def test_version_bumped(self):
-        self.assertIn("style.css?v=20261122nofav1", self.html)
-        self.assertIn("/static/js/app/01-core.js?v=20261122nofav1", self.html)
+        self.assertIn("style.css?v=20261126ux1", self.html)
+        self.assertIn("/static/js/app/01-core.js?v=20261126ux1", self.html)
 
 
 class Script(unittest.TestCase):
@@ -128,6 +128,10 @@ class Script(unittest.TestCase):
         self.assertIn("btn.setAttribute('aria-expanded', 'false')", body)
         # 切換模式不會收起選單：選單裡的點擊沒有任何收起的處理
         self.assertNotIn("menu.addEventListener('click'", body)
+        # 說明變高時仍開在 ⋮ 上方（不夠高就限制 maxHeight，不改開到下方）
+        self.assertIn("menu.style.maxHeight", body)
+        self.assertIn("spaceAbove", body)
+        self.assertNotIn("r.bottom + GAP", body)
 
     def test_menu_closes_when_button_moves(self):
         self.assertIn("window.closeModeMenu(false)", func(self.js, "function placeExtras("))

@@ -7,7 +7,7 @@ const askDialog = (() => {
     if (!ov) return async () => null;
     const box = ov.querySelector('.ask-modal');
     const title = $('askTitle'), msg = $('askMsg'), field = $('askField'), label = $('askLabel');
-    const input = $('askInput'), err = $('askErr'), ok = $('askOk'), cancel = $('askCancel'), close = $('askClose');
+    const input = $('askInput'), err = $('askErr'), count = $('askCount'), ok = $('askOk'), cancel = $('askCancel'), close = $('askClose');
     let done = null, opts = null, back = null;
     function finish(v) {
         if (!done) return;
@@ -36,7 +36,15 @@ const askDialog = (() => {
     cancel.addEventListener('click', () => finish(null));
     close.addEventListener('click', () => finish(null));
     ov.addEventListener('click', (e) => { if (e.target === ov) finish(null); });
-    input.addEventListener('input', () => { if (err.textContent) setErr(''); });
+    function syncCount() {
+        if (!count) return;
+        const max = input.maxLength > 0 ? input.maxLength : 0;
+        if (!opts || !opts.input || !max) { count.hidden = true; count.textContent = ''; return; }
+        count.hidden = false;
+        count.textContent = `${[...input.value].length} / ${max}`;
+        count.classList.toggle('is-full', [...input.value].length >= max);
+    }
+    input.addEventListener('input', () => { if (err.textContent) setErr(''); syncCount(); });
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); submit(); }   // 注音選字中的 Enter 不算
     });
@@ -74,6 +82,7 @@ const askDialog = (() => {
             if (c.maxLength) input.maxLength = c.maxLength; else input.removeAttribute('maxlength');
             if (c.label) input.removeAttribute('aria-label'); else input.setAttribute('aria-label', opts.title || '');
         }
+        syncCount();
         ok.textContent = opts.okText || '確定';
         ok.className = 'btn-sm ' + (opts.danger ? 'danger' : 'gold');
         cancel.textContent = opts.cancelText || '取消';
@@ -83,6 +92,9 @@ const askDialog = (() => {
         return p;
     };
 })();
+
+const NAME_MAX = 40;
+function nameLimitMsg(v) { return [...v].length > NAME_MAX ? `歌單名稱最多 ${NAME_MAX} 個字` : ''; }
 
 // ==================== 我的歌單（個人歌單，用自己的金鑰；與本地歌單完全分開） ====================
 // 依登入身分（cookie）；API 走 /api/ext/lists（伺服器依身分判斷是誰，只能看 / 改自己的）
@@ -149,7 +161,7 @@ const ML = (() => {
                     <button class="item-btn" data-a="shuffle" title="隨機加入佇列"><i class="fas fa-random"></i></button>
                     <button class="item-btn ml-opt" data-a="addcur" title="加入目前播放的歌"><i class="fas fa-plus"></i></button>
                     <button class="item-btn ml-opt" data-a="addurl" title="用網址加歌"><i class="fas fa-link"></i></button>
-                    <button class="item-btn btn-edit ml-opt" data-a="rename" title="改名"><i class="fas fa-pen"></i></button>
+                    <button class="item-btn btn-edit ml-opt" data-a="rename" title="重新命名"><i class="fas fa-pen"></i></button>
                     <button class="item-btn btn-remove ml-opt" data-a="delete" title="刪除歌單"><i class="fas fa-trash-alt"></i></button>
                     <button class="item-btn ml-more" data-a="more" title="更多" aria-label="更多"><i class="fas fa-ellipsis-h"></i></button>
                 </div>
@@ -157,7 +169,7 @@ const ML = (() => {
             <div class="ml-menu">
                 <button class="ml-menu-btn" data-a="addcur"><i class="fas fa-plus"></i> 加入目前播放的歌</button>
                 <button class="ml-menu-btn" data-a="addurl"><i class="fas fa-link"></i> 用網址加歌</button>
-                <button class="ml-menu-btn" data-a="rename"><i class="fas fa-pen"></i> 改名</button>
+                <button class="ml-menu-btn" data-a="rename"><i class="fas fa-pen"></i> 重新命名</button>
                 <button class="ml-menu-btn danger" data-a="delete"><i class="fas fa-trash-alt"></i> 刪除歌單</button>
             </div>
             <div class="ml-songs"></div>`;
@@ -168,7 +180,7 @@ const ML = (() => {
             if (b) { e.stopPropagation(); act(pl, b.dataset.a, b); return; }
             toggle(pl, wrap);
         });
-        // 手機版「⋯」選單（改名 / 刪除 / 加入目前播放）：純顯示切換，沒有動畫
+        // 手機版「⋯」選單（重新命名 / 刪除 / 加入目前播放）：純顯示切換，沒有動畫
         wrap.querySelector('.ml-menu').addEventListener('click', (e) => {
             const b = e.target.closest('[data-a]'); if (!b) return;
             e.stopPropagation(); wrap.classList.remove('menu-open'); act(pl, b.dataset.a, b);
@@ -234,7 +246,7 @@ const ML = (() => {
     async function act(pl, a, btn) {
         if (busy) return;
         if (a === 'rename') {
-            const n = await askDialog({ title: '重新命名歌單', input: { label: '新的歌單名稱', value: pl.name, maxLength: 40, required: '請輸入歌單名稱' }, okText: '儲存' });
+            const n = await askDialog({ title: '重新命名歌單', input: { label: '新的歌單名稱', value: pl.name, maxLength: 40, required: '請輸入歌單名稱', validate: nameLimitMsg }, okText: '儲存' });
             if (!n || n === pl.name) return;
             const j = await call('POST', '/' + pl.id, { action: 'rename', name: n });
             if (j.status === 'error') showToast(j.message, 'error'); else refresh();
@@ -270,7 +282,7 @@ const ML = (() => {
         } finally { busy = false; btn.disabled = false; }
     }
     async function create() {
-        const n = await askDialog({ title: '新增歌單', input: { label: '歌單名稱', placeholder: '例如：開車聽', maxLength: 40, required: '請輸入歌單名稱' }, okText: '建立' });
+        const n = await askDialog({ title: '新增歌單', input: { label: '歌單名稱', placeholder: '例如：開車聽', maxLength: 40, required: '請輸入歌單名稱', validate: nameLimitMsg }, okText: '建立' });
         if (!n) return;
         const j = await call('POST', '', { name: n });
         if (j.status === 'error') showToast(j.message, 'error'); else { showToast('✅ 已建立', 'success'); refresh(); }

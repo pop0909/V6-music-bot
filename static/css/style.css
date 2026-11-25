@@ -697,7 +697,7 @@ html[data-theme="light"] .stroke-bg .s-cyan { opacity: .13; }
     display: none;
     position: fixed; inset: 0;
     background: rgba(5,5,10,.72);
-    z-index: 200;
+    z-index: 500;   /* 要比展開播放畫面（35–45）和播放列（60）高，詢問框才看得到 */
     align-items: center; justify-content: center;
     padding: 16px;
 }
@@ -2089,15 +2089,15 @@ html[data-theme="light"] .act-remove .act-ico, html[data-theme="light"] .act-rem
 .song-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; word-break: normal; }
 .song-title.marquee, .pb-title.marquee {
     text-overflow: clip;
-    mask-image: linear-gradient(90deg, transparent, #000 4%, #000 92%, transparent);
-    -webkit-mask-image: linear-gradient(90deg, transparent, #000 4%, #000 92%, transparent);
+    mask-image: linear-gradient(90deg, transparent 0, #000 1em, #000 calc(100% - 1em), transparent);
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 1em, #000 calc(100% - 1em), transparent);
 }
 .marquee-inner, .np-stage .song-title.marquee .marquee-inner {
     display: inline-flex; padding-left: 0; white-space: nowrap;
     animation: marquee var(--mq-dur, 16s) linear 1.6s infinite;
     will-change: transform;
 }
-.mq-seg { flex: none; white-space: pre; padding-right: 3.5em; }
+.mq-seg { flex: none; white-space: pre; padding-left: 1em; padding-right: 2.5em; }
 .marquee:hover .marquee-inner { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) { .marquee-inner { animation: none !important; } }
 /* 展開的播放畫面為了效能關掉所有動畫（.np-view * { animation: none !important }），大歌名的跑馬燈例外 */
@@ -2271,3 +2271,99 @@ html[data-theme="light"] .list-item.q-lift { box-shadow: 0 14px 30px -14px rgba(
 .np-extra .volume-row { flex: 1 1 auto; min-width: 0; order: 9; margin: 0; }
 .np-extra .pb-modes .modes-dot { top: 6px; right: 6px; }
 
+/* =====================================================================
+   ux1（2026-11-26）：載入中狀態、焦點框、跑馬燈左右留白、模式說明、
+   窄視窗展開畫面、觸控／鍵盤時顯示佇列按鈕
+   ===================================================================== */
+
+/* 第一次狀態回來之前：不顯示預設 100% / 就緒 / 0 首 */
+html.ui-loading .volume-row, .volume-row:has(#volumeSlider:disabled) { pointer-events: none; }
+html.ui-loading .volume-slider, #volumeSlider:disabled { visibility: hidden; }
+html.ui-loading #volumeValue, #volumeValue { min-width: 2.5em; }
+html.ui-loading .guild-overlay { visibility: hidden; }
+html.ui-loading #statusText { color: var(--sub); }
+
+/* 鍵盤 Tab 才顯示焦點框（滑鼠點擊不顯示） */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible,
+.tab-btn:focus-visible,
+.item-btn:focus-visible,
+.ctrl-btn:focus-visible,
+.btn-sm:focus-visible,
+.sel:focus-visible,
+.volume-slider:focus-visible,
+.drag-handle:focus-visible,
+.list-item:focus-visible,
+.shelf-card:focus-visible,
+.search-input:focus-visible,
+.form-input:focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 2px;
+}
+.search-row:focus-within:has(.search-input:focus-visible) { outline: none; }
+.volume-slider:focus-visible { outline-offset: 3px; border-radius: 99px; }
+
+/* 歌單名稱過長時用 … 截斷（標頭已有；歌曲列與對話框標題一併保證） */
+.ml-title, .ml-title .ml-name, .item-title, .ask-msg, #askTitle { overflow: hidden; text-overflow: ellipsis; }
+.ml-title, .ml-title .ml-name, .item-title { white-space: nowrap; min-width: 0; }
+.ask-count { margin: 6px 0 0; font-size: 12px; color: var(--faint); text-align: right; font-variant-numeric: tabular-nums; }
+.ask-count.is-full { color: var(--gold-bright); }
+
+/* 清空佇列（停用時看起來不能按） */
+#npBtnQueueClear:disabled { opacity: .4; pointer-events: none; cursor: default; }
+
+/* 模式選單：每個選項底下一行說明（依實際行為） */
+.mode-menu { width: min(320px, calc(100vw - 16px)); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
+.mode-menu .mm-item, .mode-menu .mm-item:hover, .mode-menu .mm-item:active { align-items: flex-start; padding: 8px 12px 8px 7px; min-height: 52px; }
+.mode-menu .mm-item > i, .mode-menu .mm-item .toggle-icon { margin-top: 2px; }
+.mode-menu .mm-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mode-menu .mm-text .ctrl-label { display: block; flex: none; font-weight: 600; color: var(--text); white-space: nowrap; }
+.mode-menu .mm-desc { display: block; font-size: 11.5px; font-weight: 400; line-height: 1.35; color: var(--faint); }
+.mode-menu .mm-state { margin-top: 2px; }
+
+/* 觸控裝置，或列被鍵盤聚焦時：佇列 / 歌單操作鍵常駐；觸控點擊區至少 36px */
+.list-item:focus-within .item-actions,
+.list-item:focus-within .drag-handle { opacity: 1; }
+@media (hover: none), (pointer: coarse) {
+    .item-actions, .drag-handle { opacity: 1; }
+    .item-btn { width: 36px; height: 36px; min-width: 36px; min-height: 36px; }
+}
+
+/* 窄視窗 / 高倍縮放：展開畫面不裁切封面、音量列、佇列徽章；可捲動勝過裁切 */
+.tabs-head { flex-wrap: wrap; gap: 6px; min-width: 0; }
+.queue-badge-pos { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.np-extra .pb-extras { flex-wrap: wrap; min-width: 0; }
+.np-extra .volume-row, .np-extra .ctrl-btn { min-width: 0; }
+@media (max-width: 640px) {
+    .queue-badge-pos { display: inline-flex !important; align-items: center; font-size: 11px; padding: 4px 8px; }
+    .np-side .tabs-head { gap: 4px; }
+    #npTabs { min-width: 0; flex: 1 1 auto; }
+}
+@media (max-width: 760px) {
+    .np-view-inner { overflow-x: hidden; overflow-y: auto; }
+    .np-stage { overflow: visible; }
+    .np-extra .pb-extras { gap: 6px; }
+    .np-extra .volume-row { flex: 1 1 120px; min-width: 96px; }
+}
+@media (max-width: 400px) {
+    .np-extra .volume-row { flex: 1 1 100%; order: 20; }
+    .np-stage .song-title { font-size: 16px; }
+}
+@media (min-width: 761px) and (max-height: 620px) {
+    .np-view-inner {
+        display: flex; flex-direction: column;
+        overflow-x: hidden; overflow-y: auto;
+        gap: 16px;
+    }
+    .np-stage { flex: 0 0 auto; overflow: visible; }
+    .np-stage .np-cover-wrap { width: min(100%, 420px); margin: 12px auto; }
+    .np-side { flex: 1 1 auto; min-height: 180px; }
+}
+@media (max-height: 500px) {
+    .np-stage .np-cover-wrap { width: min(100%, 280px) !important; margin: 8px auto !important; }
+    .np-stage { padding-top: 48px; }
+}

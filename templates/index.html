@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-TW" class="ui-loading">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,8 +13,8 @@
       if (t === 'light') document.querySelector('meta[name="theme-color"]').content = '#f7f6fb'; })();
     </script>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none'%3E%3Cpath d='M14.1 25.6c.4-7.2-.2-14.1 1.1-21.2 2.8 1 6.6 2.4 9.4 4.8-1.6 1.4-3.8 2.6-6.2 3.3' stroke='%23ff2e97' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M13.8 24.8c-3.6 2.2-7.2-.4-5.4-3.5 1.5-2.4 5.2-1.6 6.6.8' stroke='%2300e5ff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
-    <link rel="stylesheet" href="/static/css/icons.css?v=20261122nofav1">
-    <link rel="stylesheet" href="/static/css/style.css?v=20261122nofav1">
+    <link rel="stylesheet" href="/static/css/icons.css?v=20261126ux1">
+    <link rel="stylesheet" href="/static/css/style.css?v=20261126ux1">
 </head>
 <body>
     <div class="stroke-bg" aria-hidden="true"><svg viewBox="0 0 1400 900" fill="none" preserveAspectRatio="xMidYMid slice">
@@ -113,7 +113,7 @@
                 </div>
                 <div class="live-pill" id="statusPill">
                     <span class="status-indicator" id="statusDot"></span>
-                    <span id="statusText">就緒</span>
+                    <span id="statusText">載入中…</span>
                 </div>
             </div>
         </header>
@@ -165,7 +165,7 @@
                     <!-- 本地歌單 -->
                     <div class="tab-content active" id="tabPlaylist">
                         <div class="tab-toolbar">
-                            <span class="tab-count" id="playlistCount">0 首</span>
+                            <span class="tab-count" id="playlistCount">載入中…</span>
                             <div class="toolbar-actions">
                                 <button class="btn-sm" id="btnPlaylistPlayAll"><i class="fas fa-play"></i> 全部播放</button>
                                 <button class="btn-sm gold" id="btnPlaylistAdd"><i class="fas fa-plus"></i> 新增</button>
@@ -236,7 +236,7 @@
                     <div class="tab-toolbar">
                         <span class="tab-count" id="npQueueCount">0 首</span>
                         <div class="toolbar-actions">
-                            <button class="btn-sm" id="npBtnQueueClear"><i class="fas fa-trash"></i> 清空</button>
+                            <button class="btn-sm" id="npBtnQueueClear" disabled aria-disabled="true"><i class="fas fa-trash" aria-hidden="true"></i> 清空</button>
                         </div>
                     </div>
                     <div class="list-container queue-list" id="npQueueList"><div class="skel-wrap" role="status" aria-busy="true" aria-label="載入中"><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:72%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:54%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:86%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:61%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:47%"></span></div><div class="skel-row"><span class="skel skel-num"></span><span class="skel skel-line" style="width:79%"></span></div></div></div>
@@ -300,8 +300,8 @@
                 <!-- 分組：[音量] | [循環 隨機] | [自動推薦 音量平衡 睡眠] | [停止]；data-tip = 即時提示（CSS，觸控長按也會顯示） -->
                 <div class="volume-row has-tip" data-tip="音量（↑ ↓ 調整・M 靜音）">
                     <i class="fas fa-volume-low vol-icon" aria-hidden="true"></i>
-                    <input type="range" class="volume-slider" id="volumeSlider" min="0" max="200" value="100" aria-label="音量">
-                    <span class="volume-value" id="volumeValue">100%</span>
+                    <input type="range" class="volume-slider" id="volumeSlider" min="0" max="200" value="100" aria-label="音量" disabled aria-disabled="true">
+                    <span class="volume-value" id="volumeValue">—</span>
                 </div>
                 <span class="pb-sep" aria-hidden="true"></span>
                 <!-- 播放模式（循環 / 隨機 / 自動推薦 / 音量平衡 / 睡眠）收進 ⋮；有任何模式開著時 ⋮ 右上角亮小圓點 -->
@@ -320,24 +320,24 @@
     <!-- 播放模式選單（⋮ 打開；放在 body 底下用 fixed 定位，不受播放列 / 展開畫面的版面影響）。
          開關模式時選單不會關；點外面 / Esc / 再按一次 ⋮ 才關 -->
     <div class="mode-menu" id="modeMenu" role="dialog" aria-label="播放模式" hidden>
-        <button class="ctrl-btn mm-item" id="btnLoop" data-tip="循環：關（點一下切換 單曲 / 全部・L）" aria-label="循環：關" aria-pressed="false"><i class="fas fa-repeat" aria-hidden="true"></i><span class="loop-indicator ctrl-badge" id="loopIndicator"></span><span class="ctrl-label">循環</span><span class="mm-state" id="loopState" aria-hidden="true">關</span></button>
-        <button class="ctrl-btn mm-item" id="btnShuffle" data-tip="隨機播放：關（S）" aria-label="隨機播放" aria-pressed="false"><i class="fas fa-shuffle" aria-hidden="true"></i><span class="ctrl-label">隨機</span><span class="mm-state" id="shuffleState" aria-hidden="true">關</span></button>
+        <button class="ctrl-btn mm-item" id="btnLoop" data-tip="循環：關（點一下切換 單曲 / 全部・L）" aria-label="循環：關" aria-pressed="false"><i class="fas fa-repeat" aria-hidden="true"></i><span class="loop-indicator ctrl-badge" id="loopIndicator"></span><span class="mm-text"><span class="ctrl-label">循環</span><span class="mm-desc">單曲重複這首；全部則播過的歌回到佇列末端</span></span><span class="mm-state" id="loopState" aria-hidden="true">關</span></button>
+        <button class="ctrl-btn mm-item" id="btnShuffle" data-tip="隨機播放：關（S）" aria-label="隨機播放" aria-pressed="false"><i class="fas fa-shuffle" aria-hidden="true"></i><span class="mm-text"><span class="ctrl-label">隨機</span><span class="mm-desc">佇列播完後，從本地歌單隨機接著播</span></span><span class="mm-state" id="shuffleState" aria-hidden="true">關</span></button>
         <div class="mm-sep" aria-hidden="true"></div>
         <label class="toggle-row pb-toggle mm-item" for="autoplayToggle" data-tip="自動推薦接歌：關（佇列播完自動接相關歌曲）">
             <span class="toggle-icon" aria-hidden="true"><i class="fas fa-radio"></i></span>
             <span class="toggle-text"><span class="toggle-title">自動推薦</span><span class="toggle-sub" id="autoplayHint">佇列播完自動接歌</span></span>
-            <span class="ctrl-label" aria-hidden="true">推薦</span>
+            <span class="mm-text"><span class="ctrl-label">推薦</span><span class="mm-desc">佇列播完後，自動接相關歌曲</span></span>
             <span class="mm-state" id="autoplayState" aria-hidden="true">關</span>
             <input type="checkbox" id="autoplayToggle" class="switch" role="switch" aria-label="自動推薦接歌">
         </label>
         <label class="toggle-row pb-toggle mm-item" for="normalizeToggle" data-tip="音量平衡：關（讓每首歌音量差不多，切換立即生效）">
             <span class="toggle-icon" aria-hidden="true"><i class="fas fa-wave-square"></i></span>
             <span class="toggle-text"><span class="toggle-title">音量平衡</span><span class="toggle-sub">切換立即生效</span></span>
-            <span class="ctrl-label" aria-hidden="true">平衡</span>
+            <span class="mm-text"><span class="ctrl-label">平衡</span><span class="mm-desc">讓每首歌音量差不多，切換後立即生效</span></span>
             <span class="mm-state" id="normalizeState" aria-hidden="true">關</span>
             <input type="checkbox" id="normalizeToggle" class="switch" role="switch" aria-label="音量平衡">
         </label>
-        <button class="ctrl-btn mm-item" id="btnSleep" data-tip="睡眠計時：關（點一下切換 30 分 / 60 分 / 播完這首）" aria-label="睡眠計時：關" aria-pressed="false"><i class="fas fa-moon" aria-hidden="true"></i><span class="loop-indicator ctrl-badge" id="sleepIndicator"></span><span class="ctrl-label">睡眠</span><span class="mm-state" id="sleepState" aria-hidden="true">關</span></button>
+        <button class="ctrl-btn mm-item" id="btnSleep" data-tip="睡眠計時：關（點一下切換 30 分 / 60 分 / 播完這首）" aria-label="睡眠計時：關" aria-pressed="false"><i class="fas fa-moon" aria-hidden="true"></i><span class="loop-indicator ctrl-badge" id="sleepIndicator"></span><span class="mm-text"><span class="ctrl-label">睡眠</span><span class="mm-desc">時間到或播完這首後，停止播放並離開語音</span></span><span class="mm-state" id="sleepState" aria-hidden="true">關</span></button>
     </div>
 
     <!-- 視覺化等化器（固定右下角小裝飾） -->
@@ -379,6 +379,7 @@
                 <div class="form-group ask-field" id="askField">
                     <label for="askInput" id="askLabel"></label>
                     <input type="text" class="form-input" id="askInput" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done">
+                    <p class="ask-count" id="askCount" hidden></p>
                     <p class="ask-err" id="askErr" role="alert"></p>
                 </div>
             </div>
@@ -390,16 +391,16 @@
     </div>
 
     <!-- 前端程式拆成多個一般 <script>（不用 module / 不用建置）：依序載入、共用同一個全域範圍，順序不能改 -->
-    <script src="/static/js/app/01-core.js?v=20261122nofav1"></script>
-    <script src="/static/js/app/02-guilds.js?v=20261122nofav1"></script>
-    <script src="/static/js/app/03-artwork.js?v=20261122nofav1"></script>
-    <script src="/static/js/app/04-live.js?v=20261122nofav1"></script>
-    <script src="/static/js/app/05-lists.js?v=20261122nofav1"></script>
-    <script src="/static/js/app/06-controls.js?v=20261122nofav1"></script>
-    <script src="/static/js/app/07-tabs-init.js?v=20261122nofav1"></script>
-    <script src="/static/js/app/08-effects.js?v=20261122nofav1"></script>
-    <script src="/static/js/app/09-npview.js?v=20261122nofav1"></script>
-    <script src="/static/js/app/10-panels.js?v=20261122nofav1"></script>
-    <script src="/static/js/app/11-mylist.js?v=20261122nofav1"></script>
+    <script src="/static/js/app/01-core.js?v=20261126ux1"></script>
+    <script src="/static/js/app/02-guilds.js?v=20261126ux1"></script>
+    <script src="/static/js/app/03-artwork.js?v=20261126ux1"></script>
+    <script src="/static/js/app/04-live.js?v=20261126ux1"></script>
+    <script src="/static/js/app/05-lists.js?v=20261126ux1"></script>
+    <script src="/static/js/app/06-controls.js?v=20261126ux1"></script>
+    <script src="/static/js/app/07-tabs-init.js?v=20261126ux1"></script>
+    <script src="/static/js/app/08-effects.js?v=20261126ux1"></script>
+    <script src="/static/js/app/09-npview.js?v=20261126ux1"></script>
+    <script src="/static/js/app/10-panels.js?v=20261126ux1"></script>
+    <script src="/static/js/app/11-mylist.js?v=20261126ux1"></script>
 </body>
 </html>

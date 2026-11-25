@@ -70,7 +70,7 @@ class Skeleton(unittest.TestCase):
 
     def test_lists_wait_for_first_push(self):
         for key, lst in (("_plKey", "el.playlistList"),):
-            self.assertIn(f"if (stillLoading('{key}')) {{ showSkeleton({lst}, 'row', 6); return; }}", JS)
+            self.assertIn(f"if (stillLoading('{key}') || !uiReady) {{ showSkeleton({lst}, 'row', 6); el.playlistCount.textContent = '載入中…'; return; }}", JS)
         self.assertIn("if (stillLoading('_queueKey') && !(state.queue || []).length)", JS)
         self.assertEqual(JS.count("resetListCaches();"), 2)   # 手動換伺服器、自動跟隨
         self.assertIn("showSkeleton(el.shelfRow, 'card', 6)", JS)

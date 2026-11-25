@@ -79,10 +79,22 @@ def _reset_cache():
     _cache.update(data=None, path=None)
 
 
-def _clean_name(name):
+def _clean_name(name, *, limit=None):
+    """去掉頭尾空白、中間連續空白收成一個；limit 有給就截斷（匯入自動取名用）。"""
     if not isinstance(name, str):
         return ""
-    return " ".join(name.split())[:NAME_MAX]
+    s = " ".join(name.split())
+    return s[:limit] if limit is not None else s
+
+
+def _require_name(name):
+    """使用者自己取的名字：空的或超過 NAME_MAX 就拒絕，不會默默截斷。"""
+    s = _clean_name(name)
+    if not s:
+        raise ValueError("請輸入歌單名稱")
+    if len(s) > NAME_MAX:
+        raise ValueError(f"歌單名稱最多 {NAME_MAX} 個字")
+    return s
 
 
 def _clean_songs(songs, limit=MAX_SONGS):
@@ -130,7 +142,7 @@ def get_playlist(key, lid):
 
 def find_by_name(key, name):
     """Discord 指令用：名稱完全相同優先，其次唯一的前綴 / 包含"""
-    name = _clean_name(name).lower()
+    name = _clean_name(name, limit=NAME_MAX).lower()
     with _lock:
         ls = _lists(key)
         for p in ls:
@@ -142,9 +154,7 @@ def find_by_name(key, name):
 
 # ---------- 修改 ----------
 def create(key, name, songs=None, source=None):
-    name = _clean_name(name)
-    if not name:
-        raise ValueError("請輸入歌單名稱")
+    name = _require_name(name)
     with _lock:
         ls = _lists(key)
         if len(ls) >= MAX_LISTS:
@@ -162,9 +172,7 @@ def create(key, name, songs=None, source=None):
 
 
 def rename(key, lid, name):
-    name = _clean_name(name)
-    if not name:
-        raise ValueError("請輸入歌單名稱")
+    name = _require_name(name)
     with _lock:
         pl = _find(key, lid)
         if any(p["name"] == name and p["id"] != lid for p in _lists(key)):

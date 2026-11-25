@@ -141,7 +141,10 @@ def _play(k, lid, d):
 def import_into_new_list(k, url, name=None):
     """開背景工作；完成時建立歌單。回傳 job id。"""
     def on_done(title, songs):
-        base = userlists._clean_name(name) or title or "匯入的歌單"
+        if name and name.strip():
+            base = userlists._require_name(name)
+        else:
+            base = userlists._clean_name(title, limit=userlists.NAME_MAX) or "匯入的歌單"
         existing = {p["name"] for p in userlists.list_playlists(k)}
         nm, i = base, 2
         while nm in existing:

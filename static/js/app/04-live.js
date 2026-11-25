@@ -251,10 +251,9 @@ function applyLiveState(data) {
     
     // === 音量 ===（鍵盤調整後短時間內不讓 SSE 舊值蓋回去）
     if (data.volume !== undefined && data.volume !== state.volume && performance.now() > _volHoldUntil) {
-        state.volume = data.volume;
-        el.volumeSlider.value = data.volume;
-        el.volumeValue.textContent = `${data.volume}%`;
-        updateVolumeSlider(data.volume);
+        applyKnownVolume(data.volume);
+    } else if (data.volume !== undefined) {
+        markUiReady();
     }
     
     // === 語音頻道狀態 ===
@@ -394,10 +393,8 @@ async function pollStatus() {
         updateLoopButton();
     }
 
-    state.volume = data.volume || 100;
-    el.volumeSlider.value = data.volume || 100;
-    el.volumeValue.textContent = `${data.volume || 100}%`;
-    updateVolumeSlider(data.volume || 100);
+    if (data.volume !== undefined && data.volume !== null) applyKnownVolume(data.volume);
+    else markUiReady();
 
     state.queue = data.queue || [];
     if (!state.duration) { state.duration = data.duration || 0; state.posBase = data.elapsed || 0; state.posAt = performance.now(); }
@@ -431,6 +428,33 @@ function showSkeleton(container, kind, n) {
 // 換伺服器 / 剛打開：SSE 第一次推送前（最多 8 秒）清單顯示骨架；逾時就照現有資料畫（避免永遠在轉）
 state._skelUntil = performance.now() + 8000;
 function stillLoading(key) { return state[key] === undefined && performance.now() < state._skelUntil; }
+
+// 第一次狀態回來之前：不顯示預設音量 100%、就緒、0 首（html.ui-loading）
+let uiReady = false, volKnown = false;
+function applyKnownVolume(v) {
+    v = Number(v);
+    if (!Number.isFinite(v)) return;
+    state.volume = v;
+    volKnown = true;
+    el.volumeSlider.disabled = false;
+    el.volumeSlider.removeAttribute('aria-disabled');
+    el.volumeSlider.value = v;
+    el.volumeValue.textContent = `${v}%`;
+    if (typeof updateVolumeSlider === 'function') updateVolumeSlider(v);
+    markUiReady();
+}
+function markUiReady() {
+    if (uiReady) return;
+    uiReady = true;
+    document.documentElement.classList.remove('ui-loading');
+    // 沒選伺服器：狀態不再停在「載入中…」；音量仍是 —（還沒有真實值），滑桿維持停用
+    if (el.statusText && el.statusText.textContent === '載入中…') {
+        if (typeof updateStatusDot === 'function') updateStatusDot(state.isPlaying ? 'playing' : state.isPaused ? 'active' : 'inactive');
+        else el.statusText.textContent = '就緒';
+    }
+    if (!state.guildId && el.playlistCount && el.playlistCount.textContent === '載入中…') el.playlistCount.textContent = '—';
+    if (typeof renderPlaylistFromCache === 'function' && state.guildId) renderPlaylistFromCache();
+}
 let _skelTimer = 0;
 function resetListCaches() {
     state._plKey = state._queueKey = undefined;

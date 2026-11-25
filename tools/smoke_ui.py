@@ -301,8 +301,9 @@ async def mode_menu_checks(R, pg, w):
     if m[0] < 0 or m[1] < 0 or m[2] > geo["vw"] or m[3] > geo["vh"]: R.bad(f"⋮ 選單超出畫面 {geo}")
     if m[3] > b[1] + 1: R.bad(f"⋮ 選單沒有開在按鈕上方 {geo}")
     if len(geo["rows"]) != 5 or min(geo["rows"]) < 44: R.bad(f"⋮ 選單每列要 ≥ 44px：{geo['rows']}")
-    for want in ("循環 關", "隨機 關", "推薦 關", "平衡 關", "睡眠 關"):
-        if want not in geo["labels"]: R.bad(f"⋮ 選單少了「{want}」：{geo['labels']}")
+    for want in ("循環", "隨機", "推薦", "平衡", "睡眠"):
+        if not any(t.startswith(want) and t.endswith("關") for t in geo["labels"]):
+            R.bad(f"⋮ 選單少了「{want} 關」：{geo['labels']}")
     await R.audit("18_modes_menu")
     # 選單裡切換：選單不收、狀態文字與小圓點立刻變（樂觀更新）
     st = lambda i: R.J("i => document.getElementById(i).textContent", i)

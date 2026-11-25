@@ -92,6 +92,7 @@ function flushVolume() {
     API.volume(v);
 }
 function setVolumeQuick(v, label) {
+    if (!volKnown) return;
     v = Math.max(0, Math.min(200, Math.round(v)));
     state.volume = v;
     el.volumeSlider.value = v;
@@ -106,6 +107,7 @@ function toggleMute() {
 }
 
 el.volumeSlider.addEventListener('input', (e) => {
+    if (!volKnown) { e.target.value = state.volume || 0; return; }
     const val = parseInt(e.target.value);
     el.volumeValue.textContent = `${val}%`;
     updateVolumeSlider(val);
@@ -113,13 +115,30 @@ el.volumeSlider.addEventListener('input', (e) => {
     sendVolumeLive(val);
 });
 el.volumeSlider.addEventListener('change', (e) => {
+    if (!volKnown) return;
     const val = parseInt(e.target.value);
     state.volume = val;
     sendVolumeLive(val);
 });
 
+function syncQueueClearBtn() {
+    const b = $('npBtnQueueClear');
+    if (!b) return;
+    const n = (state.queue || []).length;
+    b.disabled = n === 0;
+    b.setAttribute('aria-disabled', n === 0 ? 'true' : 'false');
+}
 async function clearQueue() {
     if (!state.guildId) return;
+    const n = (state.queue || []).length;
+    if (!n) return;
+    const ok = await askDialog({
+        title: '清空佇列',
+        message: `清空佇列？將移除 ${n} 首`,
+        okText: '清空',
+        danger: true,
+    });
+    if (!ok) return;
     await API.queueClear();
     showToast('\u{1F5D1}️ 已清空佇列', 'warning');
     state.queue = [];
@@ -250,9 +269,8 @@ async function init() {
         refreshAll();
     }
 
-    el.volumeSlider.value = state.volume;
-    el.volumeValue.textContent = `${state.volume}%`;
-    updateVolumeSlider(state.volume);
+    if (volKnown) applyKnownVolume(state.volume);
+    markUiReady();
 
     // 所有即時更新由 SSE 每秒推送，不再需要輪詢或 refreshAll
 }

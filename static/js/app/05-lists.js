@@ -133,6 +133,7 @@ async function commitQueueMove(list, div, items, from, to, byKey) {
 
 let _qRenderPending = false;
 function renderQueueList(q, view = QV.np) {
+    if (typeof syncQueueClearBtn === 'function') syncQueueClearBtn();
     const list = view.list;
     if (_qDrag && _qDrag.list === list) { _qRenderPending = true; return; }   // 拖曳中不重畫，放開後補
     cancelChunks(list);
@@ -245,8 +246,8 @@ $('editUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('edit
 $('editTitle').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('modalConfirm').click(); });
 
 function renderPlaylistFromCache() {
-    if (!state.guildId) { el.playlistList.innerHTML = '<div class="empty-state"><i class="fas fa-book"></i><p>選擇伺服器以檢視歌單</p></div>'; return; }
-    if (stillLoading('_plKey')) { showSkeleton(el.playlistList, 'row', 6); return; }
+    if (!state.guildId) { el.playlistList.innerHTML = '<div class="empty-state"><i class="fas fa-book"></i><p>選擇伺服器以檢視歌單</p></div>'; if (!uiReady) el.playlistCount.textContent = '載入中…'; return; }
+    if (stillLoading('_plKey') || !uiReady) { showSkeleton(el.playlistList, 'row', 6); el.playlistCount.textContent = '載入中…'; return; }
     const pl = state.playlist || [];
     renderPlaylistList(pl);
 }
