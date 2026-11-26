@@ -39,9 +39,17 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
 
 
 @tree.command(name="play", description="播放音樂（支援單曲、播放清單、關鍵字或網址）")
-@app_commands.describe(query="歌曲名稱、網址或播放清單")
+@app_commands.describe(
+    query="歌曲名稱、網址或播放清單",
+    source="關鍵字要搜哪個網站，預設 YouTube；貼網址時不用選",
+)
+@app_commands.rename(source="來源")
+@app_commands.choices(source=[
+    app_commands.Choice(name="YouTube", value="youtube"),
+    app_commands.Choice(name="Bilibili", value="bilibili"),
+])
 @app_commands.guild_only()
-async def play(interaction: discord.Interaction, query: str):
+async def play(interaction: discord.Interaction, query: str, source: str | None = None):
     if not (query or "").strip():
         await interaction.response.send_message("請輸入歌曲名稱或網址", ephemeral=True)
         return
@@ -50,7 +58,7 @@ async def play(interaction: discord.Interaction, query: str):
     gid = interaction.guild.id
     if gid not in queues: queues[gid] = []
     if gid in random_loop_guilds: random_loop_guilds[gid] = False
-    await _process_and_play(interaction, query.strip(), gid, vc)
+    await _process_and_play(interaction, query.strip(), gid, vc, source=source)
 
 @tree.command(name="import", description="匯入整個 YouTube / Spotify 歌單到佇列（最多 200 首）")
 @app_commands.describe(url="YouTube 播放清單或 Spotify 歌單／專輯網址")
@@ -284,7 +292,7 @@ from . import mylist_cmd as _mylist_cmd  # noqa: E402,F401  /mylist 指令群組
 
 # /help 的內容：每個指令一行。測試會比對實際註冊的指令與面板按鈕，新增 / 改名沒更新這裡就會失敗
 HELP_COMMANDS = [
-    ("play", "點歌：輸入歌名關鍵字、YouTube 網址或播放清單"),
+    ("play", "點歌：輸入歌名或網址；關鍵字預設搜 YouTube，可選來源改搜 B 站"),
     ("import", "把整個 YouTube / Spotify 歌單加進佇列（最多 200 首）"),
     ("skip", "跳過目前這首"),
     ("stop", "停止播放並清空佇列（機器人留在語音頻道）"),

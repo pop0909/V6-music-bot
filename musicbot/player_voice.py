@@ -169,8 +169,46 @@ def _search_entries(info):
     return out
 
 
-async def _lookup(query):
-    """/play 的查詢：打字搜尋先看暫存（searchcache），貼網址照常每次解析。
+def _play_source(source):
+    """/play 可選「來源」參數：只接受 youtube / bilibili，其他或沒填都當 YouTube。"""
+    s = getattr(source, "value", source)
+    s = (str(s) if s is not None else "").strip().lower()
+    return "bilibili" if s == "bilibili" else "youtube"
+
+
+def _bili_search_entries(rows):
+    """B 站搜尋列 → 跟 YouTube 文字搜尋一樣的扁平 entries（只取第一首）。"""
+    out = []
+    for r in rows or []:
+        url = (r.get("url") or "").strip()
+        if not url:
+            continue
+        out.append({
+            "id": url, "url": url, "webpage_url": url,
+            "title": r.get("title") or "未知", "duration": r.get("duration") or 0,
+        })
+        break
+    return out
+
+
+async def _lookup_bili_keyword(query):
+    from . import searchcache, bilibili
+    hit = searchcache.get("play1bili", query)
+    if hit:
+        log.info(f"[搜尋暫存] 命中 /play B 站：{query[:80]}")
+        return {"entries": hit}
+    loop = asyncio.get_running_loop()
+    rows = await loop.run_in_executor(None, lambda: bilibili.search(query, 1))
+    entries = _bili_search_entries(rows)
+    if not entries:
+        return None
+    searchcache.put("play1bili", query, entries)
+    return {"entries": entries}
+
+
+async def _lookup(query, source="youtube"):
+    """/play 的查詢：打字搜尋先看暫存（searchcache），貼網址照常每次解析（不理來源）。
+    關鍵字預設搜 YouTube，來源選 Bilibili 時改走 B 站公開搜尋。
     打字搜尋只取第一首「影片」：YouTube 有時把頻道 / 播放清單排在第一筆（例如「tuki.」→ 頻道 tuki.(17)），
     以前用 default_search 的 ytsearch1 會把頻道網址塞進隊列、播不出來。"""
     from . import searchcache, bilibili
@@ -178,6 +216,8 @@ async def _lookup(query):
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, bilibili.lookup_ytdl_shape, query)
     cacheable = not searchcache.is_url(query)
+    if cacheable and _play_source(source) == "bilibili":
+        return await _lookup_bili_keyword(query)
     if cacheable:
         hit = searchcache.get("play1v", query)
         if hit:
@@ -197,16 +237,19 @@ async def _lookup(query):
     return {"entries": entries} if entries else None
 
 
-async def _process_and_play(interaction, query, gid, vc):
+async def _process_and_play(interaction, query, gid, vc, source="youtube"):
     if not interaction.response.is_done():
         await interaction.response.defer(thinking=True, ephemeral=True)
     from . import searchcache
-    from .utils import song_host_allowed, URL_NOT_ALLOWED
+    from .utils import song_host_allowed, URL_NOT_ALLOWED, SEARCH_QUERY_MAX, SEARCH_QUERY_TOO_LONG
     if searchcache.is_url(query) and not song_host_allowed(query):
         await interaction.followup.send(f"⚠️ {URL_NOT_ALLOWED}（其他網址不能點歌；也可以直接打歌名搜尋）", ephemeral=True)
         return
+    if not searchcache.is_url(query) and len(query) > SEARCH_QUERY_MAX:
+        await interaction.followup.send(f"⚠️ {SEARCH_QUERY_TOO_LONG}", ephemeral=True)
+        return
     try:
-        info = await _lookup(query)
+        info = await _lookup(query, source)
         if not info:
             await interaction.followup.send("找不到歌曲，換個關鍵字試試", ephemeral=True)
             return
