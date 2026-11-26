@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-Hant" data-musbot-host="www.bilibili.com" data-musbot-path="/video/BV1rTy2zFE7f">
+<head>
+<meta charset="utf-8">
+<title>只有標題_哔哩哔哩_bilibili</title>
+<link rel="stylesheet" href="/ext/content.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #17181a; color: #e7e9eb; font: 15px/1.5 system-ui, "Microsoft JhengHei", sans-serif; }
+  .nav { height: 64px; background: #222; display: flex; align-items: center; padding: 0 24px; font-weight: 700; }
+  .player {
+    height: 380px; margin: 0 24px; background: #0b0c0d; border-radius: 8px;
+    position: relative; z-index: 40; display: flex; align-items: center; justify-content: center;
+    color: #888; font-size: 22px; margin-bottom: -36px; box-shadow: 0 18px 40px rgba(0,0,0,.55);
+  }
+  .after { margin: 0 24px 40px; padding-top: 48px; }
+  h1.video-title { margin: 0; font-size: 22px; font-weight: 700; }
+</style>
+</head>
+<body>
+  <div class="nav">bilibili</div>
+  <div class="player">播放器（高 z-index，向下蓋住標題上緣）</div>
+  <div class="after">
+    <h1 class="video-title">沒有工具列時，按鈕應在標題下方獨立一列</h1>
+  </div>
+  <script>
+  (function(){
+    const fake = new URL("https://www.bilibili.com/video/BV1rTy2zFE7f");
+    const loc = {
+      href: fake.href, hostname: fake.hostname, pathname: fake.pathname, protocol: fake.protocol,
+      host: fake.host, search: "", hash: "", origin: fake.origin, port: "",
+      toString(){ return this.href },
+    };
+    try { Object.defineProperty(window, "location", { get(){ return loc; }, configurable: true }); } catch(e) {}
+  })();
+  window.chrome = { runtime: { onMessage: { addListener(){} }, sendMessage: async () => ({ status: "ok" }) } };
+  window.module = {};
+</script>
+<script src="/ext/content.js"></script>
+</body>
+</html>

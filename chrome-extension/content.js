@@ -1,9 +1,19 @@
 // YouTube / YouTube Music / Bilibili：在標題旁放「加入機器人」按鈕（這些站都是單頁應用，換影片時重新放）
 (() => {
   const BTN_ID = 'musbot-add-btn';
-  const isMusic = location.hostname === 'music.youtube.com';
-  const isBili = /(^|\.)(bilibili\.com|b23\.tv)$/.test(location.hostname);
-  const isBiliMobile = location.hostname === 'm.bilibili.com';
+  // data-musbot-host / path / href：給模擬頁或測試覆寫網址（正式站沒有這些屬性）
+  function loc() {
+    const d = document.documentElement;
+    const host = d.getAttribute && d.getAttribute('data-musbot-host');
+    if (host) {
+      const path = (d.getAttribute('data-musbot-path') || '/');
+      return { hostname: host, pathname: path, href: d.getAttribute('data-musbot-href') || ('https://' + host + path) };
+    }
+    return { hostname: location.hostname, pathname: location.pathname, href: location.href };
+  }
+  const isMusic = loc().hostname === 'music.youtube.com';
+  const isBili = /(^|\.)(bilibili\.com|b23\.tv)$/.test(loc().hostname);
+  const isBiliMobile = loc().hostname === 'm.bilibili.com';
 
   function toast(text, ok = true) {
     const d = document.createElement('div');
@@ -16,15 +26,16 @@
 
   // YouTube：/watch?v=ID 或 /shorts/ID；B 站：/video/BVxxx 或 /video/av123（含 ?p=）
   function videoId() {
+    const L = loc();
     if (isBili) {
-      const m = location.pathname.match(/\/video\/(BV[1-9A-HJ-NP-Za-km-z]{10}|av\d+)/i);
+      const m = L.pathname.match(/\/video\/(BV[1-9A-HJ-NP-Za-km-z]{10}|av\d+)/i);
       return m ? m[1] : null;
     }
-    if (location.pathname === '/watch') return new URL(location.href).searchParams.get('v');
-    const m = location.pathname.match(/^\/shorts\/([A-Za-z0-9_-]{11})/);
+    if (L.pathname === '/watch') return new URL(L.href).searchParams.get('v');
+    const m = L.pathname.match(/^\/shorts\/([A-Za-z0-9_-]{11})/);
     return m ? m[1] : null;
   }
-  const isShorts = () => location.pathname.startsWith('/shorts/');
+  const isShorts = () => loc().pathname.startsWith('/shorts/');
 
   function currentVideo() {
     const v = videoId();
@@ -36,7 +47,7 @@
       title = (h && h.textContent.trim()) || '';
       if (!title) title = document.title.replace(/[\s_]*哔哩哔哩.*$/, '').replace(/\s*-\s*bilibili$/i, '').trim();
       url = 'https://www.bilibili.com/video/' + v;
-      const part = new URL(location.href).searchParams.get('p');
+      const part = new URL(loc().href).searchParams.get('p');
       if (part && part !== '1') url += '?p=' + part;
       return { url, title };
     }
@@ -69,24 +80,67 @@
     // Shorts / 行動版沒有桌面版標題列 → 用右下角浮動按鈕
     if (isBili) {
       if (isBiliMobile) return document.body;
-      return document.querySelector('h1.video-title, .video-title, .video-info-title, #viewbox_report') || document.body;
+      const mount = biliDesktopMount();
+      return mount.host;
     }
-    if (isShorts() || location.hostname === 'm.youtube.com') return document.body;
+    if (isShorts() || loc().hostname === 'm.youtube.com') return document.body;
     if (isMusic) return document.querySelector('ytmusic-player-bar .middle-controls .content-info-wrapper');
     return document.querySelector('ytd-watch-metadata #title, #above-the-fold #title');
+  }
+
+  // 桌面版 B 站：不要插進標題 h1（會折到標題下方、被播放器蓋住）。
+  // 優先放進工具列（點讚／投幣那一排），否則插在標題後面當獨立一列，再不行才浮動。
+  function biliDesktopMount() {
+    const bar = document.querySelector('#arc_toolbar_report, .video-toolbar-container, .video-toolbar-left, .video-toolbar');
+    if (bar) return { host: bar, mode: 'bar' };
+    const title = document.querySelector('h1.video-title, h1[class*="video-title"], .video-info-title-inner h1, .video-info-title h1');
+    if (title && title.parentNode) return { host: title, mode: 'after-title' };
+    const info = document.querySelector('.video-info-container, .video-info, #viewbox_report');
+    if (info) return { host: info, mode: 'info' };
+    return { host: document.body, mode: 'floating' };
+  }
+
+  function biliStillMounted(old, mount) {
+    if (!old) return false;
+    const floating = old.classList.contains('floating');
+    if (mount.mode === 'floating') return floating && (document.body.contains(old) || old.parent === document.body);
+    if (floating) return false;
+    if (mount.mode === 'after-title') return old.previousElementSibling === mount.host || old.previousSibling === mount.host;
+    return mount.host.contains(old);
+  }
+
+  function placeWrap(wrap, mount) {
+    const bits = ['musbot-wrap'];
+    if (isMusic) bits.push('music');
+    if (mount.mode === 'floating') bits.push('floating');
+    if (mount.mode === 'bar') bits.push('bili-bar');
+    if (mount.mode === 'after-title' || mount.mode === 'info') bits.push('bili-row');
+    wrap.className = bits.join(' ');
+    if (mount.mode === 'after-title') {
+      mount.host.insertAdjacentElement('afterend', wrap);
+    } else if (mount.mode === 'bar' && mount.host.firstChild) {
+      mount.host.insertBefore(wrap, mount.host.firstChild);
+    } else {
+      mount.host.appendChild(wrap);
+    }
   }
 
   function ensureButton() {
     const onWatch = !!videoId();
     const old = document.getElementById(BTN_ID);
     if (!onWatch) { if (old) old.remove(); return; }
-    const a = anchor();
+    const biliDesk = isBili && !isBiliMobile;
+    const mount = biliDesk ? biliDesktopMount() : null;
+    const a = biliDesk ? mount.host : anchor();
     if (!a) return;
-    if (old && a.contains(old) && old.classList.contains('floating') === (a === document.body)) return;
+    if (biliDesk) {
+      if (biliStillMounted(old, mount)) return;
+    } else if (old && a.contains(old) && old.classList.contains('floating') === (a === document.body)) {
+      return;
+    }
     if (old) old.remove();
     const wrap = document.createElement('span');
     wrap.id = BTN_ID;
-    wrap.className = 'musbot-wrap' + (isMusic ? ' music' : '') + (a === document.body ? ' floating' : '');
     const add = document.createElement('button');
     add.type = 'button'; add.className = 'musbot-btn'; add.textContent = '🎵 加入機器人';
     add.title = '加入 Discord 音樂機器人的佇列（Shift+點 = 下一首播）';
@@ -99,7 +153,11 @@
     pk.title = '加到我的個人歌單';
     pk.addEventListener('click', (e) => { e.stopPropagation(); togglePicker(wrap, pk); });
     wrap.append(add, nx, pk);
-    a.appendChild(wrap);
+    if (biliDesk) placeWrap(wrap, mount);
+    else {
+      wrap.className = 'musbot-wrap' + (isMusic ? ' music' : '') + (a === document.body ? ' floating' : '');
+      a.appendChild(wrap);
+    }
   }
 
   // ---------- 加到我的歌單：列出自己的歌單（用自己的金鑰）→ 點一份就加入目前影片 ----------

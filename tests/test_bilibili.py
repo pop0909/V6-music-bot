@@ -313,7 +313,7 @@ class PanelAndExtension(unittest.TestCase):
 
     def test_extension_manifest_and_scripts(self):
         man = json.loads(open(os.path.join(ROOT, "chrome-extension", "manifest.json"), encoding="utf-8").read())
-        self.assertEqual(man["version"], "1.2.0")
+        self.assertEqual(man["version"], "1.2.1")
         joined = " ".join(man.get("host_permissions") or [])
         self.assertIn("bilibili.com", joined)
         self.assertIn("b23.tv", joined)

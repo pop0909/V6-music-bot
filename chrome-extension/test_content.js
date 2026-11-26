@@ -3,21 +3,63 @@ const assert = require('assert'); const vm = require('vm'); const fs = require('
 const src = fs.readFileSync(__dirname + '/content.js', 'utf8');
 function el(tag) {
   return { tag, children: [], classList: { _s: new Set(), add(c){this._s.add(c)}, remove(c){this._s.delete(c)}, contains(c){return this._s.has(c)} },
-    set className(v){ v.split(' ').filter(Boolean).forEach(c=>this.classList.add(c)); this._cn=v }, get className(){return this._cn},
+    set className(v){ this._s && 0; v.split(' ').filter(Boolean).forEach(c=>this.classList.add(c)); this._cn=v }, get className(){return this._cn},
+    get parentNode(){ return this.parent }, get firstChild(){ return this.children[0] || null },
+    get previousSibling(){ if(!this.parent) return null; const i=this.parent.children.indexOf(this); return i>0?this.parent.children[i-1]:null },
+    get previousElementSibling(){ return this.previousSibling },
     append(...k){ k.forEach(x=>{x.parent=this; this.children.push(x)}) }, appendChild(x){ this.append(x) },
+    insertBefore(x, ref){ x.parent=this; const i=(ref==null)?this.children.length:this.children.indexOf(ref); this.children.splice(i<0?this.children.length:i, 0, x); return x },
+    insertAdjacentElement(pos, x){ if(pos!=='afterend'||!this.parent) return null; this.parent.insertBefore(x, this.parent.children[this.parent.children.indexOf(this)+1]||null); if(!x.parent){ x.parent=this.parent; this.parent.children.push(x) } return x },
     contains(x){ let p=x; while(p){ if(p===this) return true; p=p.parent } return false },
     remove(){ if(this.parent){ this.parent.children=this.parent.children.filter(c=>c!==this); this.parent=null } },
-    _l: {}, addEventListener(t, f){ (this._l[t] = this._l[t] || []).push(f) }, click(){ (this._l.click || []).forEach(f => f({ stopPropagation(){}, shiftKey: false })) }, textContent:'' };
+    _l: {}, addEventListener(t, f){ (this._l[t] = this._l[t] || []).push(f) }, click(){ (this._l.click || []).forEach(f => f({ stopPropagation(){}, shiftKey: false })) }, textContent:'', getAttribute(n){ return (this._attrs||{})[n] || null }, setAttribute(n,v){ (this._attrs||(this._attrs={}))[n]=v } };
+}
+function matchSel(node, sel) {
+  sel = sel.trim();
+  if (!sel || !node) return false;
+  if (sel.startsWith('#')) return node.id === sel.slice(1);
+  const m = sel.match(/^([a-z0-9-]*)(\.[A-Za-z0-9_-]+)?(\[[^\]]+\])?(?:\s+(.+))?$/i);
+  if (!m) return false;
+  const tag = (m[1]||'').toLowerCase(), cls = m[2] ? m[2].slice(1) : '', rest = m[4];
+  if (tag && node.tag !== tag) return false;
+  if (cls && !(node.classList.contains(cls) || (node.className||'').split(' ').includes(cls))) return false;
+  if (rest) return (node.children||[]).some(c => matchSel(c, rest));
+  return true;
+}
+function qs(root, selector, fallbacks) {
+  const parts = selector.split(',').map(s => s.trim()).filter(Boolean);
+  const all = []; (function w(n){ all.push(n); (n.children||[]).forEach(w) })(root);
+  for (const p of parts) {
+    if (fallbacks) {
+      if (p.includes('#title') && !p.includes('h1') && fallbacks.title) return fallbacks.title;
+      if ((p.includes('h1.ytd') || p.includes('#title h1')) && fallbacks.h1) return fallbacks.h1;
+    }
+    const hit = all.find(n => matchSel(n, p.split(/\s+/).pop() === p ? p : p) || matchSel(n, p));
+    if (hit) return hit;
+    // last simple token (e.g. "ytd-watch-metadata #title" → #title id or .title)
+    const last = p.split(/\s+/).pop();
+    const hit2 = all.find(n => matchSel(n, last));
+    if (hit2) return hit2;
+  }
+  return null;
 }
 function run(href, opts = {}, send = async () => ({})) {
   const body = el('body'), root = el('html'); root.append(body);
-  const h1 = el('h1'); h1.textContent = opts.h1 || ''; const title = el('div');
+  const h1 = el('h1'); h1.textContent = opts.h1 || ''; h1.className = 'video-title';
+  const title = el('div'); title.id = 'title';
+  const toolbar = el('div'); toolbar.id = 'arc_toolbar_report'; toolbar.className = 'video-toolbar-container';
+  const info = el('div'); info.className = 'video-info-container';
   const all = () => { const out=[]; (function w(n){ out.push(n); n.children.forEach(w) })(root); return out };
-  if (opts.h1) body.append(h1);
-  if (opts.titleRow) body.append(title);
+  if (opts.info) { if (opts.h1) info.append(h1); if (opts.toolbar) info.append(toolbar); body.append(info); }
+  else {
+    if (opts.h1) body.append(h1);
+    if (opts.titleRow) body.append(title);
+    if (opts.toolbar) body.append(toolbar);
+  }
+  const fallbacks = { h1: opts.h1 ? h1 : null, title: opts.titleRow ? title : null };
   const document = { documentElement: root, body, title: opts.docTitle || '',
     getElementById: id => all().find(n => n.id === id) || null,
-    querySelector: q => (q.includes('h1') ? (opts.h1 ? h1 : null) : (q.includes('#title') && opts.titleRow ? title : null)),
+    querySelector: q => qs(root, q, fallbacks),
     createElement: el, addEventListener(){} };
   const u = new URL(href);
   const ctx = { document, location: { href, hostname: u.hostname, pathname: u.pathname }, URL, setTimeout(){}, requestAnimationFrame(){},
@@ -35,17 +77,24 @@ assert.ok(r.btn && r.btn.classList.contains('floating'), '行動版要有浮動�
 r = run('https://www.youtube.com/results?search_query=a', { titleRow: true });
 assert.strictEqual(r.btn, null); assert.strictEqual(r.api.currentVideo(), null);
 
-// Bilibili 影片頁：標題旁放按鈕，網址含 BV 與指定分 P
-r = run('https://www.bilibili.com/video/BV1rTy2zFE7f?spm_id_from=x', { h1: '洛天依' });
+// Bilibili 影片頁：按鈕放工具列，不要插進標題 h1；網址含 BV 與指定分 P
+r = run('https://www.bilibili.com/video/BV1rTy2zFE7f?spm_id_from=x', { h1: '洛天依', toolbar: true });
 assert.ok(r.btn, 'B 站影片頁要有加入按鈕');
+assert.ok(r.btn.classList.contains('bili-bar'), '桌面版要放在工具列');
+assert.ok(!r.btn.classList.contains('floating'), '桌面版不要用右下角浮動');
+assert.ok(!r.body.children.find(c => c.tag==='h1' && c.contains(r.btn)), '不可以插進標題 h1');
 assert.strictEqual(JSON.stringify(r.api.currentVideo()), JSON.stringify({ url: 'https://www.bilibili.com/video/BV1rTy2zFE7f', title: '洛天依' }));
-r = run('https://www.bilibili.com/video/BV1rTy2zFE7f?p=3', { h1: '第三集' });
+r = run('https://www.bilibili.com/video/BV1rTy2zFE7f?p=3', { h1: '第三集', toolbar: true });
 assert.strictEqual(r.api.currentVideo().url, 'https://www.bilibili.com/video/BV1rTy2zFE7f?p=3');
+r = run('https://www.bilibili.com/video/BV1rTy2zFE7f', { h1: '只有標題' });
+assert.ok(r.btn && r.btn.classList.contains('bili-row'), '沒有工具列時要插在標題後面獨立一列');
+assert.ok(!r.btn.classList.contains('floating'));
+assert.strictEqual(r.btn.previousSibling && r.btn.previousSibling.textContent, '只有標題');
 r = run('https://m.bilibili.com/video/BV1rTy2zFE7f', { h1: '行動版', docTitle: '行動版_哔哩哔哩_bilibili' });
 assert.ok(r.btn && r.btn.classList.contains('floating'), 'B 站行動版要有浮動按鈕');
-r = run('https://www.bilibili.com/video/av170001', { h1: '舊版av' });
+r = run('https://www.bilibili.com/video/av170001', { h1: '舊版av', toolbar: true });
 assert.strictEqual(r.api.currentVideo().url, 'https://www.bilibili.com/video/av170001');
-r = run('https://www.bilibili.com/', { h1: '首頁' });
+r = run('https://www.bilibili.com/', { h1: '首頁', toolbar: true });
 assert.strictEqual(r.btn, null); assert.strictEqual(r.api.currentVideo(), null);
 
 (async () => {

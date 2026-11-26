@@ -273,7 +273,7 @@ class FollowUps(Base):
         for t in ("'lists'", "'listCreate'", "'listAdd'"):
             self.assertIn(t, bg)
         man = json.load(open(os.path.join(ext, "manifest.json"), encoding="utf-8"))
-        self.assertEqual(man["version"], "1.2.0")
+        self.assertEqual(man["version"], "1.2.1")
 
 
 class LiveUpdate(Base):

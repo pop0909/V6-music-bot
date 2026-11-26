@@ -24,3 +24,7 @@
 .musbot-pick-item:hover { background: #6c5ce7; }
 .musbot-pick-item.new { color: #a29bfe; border-top: 1px solid #333; border-radius: 0 0 7px 7px; }
 .musbot-pick-empty { padding: 7px 10px; color: #999; }
+
+/* B 站桌面：放在工具列或標題下方獨立一列，不要折進標題裡被播放器蓋住 */
+.musbot-wrap.bili-bar { margin: 0 12px 0 0; align-items: center; flex-shrink: 0; position: relative; z-index: 2147483646; }
+.musbot-wrap.bili-row { display: flex; margin: 8px 0; width: 100%; position: relative; z-index: 2147483646; }

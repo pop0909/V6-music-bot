@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "音樂機器人點歌",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "在 YouTube / YouTube Music / Bilibili 一鍵把歌加入 Discord 音樂機器人（musbot.kdns.fr）的佇列。",
   "permissions": ["storage", "contextMenus", "activeTab", "scripting"],
   "host_permissions": ["https://musbot.kdns.fr/*", "https://www.bilibili.com/*", "https://m.bilibili.com/*", "https://b23.tv/*"],
