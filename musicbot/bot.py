@@ -17,7 +17,8 @@ intents.voice_states = True
 intents.members = True
 
 # 歌名來自 YouTube / 網頁 / 擴充功能成員，可能夾帶 @everyone、@here 或身分組提及 → 一律不觸發提及
-client = discord.Client(intents=intents, allowed_mentions=discord.AllowedMentions.none())
+# 不需要大筆訊息快取（控制面板訊息自己記在 control_panels）；預設 1000 筆在記憶體偏緊的機器上偏多
+client = discord.Client(intents=intents, allowed_mentions=discord.AllowedMentions.none(), max_messages=200)
 tree = app_commands.CommandTree(client)
 _synced_once = False
 

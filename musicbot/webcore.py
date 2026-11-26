@@ -24,6 +24,7 @@ from . import prefetch as _prefetch
 from . import audio as _audio
 from .state import manual_advance, song_meta, queue_room, queue_max, queue_full_message
 from .state import play_notices, note_song_meta, known_durations, remember_duration, notify_change
+from .state import change_version, duration_gen
 from .state import pending_seeks as _pending_seeks, sleep_timers
 from .utils import format_time, allowed_song_url, song_url_error, safe_title
 from .player import _update_panel, play_next, resume_playback, _spawn  # noqa: F401  _update_panel：測試會替換
@@ -510,17 +511,28 @@ def get_guild_list():
     return result
 
 
-def _queue_rev(q, meta):
+_qrev_cache = {}  # gid: (change_ver, duration_gen, qlen, rev) — 播放進度每秒變，佇列本身沒變就重用
+
+
+def _queue_rev(gid, q, meta):
     """佇列內容的短版本號（網址／標題／長度／點歌者）。不含播放進度，所以每秒 tick 不會變。"""
+    ver, gen, n = change_version(), duration_gen(), len(q)
+    hit = _qrev_cache.get(gid)
+    if hit and hit[0] == ver and hit[1] == gen and hit[2] == n:
+        return hit[3]
     h = hashlib.sha1()
-    h.update(str(len(q)).encode())
+    h.update(str(n).encode())
     for u, t in q:
         who = (meta.get(u) or {}).get("requester") or ""
         if who == "網頁":
             who = ""
         h.update(b"\0")
         h.update(f"{u}\t{t}\t{known_durations.get(u, 0)}\t{who}".encode("utf-8", "replace"))
-    return h.hexdigest()[:16]
+    rev = h.hexdigest()[:16]
+    _qrev_cache[gid] = (ver, gen, n, rev)
+    if len(_qrev_cache) > 64:
+        _qrev_cache.pop(next(iter(_qrev_cache)))
+    return rev
 
 
 def get_guild_status(gid, include_queue=True):
@@ -535,14 +547,14 @@ def get_guild_status(gid, include_queue=True):
         is_connected = bool(_vc and _vc.is_connected())   # 以實際連線為準（不看殘留的 voice_clients 紀錄）
 
         if is_play and not is_paus and gid in song_start_times:
-            elapsed = time.time() - song_start_times[gid]
+            elapsed = round(time.time() - song_start_times[gid], 3)
         elif is_paus and gid in paused_position:
-            elapsed = paused_position[gid]
+            elapsed = round(paused_position[gid], 3)
         else:
             elapsed = 0
 
         q = queues.get(gid) or []
-        q_rev = _queue_rev(q, song_meta.get(gid) or {})
+        q_rev = _queue_rev(gid, q, song_meta.get(gid) or {})
         queue_list = []
         if include_queue:
             for i, (u, t) in enumerate(q):
@@ -596,7 +608,7 @@ def get_full_app_state(gid, known=None):
     # 先算 q_rev（很便宜）再決定要不要組整份佇列：播放中每秒只變 elapsed，佇列本身沒變
     with state_lock:
         q_peek = queues.get(gid) or []
-        q_rev_peek = _queue_rev(q_peek, song_meta.get(gid) or {})
+        q_rev_peek = _queue_rev(gid, q_peek, song_meta.get(gid) or {})
     include_q = not known or known.get("q") != q_rev_peek
     state_data = get_guild_status(gid, include_queue=include_q)
     from .storage import playlist_rev

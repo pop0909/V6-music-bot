@@ -88,20 +88,29 @@ now_playing_stream = {}
 # 已知的歌曲長度（佇列總長度用，跨 guild 共用）：url: 秒數
 known_durations = {}
 MAX_KNOWN_DURATIONS = 5000
+_duration_gen = 0           # 長度表有新值才加一，給 SSE 佇列版本快取用
+
+
+def duration_gen():
+    return _duration_gen
 
 
 def remember_duration(url, duration):
     """記下某首歌的長度（只收 0 < 秒數 < 24 小時的合理值）"""
+    global _duration_gen
     try:
         d = int(float(duration or 0))
     except (TypeError, ValueError):
         return
     if not url or not (0 < d < 86400):
         return
+    old = known_durations.get(url)
     known_durations.pop(url, None)
     known_durations[url] = d
     while len(known_durations) > MAX_KNOWN_DURATIONS:
         known_durations.pop(next(iter(known_durations)))
+    if old != d:
+        _duration_gen += 1
 
 # 循環模式輔助狀態
 loop_current = {}           # guild_id: (url, title)  單曲循環要重播的那首（目前歌曲）

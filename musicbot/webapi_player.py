@@ -254,6 +254,7 @@ def api_progress_stream():
         # 只在狀態變更時推送：比對完整狀態 JSON，相同就跳過。
         # 這樣多數 tick 只是輕量字串比較，且前端不會收到無意義的重複事件。
         last_payload = None
+        last_rest = None                 # 不含播放進度的狀態；只有 elapsed 變就改送精簡事件
         last_sent = time.monotonic()
         ver = change_version()
         mine = guildscope.chosen_guild(ident)
@@ -272,16 +273,28 @@ def api_progress_stream():
                 mine = guildscope.chosen_guild(ident) if ver != last_ver else mine
                 last_ver = ver
                 data["active_guild_id"] = str(mine) if mine else None     # 自己的目前伺服器（不跟著別人切換）
-                payload = f"data: {json.dumps(data)}\n\n"
-                if payload != last_payload:
+                # 播放中每秒只變進度：其餘狀態沒變就只送 elapsed，省流量也少讓前端解析大包
+                # queue / playlist 本來就用版本號省略，比對時不看這兩項，以免「第一次有、第二次沒有」被當成狀態變了
+                rest = {k: v for k, v in data.items() if k not in ("elapsed", "elapsed_str", "queue", "playlist")}
+                rest_s = json.dumps(rest, ensure_ascii=False, separators=(",", ":"))
+                if last_rest is None or rest_s != last_rest:
+                    payload = f"data: {json.dumps(data, ensure_ascii=False, separators=(',', ':'))}\n\n"
                     yield payload
                     last_payload = payload
+                    last_rest = rest_s
                     known = {"pl": data.get("pl_rev"), "q": data.get("q_rev")}
                     last_sent = time.monotonic()
-                elif time.monotonic() - last_sent >= 30:
-                    # 每 30 秒強制推送一次心跳，避免中間設備（Nginx/Tunnel）把閒置連線掐掉
-                    yield ": keepalive\n\n"
-                    last_sent = time.monotonic()
+                else:
+                    slim = {k: data[k] for k in ("elapsed", "elapsed_str") if k in data}
+                    payload = f"data: {json.dumps(slim, ensure_ascii=False, separators=(',', ':'))}\n\n"
+                    if payload != last_payload:
+                        yield payload
+                        last_payload = payload
+                        last_sent = time.monotonic()
+                    elif time.monotonic() - last_sent >= 30:
+                        # 每 30 秒強制推送一次心跳，避免中間設備（Nginx/Tunnel）把閒置連線掐掉
+                        yield ": keepalive\n\n"
+                        last_sent = time.monotonic()
             except GeneratorExit:
                 raise  # 客戶端斷線，正常結束
             except Exception as e:

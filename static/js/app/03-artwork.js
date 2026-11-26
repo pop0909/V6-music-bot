@@ -426,7 +426,11 @@ function queueSummary(q) {
 
 // 總長度文字：直播沒有長度 → 顯示「直播」，不要顯示「/ 0:00」
 function totalText(data) {
-    if (data.current_title && !(data.duration > 0)) return '直播';
-    return data.duration_str || '0:00';
+    // SSE 精簡進度事件可能只帶 elapsed：其餘沿用畫面上一次的完整狀態
+    const title = ('current_title' in data) ? data.current_title : state.currentTitle;
+    const dur = ('duration' in data) ? data.duration : state.duration;
+    if (title && !(dur > 0)) return '直播';
+    if ('duration_str' in data) return data.duration_str || '0:00';
+    return (el.totalTime && el.totalTime.textContent) || '0:00';
 }
 

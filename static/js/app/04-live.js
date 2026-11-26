@@ -101,27 +101,31 @@ function applyLiveState(data) {
     try { if (data && 'is_connected' in data) { const vc = !!data.is_connected; if (state.voiceConnected !== vc) { state.voiceConnected = vc; updateStatusDot(state.isPlaying && !state.isPaused ? 'playing' : state.isPaused ? 'active' : 'idle'); } } applyIdleSleep(data); } catch (_) {}
     if (!data || data.error) return;
     // 跳轉剛送出（或正在拖曳）：伺服器還沒反映新位置前，不讓舊進度把進度條拉回去
-    if (seekHold.until && (performance.now() > seekHold.until || (data.current_url || '') !== seekHold.url ||
-                           (kbSeek.target === null && Math.abs((data.elapsed || 0) - seekHold.pos) <= 2.5))) seekHold.until = 0;
+    if (seekHold.until && (performance.now() > seekHold.until ||
+                           ('current_url' in data && (data.current_url || '') !== seekHold.url) ||
+                           (kbSeek.target === null && 'elapsed' in data && Math.abs((data.elapsed || 0) - seekHold.pos) <= 2.5))) seekHold.until = 0;
     const holdProgress = seekDrag.active || seekHold.until > 0;
-    state.duration = data.duration || 0;
-    if (!holdProgress) {
-        state.posBase = data.elapsed || 0;
-        state.posAt = performance.now();
+    if ('duration' in data) state.duration = data.duration || 0;
+    const isPlay = ('is_playing' in data) ? data.is_playing : state.isPlaying;
+    const isPaus = ('is_paused' in data) ? data.is_paused : state.isPaused;
+    if (!holdProgress && ('elapsed' in data || 'duration' in data)) {
+        const elapsed = ('elapsed' in data) ? (data.elapsed || 0) : state.posBase;
+        if ('elapsed' in data) { state.posBase = elapsed; state.posAt = performance.now(); }
         // === 進度條 ===
-        if (data.duration > 0) {
+        if (state.duration > 0) {
             // 播放中：目標設在「1 秒後」的位置，CSS 用 1 秒線性過渡滑過去，正好接上下一筆 SSE
-            const ahead = data.is_playing && !data.is_paused ? 1 : 0;
-            setProgress(Math.min(((data.elapsed + ahead) / data.duration) * 100, 100));
+            const ahead = isPlay && !isPaus ? 1 : 0;
+            setProgress(Math.min(((elapsed + ahead) / state.duration) * 100, 100));
         } else {
             setProgress(0);
         }
         // === 時間 ===
-        setText(el.currentTime, data.elapsed_str || '0:00');
-        _npTimeText = `${data.elapsed_str || '0:00'} / ${totalText(data)}`;
+        if ('elapsed_str' in data) setText(el.currentTime, data.elapsed_str || '0:00');
+        const est = ('elapsed_str' in data) ? (data.elapsed_str || '0:00') : (el.currentTime && el.currentTime.textContent) || '0:00';
+        _npTimeText = `${est} / ${totalText(data)}`;
         if (npOpen && el.npTime) setText(el.npTime, _npTimeText);   // 收合時不碰展開畫面的 DOM
     }
-    setText(el.totalTime, totalText(data));
+    if ('duration' in data || 'duration_str' in data || 'current_title' in data) setText(el.totalTime, totalText(data));
     if (el.barSub && data.queue_length !== undefined) {
         const n = data.queue_length;
         setText(el.barSub, data.current_title
@@ -132,8 +136,8 @@ function applyLiveState(data) {
     // === 播放狀態 ===（剛按下播放 / 暫停 / 停止、伺服器還沒回應：保留畫面上的樂觀狀態）
     const holdPlay = performance.now() < _playHoldUntil;
     if (!holdPlay) {
-        state.isPlaying = data.is_playing;
-        state.isPaused = data.is_paused;
+        if ('is_playing' in data) state.isPlaying = data.is_playing;
+        if ('is_paused' in data) state.isPaused = data.is_paused;
     }
     
     // === 標題/縮圖（SSE 每次推送都嘗試更新） ===
@@ -151,10 +155,10 @@ function applyLiveState(data) {
         updateSongInfo('', '', '');
     }
     
- if (holdPlay) { updateDocTitle(); } else {
-    updateStatusDot(data.is_playing && !data.is_paused ? 'playing' : data.is_paused ? 'active' : 'inactive');
+ if (holdPlay) { updateDocTitle(); } else if ('is_playing' in data || 'is_paused' in data) {
+    updateStatusDot(state.isPlaying && !state.isPaused ? 'playing' : state.isPaused ? 'active' : 'inactive');
     updatePlayButton();
-    updateEqualizer(data.is_playing && !data.is_paused);
+    updateEqualizer(state.isPlaying && !state.isPaused);
     updateDocTitle();
     }
     

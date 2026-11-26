@@ -3,17 +3,19 @@ import json
 import os
 import re
 import sys
+import time
 import unittest
+from unittest import mock
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROOT, "tests"))
 sys.path.insert(0, ROOT)
 
 from appjs import app_js_files, read_app_js  # noqa: E402
-from musicbot import state, webcore  # noqa: E402
+from musicbot import state, webcore, webapi, bot  # noqa: E402
 
 G = 111
-TOKEN = "20261126t12a"
+TOKEN = "20261126t12b"
 U = "https://www.youtube.com/watch?v=T12Q%05d"
 
 
@@ -102,7 +104,7 @@ class SseQueueOmit(unittest.TestCase):
         first = webcore.get_full_app_state(G, {})
         known = {"pl": first["pl_rev"], "q": first["q_rev"]}
         url = state.queues[G][0][0]
-        state.known_durations[url] = 185
+        state.remember_duration(url, 185)
         nxt = webcore.get_full_app_state(G, known)
         self.assertIn("queue", nxt)
         self.assertEqual(nxt["queue"][0]["duration"], 185)
@@ -110,6 +112,77 @@ class SseQueueOmit(unittest.TestCase):
 
     def test_without_known_includes_queue(self):
         self.assertIn("queue", webcore.get_full_app_state(G))
+
+    def test_same_duration_does_not_need_new_rev(self):
+        url = state.queues[G][0][0]
+        state.remember_duration(url, 120)
+        first = webcore.get_full_app_state(G, {})
+        state.remember_duration(url, 120)   # 相同秒數只是刷新順序，版本不該變
+        again = webcore.get_full_app_state(G, {"pl": first["pl_rev"], "q": first["q_rev"]})
+        self.assertNotIn("queue", again)
+        self.assertEqual(again["q_rev"], first["q_rev"])
+
+
+class LivePartialAndCache(unittest.TestCase):
+    def test_apply_live_state_ignores_missing_fields(self):
+        js = _read("static/js/app/04-live.js")
+        self.assertIn("if ('duration' in data) state.duration", js)
+        self.assertIn("if ('is_playing' in data) state.isPlaying", js)
+        self.assertIn("if ('is_paused' in data) state.isPaused", js)
+        self.assertIn("'current_url' in data &&", js)
+        art = _read("static/js/app/03-artwork.js")
+        self.assertIn("('current_title' in data) ? data.current_title : state.currentTitle", art)
+        self.assertIn("('duration' in data) ? data.duration : state.duration", art)
+
+    def test_message_cache_is_capped(self):
+        self.assertEqual(bot.client._connection.max_messages, 200)
+
+    def test_stream_sends_progress_only_when_just_elapsed_changes(self):
+        webapi.flask_app.config["LOGIN_DISABLED"] = True
+        gid = G
+        state.guild_names[gid] = "測試"
+        state.queues[gid] = [(U % i, "歌 %d" % i) for i in range(1, 81)]
+        state.is_playing_state[gid] = True
+        state.is_paused_state[gid] = False
+        state.now_playing[gid] = "歌 1"
+        state.now_playing_url[gid] = U % 1
+        state.song_start_times[gid] = time.time() - 10
+        state.song_durations[gid] = 180
+        n = {"i": 0}
+
+        def wait_change(v, t):
+            n["i"] += 1
+            state.song_start_times[gid] = time.time() - 10 - n["i"]
+            return v
+
+        c = webapi.flask_app.test_client()
+        try:
+            with mock.patch("musicbot.guildscope.allowed_guilds", return_value=None), \
+                    mock.patch("musicbot.idlesleep.all_asleep", return_value=False), \
+                    mock.patch("musicbot.webapi_player.wait_change", side_effect=wait_change):
+                r = c.get(f"/api/progress-stream?guild_id={gid}", buffered=False)
+                it = iter(r.response)
+                a = json.loads(next(it).decode()[len("data: "):])
+                b = json.loads(next(it).decode()[len("data: "):])
+                r.close()
+        finally:
+            state.guild_names.pop(gid, None)
+            state.queues.pop(gid, None)
+            state.is_playing_state.pop(gid, None)
+            state.is_paused_state.pop(gid, None)
+            state.now_playing.pop(gid, None)
+            state.now_playing_url.pop(gid, None)
+            state.song_start_times.pop(gid, None)
+            state.song_durations.pop(gid, None)
+
+        self.assertIn("queue", a)
+        self.assertEqual(len(a["queue"]), 80)
+        self.assertIn("elapsed", a)
+        self.assertEqual(set(b.keys()), {"elapsed", "elapsed_str"})
+        self.assertNotEqual(b["elapsed"], a["elapsed"])
+        self.assertLess(len(json.dumps(b)), 80)
+        self.assertLess(len(json.dumps(b)) * 8, len(json.dumps(a)))
+
 
 
 if __name__ == "__main__":
