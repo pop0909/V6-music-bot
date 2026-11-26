@@ -3,7 +3,10 @@
 B 站影片頁對機房 IP 常回 HTTP 412，yt-dlp 走網頁解析會失敗。改走公開 API：
 - 搜尋：/x/web-interface/wbi/search/type（WBI 簽名）；失敗或回 HTML 再試 search/all
 - 資訊：/x/web-interface/view（多 P 在 data.pages）
+- 合集：/x/polymer/web-space/seasons_archives_list（分頁）
+- 公開收藏夾：/x/v3/fav/resource/list（分頁）
 - 音訊：/x/player/playurl（fnval=16 DASH）；失敗再試 WBI 簽名
+不支援番劇。合集／收藏夾最多加入 COLLECTION_CAP 首。
 
 音訊 CDN（*.bilivideo.com 等）必須帶 Referer: https://www.bilibili.com，否則 403。
 只在記憶體放匿名 buvid3，不讀、不寫 cookies.txt。
@@ -157,6 +160,129 @@ def normalize(url):
     return canonical(bvid=info["bvid"], aid=info["aid"], p=info["p"])
 
 
+# 合集／公開收藏夾（番劇不在範圍內）
+COLLECTION_CAP = 200
+SEASON_PAGE_SIZE = 30
+FAV_PAGE_SIZE = 20
+_BANGUMI_RE = re.compile(r"/(?:bangumi|cheese)(?:/|$)", re.I)
+_ML_RE = re.compile(r"(?:^|/)ml(\d+)", re.I)
+
+
+def parse_resource(url):
+    """辨識影片、合集、公開收藏夾或番劇。短網址需先 resolve_short。"""
+    if not url or not isinstance(url, str):
+        return None
+    raw = url.strip()
+    if "://" not in raw:
+        raw = "https://" + raw
+    try:
+        u = urllib.parse.urlparse(raw)
+    except Exception:
+        return None
+    host = (u.hostname or "").lower().rstrip(".")
+    if not any(host == x or host.endswith("." + x) for x in _HOSTS):
+        return None
+    if any(host == x or host.endswith("." + x) for x in _SHORT_HOSTS):
+        return None
+    path = u.path or ""
+    q = urllib.parse.parse_qs(u.query or "", keep_blank_values=True)
+    def _q(name):
+        v = (q.get(name) or [None])[0]
+        return v
+    def _num(name):
+        v = _q(name)
+        if v and str(v).isdigit():
+            return int(v)
+        return None
+
+    if _BANGUMI_RE.search(path):
+        return {"kind": "bangumi"}
+    if "channel/seriesdetail" in path or (_q("type") or "").lower() == "series":
+        return {"kind": "series"}
+
+    mid = None
+    m = re.search(r"space\.bilibili\.com", host) or host.endswith(".bilibili.com") or host == "bilibili.com"
+    sm = re.search(r"/(\d{1,16})(?:/|$)", path)
+    if sm and ("space.bilibili.com" in host or path.startswith("/list/") or "/medialist/" in path):
+        mid = int(sm.group(1))
+
+    sid = _num("sid") or _num("business_id")
+    fid = _num("fid")
+    ml = _ML_RE.search(path)
+    if ml:
+        fid = int(ml.group(1))
+
+    # space 合集頁
+    cm = re.search(r"/(\d{1,16})/channel/collectiondetail", path)
+    if cm:
+        mid = int(cm.group(1))
+        sid = sid or _num("sid")
+        if sid:
+            return {"kind": "season", "mid": mid, "season_id": sid}
+    lm = re.search(r"/(\d{1,16})/lists/(\d+)", path)
+    if lm:
+        mid, sid = int(lm.group(1)), int(lm.group(2))
+        return {"kind": "season", "mid": mid, "season_id": sid}
+
+    # www 播放列表：/list/{mid}?sid= 或 /list/ml{fid}
+    if re.search(r"/list/", path):
+        if fid:
+            return {"kind": "favlist", "fid": fid}
+        if mid and sid:
+            bvid = None
+            bm = _BV_RE.search(_q("bvid") or path + "&" + (u.query or ""))
+            if bm:
+                bvid = bm.group(1)
+            if bvid:
+                video = parse(canonical(bvid=bvid, p=_num("p") or 1)) or {"bvid": bvid, "aid": None, "p": _num("p") or 1}
+                video.update(kind="video", mid=mid, season_id=sid)
+                return video
+            return {"kind": "season", "mid": mid, "season_id": sid}
+
+    if "/medialist/" in path:
+        if fid:
+            return {"kind": "favlist", "fid": fid}
+        if mid and sid:
+            return {"kind": "season", "mid": mid, "season_id": sid}
+        biz = (_q("business") or "")
+        if mid and (sid or "collection" in biz):
+            if sid:
+                return {"kind": "season", "mid": mid, "season_id": sid}
+
+    if "/favlist" in path:
+        mid = mid or (int(sm.group(1)) if sm else None)
+        ftype = (_q("ftype") or "").lower()
+        if fid and ftype == "collect":
+            if mid:
+                return {"kind": "season", "mid": mid, "season_id": fid}
+        if fid:
+            return {"kind": "favlist", "fid": fid}
+
+    video = parse(raw)
+    if video:
+        video = dict(video)
+        video["kind"] = "video"
+        return video
+    return None
+
+
+def canonical_resource(info):
+    if not info:
+        return None
+    kind = info.get("kind")
+    if kind == "season" and info.get("mid") and info.get("season_id"):
+        return f"https://space.bilibili.com/{int(info['mid'])}/channel/collectiondetail?sid={int(info['season_id'])}"
+    if kind == "favlist" and info.get("fid"):
+        return f"https://www.bilibili.com/medialist/detail/ml{int(info['fid'])}"
+    if kind == "video":
+        return canonical(bvid=info.get("bvid"), aid=info.get("aid"), p=info.get("p") or 1)
+    return None
+
+
+def _canonical_any(url):
+    return normalize(url) or canonical_resource(parse_resource(url))
+
+
 # ---------- HTTP（測試可把 _http 換成 stub）----------
 def _http(url, headers=None, method="GET", max_bytes=2_000_000):
     h = default_headers()
@@ -185,7 +311,7 @@ def resolve_short(url):
         raw = "https://" + raw
     host = _host(raw)
     if not any(host == x or host.endswith("." + x) for x in _SHORT_HOSTS):
-        return normalize(raw)
+        return _canonical_any(raw)
     # 手動跟轉址，避免最後落到影片頁（常 412）時丢掉 Location
     current = raw
     for _ in range(6):
@@ -201,7 +327,7 @@ def resolve_short(url):
         try:
             with urllib.request.build_opener(_NoRedir).open(req, timeout=TIMEOUT) as resp:
                 final = resp.geturl()
-                n = normalize(final)
+                n = _canonical_any(final)
                 return n or final
         except urllib.error.HTTPError as e:
             loc = ""
@@ -209,12 +335,12 @@ def resolve_short(url):
                 loc = e.headers.get("Location") or ""
             nxt = loc or e.geturl() or ""
             if not nxt or nxt == current:
-                n = normalize(e.geturl() or current)
+                n = _canonical_any(e.geturl() or current)
                 return n
             if nxt.startswith("/"):
                 p = urllib.parse.urlparse(current)
                 nxt = f"{p.scheme}://{p.netloc}{nxt}"
-            n = normalize(nxt)
+            n = _canonical_any(nxt)
             if n:
                 return n
             current = nxt
@@ -222,7 +348,7 @@ def resolve_short(url):
         except Exception as ex:
             log.info(f"[Bilibili] 短網址解析失敗：{ex!r}"[:200])
             return None
-    return normalize(current)
+    return _canonical_any(current)
 
 
 def page_info(url):
@@ -252,14 +378,18 @@ def _looks_like_html(body, headers=None):
     return head.startswith(b"<!doctype") or head.startswith(b"<html") or head.startswith(b"<head")
 
 
-def _api_json(path_or_url, params=None, signed=False):
+def _api_json(path_or_url, params=None, signed=False, referer=None):
     url = path_or_url if path_or_url.startswith("http") else API + path_or_url
     params = dict(params or {})
     if signed:
         params = _wbi_sign(params)
     if params:
         url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
-    status, hdrs, body, _final = _http(url)
+    headers = None
+    if referer:
+        headers = default_headers()
+        headers["Referer"] = referer
+    status, hdrs, body, _final = _http(url, headers=headers)
     if status != 200:
         raise RuntimeError(f"B 站 API 回應 {status}")
     if _looks_like_html(body, hdrs):
@@ -517,31 +647,269 @@ def parts_from_view(data, bvid=None, aid=None):
     return out
 
 
-def resolve_for_queue(url):
-    """貼網址要加入佇列：單 P 回 1 首；未指定 P 的多 P 影片回全部。"""
-    info = page_info(url)
-    if not info:
-        raise RuntimeError("不是有效的 B 站影片網址")
-    data = view(bvid=info["bvid"], aid=info["aid"])
-    songs = parts_from_view(data, bvid=info["bvid"] or data.get("bvid"), aid=info["aid"] or data.get("aid"))
-    # 使用者指定了某一 P → 只加那一 P
+def _song(url, title, duration=0, thumbnail=""):
+    return {
+        "url": url,
+        "title": clean_str(title or "未知")[:200],
+        "duration": int(duration or 0),
+        "thumbnail": _thumb(thumbnail or ""),
+    }
+
+
+def _collection_meta(season, mid=None):
+    if not isinstance(season, dict):
+        return None
+    sid = season.get("id") or season.get("season_id")
+    if not sid:
+        return None
+    count = int(season.get("ep_count") or season.get("total") or 0)
+    mid = mid or season.get("mid")
+    title = clean_str(season.get("title") or season.get("name") or "合集")
+    return {"id": int(sid), "title": title, "count": count, "mid": int(mid) if mid else None}
+
+
+def _songs_from_archives(archives, cap):
+    out = []
+    for a in archives or []:
+        if not isinstance(a, dict):
+            continue
+        bvid = a.get("bvid") or ""
+        if not bvid or not _BV_RE.fullmatch(bvid):
+            continue
+        out.append(_song(canonical(bvid=bvid), a.get("title"), a.get("duration"), a.get("pic")))
+        if len(out) >= cap:
+            break
+    return out
+
+
+def _songs_from_episodes(season, cap):
+    out, seen = [], set()
+    for sec in (season or {}).get("sections") or []:
+        for ep in (sec.get("episodes") or []) if isinstance(sec, dict) else []:
+            if not isinstance(ep, dict):
+                continue
+            bvid = ep.get("bvid") or ""
+            if not bvid or not _BV_RE.fullmatch(bvid) or bvid in seen:
+                continue
+            seen.add(bvid)
+            arc = ep.get("arc") if isinstance(ep.get("arc"), dict) else {}
+            page = ep.get("page") if isinstance(ep.get("page"), dict) else {}
+            title = ep.get("title") or arc.get("title") or ""
+            dur = page.get("duration") or arc.get("duration") or ep.get("duration") or 0
+            thumb = arc.get("pic") or ep.get("cover") or ""
+            out.append(_song(canonical(bvid=bvid), title, dur, thumb))
+            if len(out) >= cap:
+                return out
+    return out
+
+
+def _songs_from_medias(medias, cap, already=0):
+    out = []
+    for m in medias or []:
+        if not isinstance(m, dict):
+            continue
+        # type 2 = 普通投稿；有 ogv 的番劇略過
+        typ = m.get("type")
+        if typ not in (None, 2, "2"):
+            continue
+        if m.get("ogv"):
+            continue
+        bvid = m.get("bvid") or m.get("bv_id") or ""
+        if not bvid or not _BV_RE.fullmatch(bvid):
+            continue
+        out.append(_song(canonical(bvid=bvid), m.get("title"), m.get("duration"), m.get("cover") or m.get("pic")))
+        if already + len(out) >= cap:
+            break
+    return out
+
+
+def _resolve_season(mid, season_id, cap=COLLECTION_CAP):
+    mid, season_id = int(mid), int(season_id)
+    songs, title, total = [], "合集", 0
+    page_num = 1
+    meta = None
+    while len(songs) < cap:
+        referer = f"https://space.bilibili.com/{mid}/channel/collectiondetail?sid={season_id}"
+        data = _api_json("/x/polymer/web-space/seasons_archives_list", {
+            "mid": mid, "season_id": season_id, "sort_reverse": "false",
+            "page_num": page_num, "page_size": SEASON_PAGE_SIZE,
+        }, referer=referer)
+        if data.get("code") != 0 or not data.get("data"):
+            if not songs:
+                msg = data.get("message") or "找不到這個合集"
+                if data.get("code") in (-404, 404, -403, 403):
+                    msg = "找不到這個合集，或不是公開的"
+                raise RuntimeError(msg)
+            break
+        block = data["data"]
+        meta = block.get("meta") or meta or {}
+        page = block.get("page") or {}
+        total = int(meta.get("total") or page.get("total") or total or 0)
+        title = clean_str(meta.get("name") or title)
+        batch = _songs_from_archives(block.get("archives"), cap - len(songs))
+        if not batch:
+            break
+        songs.extend(batch)
+        if total and len(songs) >= total:
+            break
+        if len(block.get("archives") or []) < SEASON_PAGE_SIZE:
+            break
+        page_num += 1
+        if page_num > 50:
+            break
+    if not songs:
+        raise RuntimeError("這個合集裡沒有可加入的影片")
+    if not total:
+        total = len(songs)
+    return {
+        "kind": "season",
+        "title": title,
+        "songs": songs[:cap],
+        "truncated": len(songs) >= cap and total > cap,
+        "total": max(total, len(songs)),
+        "collection": {"id": season_id, "title": title, "count": max(total, len(songs)), "mid": mid},
+        "expanded": True,
+    }
+
+
+def _resolve_fav(fid, cap=COLLECTION_CAP):
+    fid = int(fid)
+    songs, title, total = [], "收藏夾", 0
+    pn = 1
+    while len(songs) < cap:
+        data = _api_json("/x/v3/fav/resource/list", {
+            "media_id": fid, "pn": pn, "ps": FAV_PAGE_SIZE, "platform": "web",
+        }, referer=f"https://www.bilibili.com/medialist/detail/ml{fid}")
+        if data.get("code") != 0:
+            msg = data.get("message") or "找不到這個收藏夾"
+            if data.get("code") in (-403, 403, -404, 404, 710000, 83001, 83002):
+                msg = "這個收藏夾不是公開的，或需要登入才能看"
+            raise RuntimeError(msg)
+        if not data.get("data"):
+            if not songs:
+                raise RuntimeError("找不到這個收藏夾，或不是公開的")
+            break
+        block = data["data"]
+        info = block.get("info") or {}
+        title = clean_str(info.get("title") or title)
+        total = int(info.get("media_count") or total or 0)
+        batch = _songs_from_medias(block.get("medias"), cap, already=len(songs))
+        songs.extend(batch)
+        if not block.get("has_more"):
+            break
+        if not block.get("medias"):
+            break
+        pn += 1
+        if pn > 50:
+            break
+    if not songs:
+        raise RuntimeError("這個收藏夾裡沒有可加入的影片")
+    if not total:
+        total = len(songs)
+    return {
+        "kind": "favlist",
+        "title": title,
+        "songs": songs[:cap],
+        "truncated": len(songs) >= cap and total > cap,
+        "total": max(total, len(songs)),
+        "collection": None,
+        "expanded": True,
+    }
+
+
+def _resolve_input(url):
     raw = (url or "").strip()
-    specified = bool(re.search(r"(?:^|[?&])p=\d+", raw.split("#")[0]))
-    if specified and info["p"] and len(songs) >= info["p"]:
-        return [songs[info["p"] - 1]]
-    return songs
+    host = _host(raw if "://" in raw else "https://" + raw)
+    if any(host == x or host.endswith("." + x) for x in _SHORT_HOSTS):
+        return resolve_short(raw) or raw
+    return raw
+
+
+def resolve_list(url, *, expand_season=False, cap=COLLECTION_CAP):
+    """解析影片、合集或公開收藏夾。回傳 {kind, title, songs, truncated, total, collection, expanded}。"""
+    cap = max(1, int(cap or COLLECTION_CAP))
+    raw = _resolve_input(url)
+    info = parse_resource(raw) or parse_resource(url)
+    if info is None:
+        # 也許是短網址已轉成影片
+        pi = page_info(raw)
+        if pi:
+            info = dict(pi)
+            info["kind"] = "video"
+    if not info:
+        raise RuntimeError("不是有效的 B 站影片、合集或公開收藏夾網址")
+    kind = info.get("kind")
+    if kind == "bangumi":
+        raise RuntimeError("暫不支援番劇網址")
+    if kind == "series":
+        raise RuntimeError("暫不支援頻道「系列」網址，請改用合集或公開收藏夾")
+    if kind == "season":
+        return _resolve_season(info["mid"], info["season_id"], cap=cap)
+    if kind == "favlist":
+        return _resolve_fav(info["fid"], cap=cap)
+
+    # 單支影片（可能屬於合集）
+    if not info.get("bvid") and not info.get("aid"):
+        raise RuntimeError("不是有效的 B 站影片網址")
+    data = view(bvid=info.get("bvid"), aid=info.get("aid"))
+    songs = parts_from_view(data, bvid=info.get("bvid") or data.get("bvid"), aid=info.get("aid") or data.get("aid"))
+    raw_q = (url or "").strip()
+    specified = bool(re.search(r"(?:^|[?&])p=\d+", raw_q.split("#")[0]))
+    if specified and info.get("p") and len(songs) >= info["p"]:
+        songs = [songs[info["p"] - 1]]
+    season = data.get("ugc_season") if isinstance(data.get("ugc_season"), dict) else None
+    # 網址已帶合集編號時也可展開
+    if not season and info.get("season_id") and info.get("mid"):
+        season = {"id": info["season_id"], "mid": info["mid"]}
+    col = _collection_meta(season, mid=info.get("mid"))
+    if col and not col.get("count"):
+        col["count"] = int((season or {}).get("ep_count") or 0)
+    if expand_season and (col or (season and (season.get("id") or season.get("season_id")))):
+        mid = (col or {}).get("mid") or (season or {}).get("mid") or info.get("mid")
+        sid = (col or {}).get("id") or (season or {}).get("id") or (season or {}).get("season_id") or info.get("season_id")
+        if mid and sid:
+            try:
+                return _resolve_season(mid, sid, cap=cap)
+            except RuntimeError:
+                fallback = _songs_from_episodes(season, cap)
+                if fallback:
+                    title = (col or {}).get("title") or clean_str((season or {}).get("title") or "合集")
+                    return {
+                        "kind": "season", "title": title, "songs": fallback,
+                        "truncated": False, "total": len(fallback),
+                        "collection": col, "expanded": True,
+                    }
+                raise
+    title = songs[0]["title"].split("（P")[0] if songs else clean_str(data.get("title") or "未知")
+    offer = col if col and col.get("count", 0) > 1 and not expand_season else None
+    return {
+        "kind": "video",
+        "title": title,
+        "songs": songs,
+        "truncated": False,
+        "total": len(songs),
+        "collection": offer,
+        "expanded": False,
+    }
+
+
+def resolve_for_queue(url, *, expand_season=False, cap=COLLECTION_CAP):
+    """貼網址要加入佇列：單 P 回 1 首；未指定 P 的多 P 影片回全部；合集／公開收藏夾回清單（有上限）。"""
+    return resolve_list(url, expand_season=expand_season, cap=cap)["songs"]
 
 
 def lookup_ytdl_shape(url):
     """給 Discord /play 用，形狀接近 yt-dlp extract_info。"""
-    songs = resolve_for_queue(url)
+    result = resolve_list(url)
+    songs = result.get("songs") or []
     if not songs:
         return None
+    title = result.get("title") or songs[0]["title"].split("（P")[0]
     if len(songs) == 1:
         s = songs[0]
         return {"id": s["url"], "webpage_url": s["url"], "title": s["title"], "duration": s["duration"],
                 "thumbnail": s.get("thumbnail") or ""}
-    return {"title": songs[0]["title"].split("（P")[0], "entries": [
+    return {"title": title, "entries": [
         {"id": s["url"], "webpage_url": s["url"], "title": s["title"], "duration": s["duration"],
          "thumbnail": s.get("thumbnail") or ""}
         for s in songs

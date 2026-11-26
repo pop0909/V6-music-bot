@@ -135,19 +135,26 @@ def api_resolve_url():
     from . import bilibili
     if bilibili.is_page(url):
         try:
-            songs = bilibili.resolve_for_queue(url)
+            result = bilibili.resolve_list(url, expand_season=bool(data.get("expand_season")))
         except Exception as e:
             log.error(f"Resolve URL error: {str(e)[:300]}")
             return jsonify({"status": "error", "message": str(e)[:200] or "無法解析 B 站網址"}), 400
+        songs = result.get("songs") or []
         if not songs:
             return jsonify({"status": "error", "message": "無法解析網址"}), 400
         is_pl = len(songs) > 1
+        title = result.get("title") or (songs[0]["title"].split("（P")[0] if is_pl else "")
         return jsonify({
             "status": "ok",
             "is_playlist": is_pl,
-            "playlist_title": songs[0]["title"].split("（P")[0] if is_pl else "",
+            "playlist_title": title if is_pl else "",
             "songs": songs,
             "count": len(songs),
+            "kind": result.get("kind") or "video",
+            "truncated": bool(result.get("truncated")),
+            "total": result.get("total") or len(songs),
+            "collection": result.get("collection"),
+            "expanded": bool(result.get("expanded")),
         })
     try:
         with yt_dlp.YoutubeDL(ytdl.build_opts({

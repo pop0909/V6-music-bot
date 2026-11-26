@@ -186,7 +186,7 @@ class TouchQueueButtons(unittest.TestCase):
 class CacheToken(unittest.TestCase):
     def test_new_unique_version(self):
         html = read("templates", "index.html")
-        self.assertIn("?v=20261126t11a", html)
+        self.assertIn("?v=20261126t11b", html)
         self.assertNotIn("20261122hard1", html)
 
 

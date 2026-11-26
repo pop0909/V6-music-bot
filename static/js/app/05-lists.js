@@ -375,7 +375,7 @@ async function addFromUrl(query) {
     el.searchResults.innerHTML = '<div style="padding:12px;text-align:center;color:var(--sub)"><i class="fas fa-spinner fa-pulse"></i> 正在解析網址...</div>';
     el.btnSearch.disabled = true;
 
-    const data = await API.resolveUrl(query);
+    let data = await API.resolveUrl(query);
     el.btnSearch.disabled = false;
 
     if (!data || data.status === 'error') {
@@ -391,6 +391,25 @@ async function addFromUrl(query) {
         return;
     }
 
+    // 影片屬於合集：問要不要改加整份（取消／關閉 = 只加這首）
+    if (data.collection && data.collection.count > 1 && !data.expanded && typeof askDialog === 'function') {
+        const col = data.collection;
+        const whole = await askDialog({
+            title: '這首歌在合集裡',
+            message: `「${col.title || '合集'}」共 ${col.count} 首。要加入整份合集，還是只加這首？`,
+            okText: '加入整份合集',
+            cancelText: '只加這首',
+        });
+        if (whole) {
+            const more = await API.resolveUrl(query, { expand_season: true });
+            if (!more || more.status === 'error' || !more.songs || !more.songs.length) {
+                showToast((more && more.message) || '無法讀取這個合集，已改為只加這首', 'warning');
+            } else {
+                data = more;
+            }
+        }
+    }
+
     // 將所有歌曲加入佇列（不自動播放）；guild 未選時後端自動 fallback
     el.searchResults.innerHTML = '';
     const batchResult = await API.queueAddBatch(data.songs);
@@ -401,7 +420,9 @@ async function addFromUrl(query) {
 
     if (data.is_playlist) {
         const full = batchResult.full_skipped ? `（${batchResult.message}）` : '';
-        showToast(`✅ 已將播放清單 ${data.playlist_title} 的 ${batchResult.count} 首歌加入佇列！${full}`, full ? 'warning' : 'success');
+        const cut = data.truncated ? `（已加入前 ${batchResult.count} 首，清單共 ${data.total} 首）` : '';
+        const label = data.kind === 'favlist' ? '收藏夾' : (data.kind === 'season' ? '合集' : '播放清單');
+        showToast(`✅ 已將${label}「${data.playlist_title || ''}」的 ${batchResult.count} 首歌加入佇列！${cut}${full}`, (full || cut) ? 'warning' : 'success');
     } else {
         toastAdded(batchResult, data.songs[0].title);
     }
