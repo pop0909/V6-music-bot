@@ -35,8 +35,8 @@ sudo apt install python3 python3-venv ffmpeg
 ## 安裝
 
 ```bash
-git clone https://github.com/pop0909/V6-music-bot.git
-cd V6-music-bot
+git clone https://github.com/pop0909/music-bot.git
+cd music-bot
 python3 -m venv venv
 # Windows：py -3 -m venv venv 然後 venv\Scripts\activate
 source venv/bin/activate

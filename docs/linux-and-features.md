@@ -24,7 +24,7 @@
 ### 安裝（系統層級，預設；開機就啟動，不需登入）
 ```bash
 # 把專案傳到伺服器後，在伺服器上建立 .env（不要把已填密鑰的 .env 提交到 Git），例如：
-scp -r V6-music-bot 使用者@伺服器:/home/使用者/musicbot
+scp -r music-bot 使用者@伺服器:/home/使用者/musicbot
 ssh 使用者@伺服器
 cd ~/musicbot
 chmod +x deploy/*.sh
