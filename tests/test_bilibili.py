@@ -9,10 +9,9 @@ from unittest import mock
 from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-os.chdir(os.path.join(os.path.dirname(__file__), ".."))
 
 from musicbot import audio, bilibili, rangeproxy, utils, ytdl
-from tests.appjs import read_app_js
+from appjs import read_app_js  # noqa: E402
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 BV = "BV1rTy2zFE7f"
