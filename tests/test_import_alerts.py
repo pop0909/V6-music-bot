@@ -23,7 +23,7 @@ class HostCheck(unittest.TestCase):
             self.assertNotEqual(self.code(h), 403, h)
 
     def test_rejected(self):
-        for h in ("103.252.119.45:5000", "103.252.119.45", "evil.example.com"):
+        for h in ("203.0.113.10:5000", "203.0.113.10", "evil.example.com"):
             self.assertEqual(self.code(h), 403, h)
 
 
