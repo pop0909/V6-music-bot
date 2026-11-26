@@ -292,6 +292,9 @@ async def _open_stream(guild_id, flat_url, opened):
     回傳 (warm, duration, thumbnail)"""
     source = None
     last_open_err = None
+    t_all = time.monotonic()
+    resolve_ms = prime_ms = 0.0
+    cache_hit = False
     for open_try in range(STREAM_OPEN_RETRIES):
         if open_try:
             # 上一輪 FFmpeg 沒吐出音訊（常見：冷啟動分段代理連續 403）→ 丟掉快取、稍等再重解析
@@ -307,7 +310,14 @@ async def _open_stream(guild_id, flat_url, opened):
         # 上一首結尾前已預熱好這首（FFmpeg 已讀到第一格）→ 直接用，換歌不用再等 FFmpeg 開啟
         warm = prewarm.take(guild_id, flat_url) if open_try == 0 else None
         # 預先解析命中就直接用快取；否則（或共用進行中的解析）照常用 yt-dlp 解析
-        res = warm[1] if warm else await prefetch.resolve(guild_id, flat_url)
+        t_r = time.monotonic()
+        if warm:
+            res = warm[1]
+            cache_hit = True
+        else:
+            cache_hit = bool(prefetch.get_cached(guild_id, flat_url))
+            res = await prefetch.resolve(guild_id, flat_url)
+        resolve_ms = (time.monotonic() - t_r) * 1000
         real_audio_url, duration, thumbnail = res["url"], res.get("duration", 0), res.get("thumbnail", "")
         song_durations[guild_id] = duration or 0
         now_playing_thumbnail[guild_id] = thumbnail
@@ -323,7 +333,9 @@ async def _open_stream(guild_id, flat_url, opened):
         source = opened["source"] = prewarm.open_source(guild_id, flat_url, real_audio_url)
         try:
             # 先讓 FFmpeg 吐出第一格再交給播放執行緒（見 audio.PrimedSource）
+            t_p = time.monotonic()
             source = opened["source"] = await audio.prime_source(source)
+            prime_ms = (time.monotonic() - t_p) * 1000
             last_open_err = None
             break
         except RuntimeError as e:
@@ -333,6 +345,9 @@ async def _open_stream(guild_id, flat_url, opened):
             continue
     if last_open_err is not None:
         raise last_open_err
+    total_ms = (time.monotonic() - t_all) * 1000
+    src = "已預熱" if warm else ("快取命中" if cache_hit else "現場解析")
+    log.info(f"[開播] {guild_id} 解析 {resolve_ms:.0f} ms、開啟 {prime_ms:.0f} ms、合計 {total_ms:.0f} ms（{src}）")
     return warm, duration, thumbnail
 
 

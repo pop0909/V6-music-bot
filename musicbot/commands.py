@@ -140,8 +140,11 @@ async def skip(interaction: discord.Interaction):
             return
         from . import actionlog
         actionlog.record(gid, "skip", actionlog.discord_actor(interaction), title, url=now_playing_url.get(gid))
+        from . import prewarm
+        nxt = (queues.get(gid) or [None])[0]
+        prewarm.arm_upcoming(gid, nxt[0] if nxt else None)
         await interaction.response.send_message(f"⏭️ 已跳過：**{md(title, 120)}**" if title else "⏭️ 已跳過", ephemeral=True)
-        await audio.fade_out_stop(gid, vc)   # 0.12 秒淡出再切歌
+        await audio.fade_out_stop(gid, vc)   # 0.12 秒淡出再切歌；預熱同時進行
         who = md(interaction.user.display_name)
         await announce(gid, f"⏭️ **{who}** 跳過了 **{md(title, 120)}**" if title else f"⏭️ **{who}** 跳過了這首歌")
     else:

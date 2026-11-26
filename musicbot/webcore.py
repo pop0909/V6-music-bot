@@ -117,6 +117,7 @@ async def web_add_to_queue(gid, url, title, auto_play=True, duration=None, reque
     note_song_meta(gid, url, requester=_requester(requester, actor), source="user")
     actionlog.record(gid, "add", actor, title, url=url)     # 操作紀錄（actor=None 不記）
     if gid in random_loop_guilds: random_loop_guilds[gid] = False
+    _arm_upcoming(gid, url, warm=auto_play and position == 1)
     if auto_play:
         # 確保 bot 在語音中（不在的話自動重連上次的頻道）
         vc = await ensure_voice_connected(gid)
@@ -180,6 +181,7 @@ async def web_toggle_play(gid):
 async def web_skip(gid, actor=None):
     """從 Web 跳過歌曲：淡出（0.12 秒）+ 停止在背景執行，立刻回應（accepted）。
     停止後 after_play → play_next 照常接下一首；下一首通常已被預先解析。"""
+    _arm_upcoming(gid)  # 與淡出同時預熱下一首，換歌就不必再等 FFmpeg
     vc = await ensure_voice_connected(gid)
     if vc:
         if vc.is_playing() or vc.is_paused():
@@ -226,16 +228,31 @@ def set_shuffle_mode(gid, enabled, actor=None):
 
 def _prefetch_soon(gid):
     """在 Discord 事件迴圈上跑 prefetch.ensure（從 Flask 執行緒呼叫也安全；迴圈還沒起來就略過）"""
+    _arm_upcoming(gid, warm=False)
+
+
+def _arm_upcoming(gid, url=None, warm=True):
+    """開始預先解析即將要播的歌；warm=True 時同時立刻預熱 FFmpeg（跳過／點播放用）。"""
+    if url is None:
+        q = queues.get(gid) or []
+        url = q[0][0] if q else None
+
+    def _go():
+        _prefetch.ensure(gid)
+        if warm:
+            from . import prewarm
+            prewarm.prepare(gid, url)
+
     loop = getattr(client, "loop", None)
     try:
         asyncio.get_running_loop()
-        _prefetch.ensure(gid)          # 已經在事件迴圈裡
+        _go()
         return
     except RuntimeError:
         pass
     try:
         if loop and not loop.is_closed() and loop.is_running():
-            loop.call_soon_threadsafe(_prefetch.ensure, gid)
+            loop.call_soon_threadsafe(_go)
     except Exception:
         pass
 
@@ -372,9 +389,9 @@ async def web_play_index(gid, index, actor=None, expect_url=None):
     song = queues[gid].pop(index)
     queues[gid].insert(0, song)
 
+    _arm_upcoming(gid, song[0])  # 目標歌曲立刻開始解析並預熱（與連線／淡出同時進行）
     vc = await ensure_voice_connected(gid)
     if vc:
-        _prefetch.ensure(gid)   # 目標歌曲立刻開始解析（與淡出同時進行）
         if vc.is_playing() or vc.is_paused():
             # 操作紀錄：目前這首被跳過、改播佇列裡的另一首
             actionlog.record(gid, "skip", actor, now_playing.get(gid, ""), url=now_playing_url.get(gid),
@@ -454,6 +471,8 @@ async def web_play_all(gid, songs, stats=None, actor=None, label=None):
     actionlog.record_add(gid, actor, new_q, label)     # 整份歌單：只記一筆
     if gid in random_loop_guilds:
         random_loop_guilds[gid] = False
+    if new_q:
+        _arm_upcoming(gid, new_q[0][0])
     vc = await ensure_voice_connected(gid)
     if vc and new_q and not vc.is_playing() and not vc.is_paused():
         channel = control_panels[gid].channel if gid in control_panels else None
@@ -615,7 +634,7 @@ async def web_import_songs(gid, songs, requester="網頁", stats=None, actor=Non
         stats["added"] = count   # 在等待語音連線之前先記好，避免 run_async 逾時後前端顯示「加入 0 首」
     if gid in random_loop_guilds:
         random_loop_guilds[gid] = False
-    _prefetch.ensure(gid)
+    _arm_upcoming(gid, added[0][0] if added else None, warm=bool(added))
     vc = await ensure_voice_connected(gid)
     if vc and count and not vc.is_playing() and not vc.is_paused():
         channel = control_panels[gid].channel if gid in control_panels else None

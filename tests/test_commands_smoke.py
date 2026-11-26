@@ -125,7 +125,7 @@ class CommandSmoke(unittest.TestCase):
         vc.is_paused.return_value = False
         vc.disconnect = mock.AsyncMock()
         vc.move_to = mock.AsyncMock()
-        state.queues[GID] = [{"url": "https://www.youtube.com/watch?v=AAAAAAAAAAA", "title": "歌" * 300}] * 30
+        state.queues[GID] = [("https://www.youtube.com/watch?v=AAAAAAAAAAA", "歌" * 300)] * 30
         state.now_playing[GID] = {"url": "https://www.youtube.com/watch?v=BBBBBBBBBBB", "title": "現在" * 200}
         failures = []
         with mock.patch.object(player, "connect_voice", mock.AsyncMock(return_value=vc)), \

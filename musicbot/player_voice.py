@@ -291,6 +291,9 @@ async def _process_and_play(interaction, query, gid, vc, source="youtube"):
         else:
             mine = f"✅ 已將 **{added}** 首歌加入佇列{extra}"
             public = f"🎵 **{who}** 加入了 **{added}** 首歌"
+        if idle:
+            from . import prewarm
+            prewarm.arm_upcoming(gid, added_songs[0][0])
         await interaction.followup.send(mine, ephemeral=True)
         await announce(gid, public)
         if idle:

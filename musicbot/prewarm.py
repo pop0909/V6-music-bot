@@ -4,7 +4,8 @@
 第一格音訊仍要約 1–2 秒（box 上 10 次中位數約 2 秒）→ 換歌時那段空白。這裡把那段搬到上一首結尾前做。
 
 - 預熱「下一首真正會播的歌」：佇列第一首；佇列空時是隨機循環預先抽好的那首、或自動推薦預先挑好的那首
-  （跟 play_next 取的是同一份預選，所以預熱的就是實際會播的）。單曲循環 / 直播 / 暫停中不預熱
+  （跟 play_next 取的是同一份預選，所以預熱的就是實際會播的）。單曲循環 / 直播 / 暫停中不預熱（自然換歌）
+- 跳過 / 播這首 / 閒置點播放：prepare() 立刻預熱即將開播的那首，不必等到快播完
 - 預熱好之後繼續盯著：使用者加歌 / 刪歌 / 換模式讓下一首變了 → 立刻收掉（還來得及就改熱新的下一首）
 - play_next 取到同一首、而且 FFmpeg 選項（音量平衡）沒變、預熱不超過 MAX_AGE 秒才用；否則收掉照常開
 - 開播失敗重試（403 重新解析）、睡眠計時器「播完這首」、停止 / 離開 / 休眠都會收掉預熱的來源
@@ -25,6 +26,7 @@ _warm = {}          # gid: {"url", "src", "opts", "res", "ts"}
 _ended = {}         # gid: 上一首結束（after 回呼）的 monotonic 時間
 gaps = []           # 最近幾次換歌間隔：{"ms", "warm", "manual"}
 _watch = {}         # gid: Task
+_priming = {}       # gid: (url, Task) — prepare / 監看共用，同一首只開一次 FFmpeg
 stats = {"warmed": 0, "used": 0, "discarded": 0}
 
 
@@ -69,6 +71,9 @@ def discard(gid):
     t = _watch.pop(gid, None)
     if t and not t.done() and t is not _current_task():
         t.cancel()
+    prim = _priming.pop(gid, None)
+    if prim and not prim[1].done() and prim[1] is not _current_task():
+        prim[1].cancel()
     w = _warm.pop(gid, None)
     if w:
         stats["discarded"] += 1
@@ -156,9 +161,98 @@ def open_source(gid, page_url, stream_url, headers=None, size=None, mime=None):
     )
 
 
+async def _prime_into_warm(gid, url, *, still_valid=None):
+    """解析 + 開 FFmpeg 讀到第一格，成功則放進 _warm。同一 guild 同一首只做一次。"""
+    from . import audio, prefetch
+    me = _current_task()
+    cur = _priming.get(gid)
+    if cur and cur[0] == url and not cur[1].done() and cur[1] is not me:
+        return await cur[1]
+    if me:
+        _priming[gid] = (url, me)
+    try:
+        t0 = time.monotonic()
+        res = await prefetch.resolve(gid, url)
+        opts = audio.ffmpeg_options(gid)
+        src = open_source(gid, url, res["url"])
+        ps = await audio.prime_source(src)
+        if (still_valid is not None and not still_valid()) or _next_want(gid, url) is False:
+            _cleanup(ps)
+            return False
+        old = _warm.get(gid)
+        if old and old["url"] == url and old["opts"] == opts and time.time() - old["ts"] <= MAX_AGE:
+            _cleanup(ps)
+            return True
+        if old:
+            _warm.pop(gid, None)
+            stats["discarded"] += 1
+            _cleanup(old["src"])
+        _warm[gid] = {"url": url, "src": ps, "opts": opts, "res": res, "ts": time.time()}
+        stats["warmed"] += 1
+        log.info(f"[預熱] {gid} 下一首已就緒（{(time.monotonic() - t0) * 1000:.0f} ms）：{url}")
+        return True
+    finally:
+        cur = _priming.get(gid)
+        if cur and cur[1] is me:
+            _priming.pop(gid, None)
+
+
+def _next_want(gid, url):
+    """呼叫端指定的 url 是否仍是即將要播的歌。prepare() 傳入的 url 在單曲循環下仍算數。"""
+    nxt = _next_url(gid)
+    if nxt == url:
+        return True
+    # 閒置或跳過（單曲循環時 _next_url 是 None）：只要佇列第一首還是它
+    q = queues.get(gid) or []
+    return bool(q) and q[0][0] == url
+
+
+def prepare(gid, page_url=None):
+    """立刻預熱即將開播的歌（跳過／播這首／閒置點播放）。可重複呼叫，已熱好或正在熱同一首就略過。"""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    url = page_url or _next_url(gid)
+    if not url:
+        q = queues.get(gid) or []
+        url = q[0][0] if q else None
+    if not url:
+        return
+    w = _warm.get(gid)
+    if w and w["url"] == url and time.time() - w["ts"] <= MAX_AGE:
+        return
+    cur = _priming.get(gid)
+    if cur and cur[0] == url and not cur[1].done():
+        return
+    if cur and not cur[1].done() and cur[1] is not _current_task():
+        cur[1].cancel()
+    task = loop.create_task(_prepare_run(gid, url))
+    _priming[gid] = (url, task)
+
+
+async def _prepare_run(gid, url):
+    try:
+        await _prime_into_warm(gid, url)
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        log.info(f"[預熱] {gid} 預熱失敗（換歌時照常開啟）：{str(e)[:160]}")
+    finally:
+        cur = _priming.get(gid)
+        if cur and cur[1] is _current_task():
+            _priming.pop(gid, None)
+
+
+def arm_upcoming(gid, page_url=None):
+    """跳過／開播前呼叫：開始預先解析，並立刻預熱即將要播的那首。"""
+    from . import prefetch
+    prefetch.ensure(gid)
+    prepare(gid, page_url)
+
+
 async def _watch_song(gid, version):
     """監看這首：剩 LEAD 秒內預熱下一首；之後到換歌前每秒確認下一首沒變（變了就收掉、來得及就改熱新的）"""
-    from . import audio, prefetch
     try:
         while progress_versions.get(gid) == version:
             rem = _remaining(gid)
@@ -166,17 +260,10 @@ async def _watch_song(gid, version):
                 url = _next_url(gid)
                 _drop_stale(gid, url)
                 if url and gid not in _warm and rem >= 1.5:     # 剩不到 1.5 秒就來不及了，照原本流程
-                    t0 = time.monotonic()
-                    res = await prefetch.resolve(gid, url)
-                    opts = audio.ffmpeg_options(gid)
-                    src = open_source(gid, url, res["url"])
-                    ps = await audio.prime_source(src)
-                    if progress_versions.get(gid) != version or _next_url(gid) != url or gid in _warm:
-                        _cleanup(ps)             # 期間換歌 / 佇列變了 → 丟掉（下一輪再看要不要熱新的）
-                    else:
-                        _warm[gid] = {"url": url, "src": ps, "opts": opts, "res": res, "ts": time.time()}
-                        stats["warmed"] += 1
-                        log.info(f"[預熱] {gid} 下一首已就緒（{(time.monotonic() - t0) * 1000:.0f} ms）：{url}")
+                    await _prime_into_warm(
+                        gid, url,
+                        still_valid=lambda: progress_versions.get(gid) == version and _next_url(gid) == url,
+                    )
             await asyncio.sleep(POLL)
     except asyncio.CancelledError:
         pass

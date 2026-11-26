@@ -1,8 +1,8 @@
 """預先解析下一首（Prefetch）
 
-播放中就在背景（run_in_executor）用 yt-dlp 解析「下一首」的串流網址與資訊，
+在背景（run_in_executor）用 yt-dlp 解析即將要播的歌的串流網址與資訊，
 存進 per-guild 快取（key = 歌曲網頁網址），play_next 取到那首歌時直接用快取，
-換歌幾乎不用等。
+換歌幾乎不用等。播放中瞄準「下一首」；閒置但佇列有歌時瞄準佇列第一首（讓點播放時不必再等解析）。
 
 - 有效期限：取串流網址的 expire 參數提前 10 分鐘，且最多 90 分鐘（YouTube 串流網址約 6 小時失效）
 - 同一網址同時只解析一次：進行中的解析共用同一個 Future（跨 guild 也共用）
@@ -147,19 +147,22 @@ async def resolve(gid, page_url):
         return e
     gen = _gen.get(gid, 0)
     fut, shared = _shared_resolve(page_url)
+    t0 = time.monotonic()
     if shared:
         try:
             res = await asyncio.shield(fut)
-            log.info(f"[預先解析] 命中（等待進行中的解析）{gid}: {page_url}")
+            log.info(f"[預先解析] 命中（等待進行中的解析）{gid}: {page_url}（{(time.monotonic() - t0) * 1000:.0f} ms）")
         except asyncio.CancelledError:
             raise
         except Exception as ex:
             log.info(f"[預先解析] 進行中的解析失敗，改為重新解析 {gid}: {ex}")
             fut, _ = _shared_resolve(page_url)
+            t0 = time.monotonic()
             res = await asyncio.shield(fut)
+            log.info(f"[預先解析] 重新解析完成 {gid}: {page_url}（{(time.monotonic() - t0) * 1000:.0f} ms）")
     else:
-        log.info(f"[預先解析] 未命中 {gid}: {page_url}")
         res = await asyncio.shield(fut)
+        log.info(f"[預先解析] 未命中 {gid}: {page_url}（{(time.monotonic() - t0) * 1000:.0f} ms）")
     if _gen.get(gid, 0) == gen:
         _store(gid, page_url, res)
     return res
@@ -275,10 +278,12 @@ def ensure(gid):
         asyncio.get_running_loop()
     except RuntimeError:
         return
-    if not now_playing.get(gid):
-        _cancel(gid)  # 沒在播放（停止/閒置）就不預先解析
-        return
-    target = predict_next(gid)
+    if now_playing.get(gid):
+        target = predict_next(gid)
+    else:
+        # 閒置但佇列有歌：預先解析即將開播的第一首（點播放時就可直接用快取）
+        q = queues.get(gid) or []
+        target = (q[0][0], q[0][1]) if q else None
     if target is None:
         _cancel(gid)
         return

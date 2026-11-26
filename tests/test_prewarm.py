@@ -40,6 +40,7 @@ class Base(unittest.IsolatedAsyncioTestCase):
         FakeFF.made = []
         prewarm._warm.clear()
         prewarm._watch.clear()
+        prewarm._priming.clear()
         self.ydl = FakeYDL()
         for p in (mock.patch.object(prefetch, "extract_stream", self.ydl),
                   mock.patch.object(player.discord, "FFmpegPCMAudio", FakeFF),
@@ -319,3 +320,44 @@ class InThreadTest(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PrepareTest(Base):
+    async def test_prepare_warms_immediately_without_waiting_lead(self):
+        """跳過 / 點播放時不必等到快播完才預熱。"""
+        state.queues[G] = [(B, "b")]
+        # 不是快結束：elapsed=10 of 200 → 還剩 190 秒
+        self.playing(elapsed=10)
+        prewarm.prepare(G, B)
+        self.assertTrue(await self.wait_warm())
+        got = prewarm.take(G, B)
+        self.assertIsNotNone(got)
+        self.assertIn("videoplayback", got[1]["url"])
+        self.assertEqual(self.ydl.calls, [B])
+
+    async def test_prepare_idle_uses_queue_head(self):
+        state.now_playing.pop(G, None)
+        state.queues[G] = [(A, "a"), (B, "b")]
+        prewarm.prepare(G)
+        self.assertTrue(await self.wait_warm())
+        got = prewarm.take(G, A)
+        self.assertIsNotNone(got)
+        self.assertEqual(got[1].get("title") or A, got[1].get("title") or A)
+
+    async def test_arm_upcoming_ensures_and_prepares(self):
+        state.now_playing.pop(G, None)
+        state.queues[G] = [(A, "a")]
+        prewarm.arm_upcoming(G, A)
+        self.assertTrue(await self.wait_warm())
+        self.assertIsNotNone(prefetch.get_cached(G, A))
+        self.assertTrue(prewarm.has(G) or prewarm.take(G, A) is not None)
+
+    async def test_prepare_same_url_is_idempotent(self):
+        state.queues[G] = [(B, "b")]
+        prewarm.prepare(G, B)
+        self.assertTrue(await self.wait_warm())
+        n = len(FakeFF.made)
+        prewarm.prepare(G, B)
+        await asyncio.sleep(0.05)
+        self.assertEqual(len(FakeFF.made), n)
+

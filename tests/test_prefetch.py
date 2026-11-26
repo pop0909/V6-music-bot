@@ -225,12 +225,21 @@ class RetargetTest(Base):
         self.assertNotIn(G, prefetch._random_pick)                          # 取走了；下一次當場抽（避開剛播過的）
         self.assertNotEqual(prefetch.take_random_pick(G)["url"], rp["url"])
 
-    async def test_not_playing_does_nothing(self):
+    async def test_not_playing_prefetches_first_queued(self):
         state.now_playing.pop(G)
-        state.queues[G] = [(A, "a")]
+        state.queues[G] = [(A, "a"), (B, "b")]
+        prefetch.ensure(G)
+        await drain()
+        self.assertEqual(self.ydl.calls, [A])
+        self.assertIsNotNone(prefetch.get_cached(G, A))
+
+    async def test_idle_empty_queue_does_nothing(self):
+        state.now_playing.pop(G)
+        state.queues[G] = []
         prefetch.ensure(G)
         await drain()
         self.assertEqual(self.ydl.calls, [])
+        self.assertNotIn(G, prefetch._tasks)
 
 
 class AutoplayPrefetchTest(Base):

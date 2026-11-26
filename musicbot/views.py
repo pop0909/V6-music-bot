@@ -79,8 +79,11 @@ class MusicControlView(discord.ui.View):
                 return
             actionlog.record(gid, "skip", actionlog.discord_actor(interaction), title,
                              url=now_playing_url.get(gid))
+            from . import prewarm
+            nxt = (queues.get(gid) or [None])[0]
+            prewarm.arm_upcoming(gid, nxt[0] if nxt else None)
             await interaction.response.send_message(f"⏭️ 已跳過：**{md(title, 120)}**" if title else "⏭️ 已跳過", ephemeral=True)
-            await fade_out_stop(gid, vc)   # 0.12 秒淡出再切歌
+            await fade_out_stop(gid, vc)   # 0.12 秒淡出再切歌；預熱同時進行
         else:
             await interaction.response.send_message("沒有正在播放的歌曲", ephemeral=True)
 
