@@ -13,12 +13,12 @@ from flask import request, jsonify, Response, stream_with_context
 from .bot import client
 from .config import log
 from .state import (
-    state_lock, volumes, volume_transformers, random_loop_guilds, guild_names, sleep_timers,
+    state_lock, volumes, volume_transformers, sleep_timers,
     wait_change, change_version,
 )
 from .webcore import (
     web_toggle_play, web_skip, web_stop, web_set_loop, web_join_voice, web_set_autoplay,
-    _set_active_guild, get_active_guild, get_guild_list, get_guild_status, web_set_normalize,
+    get_guild_list, get_guild_status, web_set_normalize,
     set_shuffle_mode,
 )
 from . import webauth

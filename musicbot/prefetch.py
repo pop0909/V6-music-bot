@@ -213,9 +213,8 @@ def take_random_pick(gid):
     return rp
 
 
-def peek_autoplay_pick(gid):
-    """預熱用：看一下已挑好的推薦（不取走）；條件跟 take_autoplay_pick 一樣，不符合 → None"""
-    p = _autoplay_pick.get(gid)
+def _ready_autoplay_pick(gid, p):
+    """已挑好的推薦還能不能用（種子沒變、未過期、也不是失敗過的 id）。"""
     if not p or not p.get("pick"):
         return None
     if p["seed"] != autoplay.last_seed(gid) or time.time() - p["ts"] > MAX_AGE:
@@ -224,20 +223,20 @@ def peek_autoplay_pick(gid):
     if vid and vid in autoplay.failed_ids.get(gid, ()):
         return None
     return p["pick"]
+
+
+def peek_autoplay_pick(gid):
+    """預熱用：看一下已挑好的推薦（不取走）；條件跟 take_autoplay_pick 一樣，不符合 → None"""
+    return _ready_autoplay_pick(gid, _autoplay_pick.get(gid))
 
 
 def take_autoplay_pick(gid):
     """play_next 的自動推薦分支用：種子（目前歌曲）沒變且未過期才使用預先挑好的推薦"""
     p = _autoplay_pick.pop(gid, None)
-    if not p or not p.get("pick"):
-        return None
-    if p["seed"] != autoplay.last_seed(gid) or time.time() - p["ts"] > MAX_AGE:
-        return None
-    vid = autoplay.extract_video_id(p["pick"][0])
-    if vid and vid in autoplay.failed_ids.get(gid, ()):
-        return None
-    log.info(f"[預先解析] 自動推薦命中 {gid}: {p['pick'][1]}")
-    return p["pick"]
+    pick = _ready_autoplay_pick(gid, p)
+    if pick:
+        log.info(f"[預先解析] 自動推薦命中 {gid}: {pick[1]}")
+    return pick
 
 
 # ---------------- 背景 prefetch ----------------

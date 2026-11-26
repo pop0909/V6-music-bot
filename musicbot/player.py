@@ -548,6 +548,16 @@ async def wait_background(timeout=5.0):
 
 
 
+def pause_playback(gid, vc):
+    """記下已播放秒數並暫停；狀態同步給面板。views 與 Web 共用。"""
+    if gid in song_start_times:
+        paused_position[gid] = time.time() - song_start_times[gid]
+        del song_start_times[gid]
+    vc.pause()
+    is_playing_state[gid] = False
+    is_paused_state[gid] = True
+
+
 def _elapsed(guild_id):
     """目前歌曲實際播放秒數（暫停時停止累計）"""
     if guild_id in song_start_times:

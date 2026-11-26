@@ -84,15 +84,17 @@ def _host(url):
         return ""
 
 
+def _host_matches(h, names):
+    return any(h == x or h.endswith("." + x) for x in names)
+
+
 def is_host(url):
     """是否為 B 站頁面主機（含子網域、短網址）。不是音訊 CDN。"""
-    h = _host(url)
-    return any(h == x or h.endswith("." + x) for x in _HOSTS)
+    return _host_matches(_host(url), _HOSTS)
 
 
 def is_cdn_host(url):
-    h = _host(url)
-    return any(h == x or h.endswith("." + x) for x in _CDN_HOST_SUFFIXES)
+    return _host_matches(_host(url), _CDN_HOST_SUFFIXES)
 
 
 is_page = is_host
@@ -119,8 +121,8 @@ def _page_from_path(path, query=""):
     return {"bvid": bvid, "aid": aid, "p": part}
 
 
-def parse(url):
-    """從網址取出 bvid / aid / 分 P。短網址需先 resolve_short。"""
+def _page_url(url):
+    """解析 B 站頁面網址（不含短網址）。回傳 urlparse 結果，不合法則 None。"""
     if not url or not isinstance(url, str):
         return None
     raw = url.strip()
@@ -131,10 +133,15 @@ def parse(url):
     except Exception:
         return None
     host = (u.hostname or "").lower().rstrip(".")
-    if not any(host == x or host.endswith("." + x) for x in _HOSTS):
+    if not _host_matches(host, _HOSTS) or _host_matches(host, _SHORT_HOSTS):
         return None
-    # 短網址路徑不是 BV
-    if any(host == x or host.endswith("." + x) for x in _SHORT_HOSTS):
+    return u
+
+
+def parse(url):
+    """從網址取出 bvid / aid / 分 P。短網址需先 resolve_short。"""
+    u = _page_url(url)
+    if not u:
         return None
     return _page_from_path(u.path or "", u.query or "")
 
@@ -170,20 +177,10 @@ _ML_RE = re.compile(r"(?:^|/)ml(\d+)", re.I)
 
 def parse_resource(url):
     """辨識影片、合集、公開收藏夾或番劇。短網址需先 resolve_short。"""
-    if not url or not isinstance(url, str):
-        return None
-    raw = url.strip()
-    if "://" not in raw:
-        raw = "https://" + raw
-    try:
-        u = urllib.parse.urlparse(raw)
-    except Exception:
+    u = _page_url(url)
+    if not u:
         return None
     host = (u.hostname or "").lower().rstrip(".")
-    if not any(host == x or host.endswith("." + x) for x in _HOSTS):
-        return None
-    if any(host == x or host.endswith("." + x) for x in _SHORT_HOSTS):
-        return None
     path = u.path or ""
     q = urllib.parse.parse_qs(u.query or "", keep_blank_values=True)
     def _q(name):
@@ -258,7 +255,7 @@ def parse_resource(url):
         if fid:
             return {"kind": "favlist", "fid": fid}
 
-    video = parse(raw)
+    video = parse(url)
     if video:
         video = dict(video)
         video["kind"] = "video"
@@ -310,7 +307,7 @@ def resolve_short(url):
     if "://" not in raw:
         raw = "https://" + raw
     host = _host(raw)
-    if not any(host == x or host.endswith("." + x) for x in _SHORT_HOSTS):
+    if not _host_matches(host, _SHORT_HOSTS):
         return _canonical_any(raw)
     # 手動跟轉址，避免最後落到影片頁（常 412）時丢掉 Location
     current = raw
@@ -820,7 +817,7 @@ def _resolve_fav(fid, cap=COLLECTION_CAP):
 def _resolve_input(url):
     raw = (url or "").strip()
     host = _host(raw if "://" in raw else "https://" + raw)
-    if any(host == x or host.endswith("." + x) for x in _SHORT_HOSTS):
+    if _host_matches(host, _SHORT_HOSTS):
         return resolve_short(raw) or raw
     return raw
 

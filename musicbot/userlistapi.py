@@ -4,7 +4,7 @@ import random
 
 from flask import request, jsonify, g
 
-from .utils import song_host_allowed, song_url_error
+from .utils import song_url_error
 from . import userlists, extmembers, importer
 from .config import log
 from .state import queue_skip_message, queue_full_message
@@ -86,9 +86,9 @@ def ul_update(lid):
             title = d.get("title") if isinstance(d.get("title"), str) and d.get("title").strip() else None
             if not title and url.startswith("http"):
                 title = _lookup_title(url)               # 只貼網址 → 查歌名（查不到就用網址）
-            from .utils import song_url_error
-            if song_url_error(url):
-                return jsonify({"status": "error", "message": song_url_error(url)}), 400
+            err = song_url_error(url)
+            if err:
+                return jsonify({"status": "error", "message": err}), 400
             songs = [{"url": url, "title": title}]
         added, skipped = userlists.add_songs(k, lid, songs)
         if not added:

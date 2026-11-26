@@ -9,12 +9,12 @@ mock.patch.object(webapi, ...) 照樣生效。
 from flask import request, jsonify
 
 from .bot import client
-from .state import state_lock, queues, voice_clients, guild_names, remember_duration
-from .utils import song_url_error, song_host_allowed
+from .state import state_lock, queues, remember_duration
+from .utils import song_url_error
 from . import history
 from .state import queue_full_message, queue_skip_message
 from .webcore import (
-    web_add_to_queue, web_play_index, web_add_to_queue_batch, get_active_guild, web_import_songs,
+    web_add_to_queue, web_play_index, web_add_to_queue_batch, web_import_songs,
     resolve_queue_index, STALE,
 )
 from . import importer
@@ -27,6 +27,14 @@ from . import webapi as _w
 def _history_gid():
     gid = request.args.get("guild_id", 0, type=int)
     if not gid:
+        gid = guildscope.default_guild()
+    return gid
+
+
+def _body_gid(data):
+    """從 JSON 取伺服器；沒指定就 fallback（自己的目前伺服器 → 在語音中的 → 第一個）。沒有則 0。"""
+    gid = int(data.get("guild_id", 0))
+    if gid == 0:
         gid = guildscope.default_guild()
     return gid
 
@@ -86,11 +94,8 @@ def api_actions():
 @flask_app.route("/api/queue/add", methods=["POST"])
 def api_queue_add():
     data = request.get_json() or {}
-    gid = int(data.get("guild_id", 0))
-    # 沒指定伺服器時自動 fallback：active guild → 第一個有語音連線的 → 第一個 guild
-    # 讓新開分頁的使用者不必選伺服器就能直接點歌
-    if gid == 0:
-        gid = guildscope.default_guild()     # 自己的目前伺服器 → 在語音中的 → 第一個（只在自己有加入的伺服器裡挑）
+    # 沒指定伺服器時自動 fallback，讓新開分頁不必先選伺服器就能點歌
+    gid = _body_gid(data)
     if gid == 0:
         return jsonify({"status": "error", "message": "機器人尚未連線到任何伺服器"}), 400
     url = data.get("url", "").strip()
@@ -98,8 +103,9 @@ def api_queue_add():
     no_play = data.get("no_play", False)
     if not url:
         return jsonify({"status": "error", "message": "請提供網址"}), 400
-    if song_url_error(url):
-        return jsonify({"status": "error", "message": song_url_error(url)}), 400
+    err = song_url_error(url)
+    if err:
+        return jsonify({"status": "error", "message": err}), 400
     result = _w.run_async(web_add_to_queue(gid, url, title, auto_play=not no_play, duration=data.get("duration"),
                                         actor=_w._actor()))
     if not result:
@@ -119,12 +125,9 @@ def api_queue_add():
 def api_queue_add_batch():
     """批次加入多首歌曲到佇列（不自動播放）"""
     data = request.get_json() or {}
-    gid = int(data.get("guild_id", 0))
-    # 與 /api/queue/add 相同的 fallback 邏輯
+    gid = _body_gid(data)
     if gid == 0:
-        gid = guildscope.default_guild()     # 自己的目前伺服器 → 在語音中的 → 第一個（只在自己有加入的伺服器裡挑）
-        if gid == 0:
-            return jsonify({"status": "error", "message": "機器人尚未連線到任何伺服器"}), 400
+        return jsonify({"status": "error", "message": "機器人尚未連線到任何伺服器"}), 400
     songs = data.get("songs", [])
     if not songs:
         return jsonify({"status": "error", "message": "請提供歌曲列表"}), 400
@@ -227,12 +230,7 @@ def api_queue_reorder():
         if expect and q[frm][0] != expect:   # 拖曳期間佇列被別人改過 → 不要搬錯歌
             return jsonify({"status": "error", "message": "佇列已變動，請重試"}), 409
         q.insert(to, q.pop(frm))
-    try:
-        from . import prefetch
-        if client.loop and not client.loop.is_closed():
-            client.loop.call_soon_threadsafe(prefetch.ensure, gid)
-    except Exception:
-        pass
+    _ensure_prefetch(gid)
     return jsonify({"status": "ok"})
 
 @flask_app.route("/api/queue/play", methods=["POST"])

@@ -1,15 +1,13 @@
 """Discord 按鈕控制面板與 Modal"""
 from .config import DEFAULT_VOLUME
 import random
-import time
 
 import discord
 
 from .config import log
 from .state import (
-    paused_position, song_start_times, queues, now_playing, now_playing_url,
+    queues, now_playing, now_playing_url,
     volumes, volume_transformers, random_loop_guilds,
-    is_playing_state, is_paused_state,
 )
 from . import actionlog
 from .discord_ux import md, panel_text, claim_skip, reply_error, voice_gate, GENERIC_ERROR
@@ -56,12 +54,8 @@ class MusicControlView(discord.ui.View):
             await interaction.response.edit_message(content=panel_text(gid, paused=False), view=self)
             await resume_playback(gid, vc)
         elif vc.is_playing():
-            if gid in song_start_times:
-                paused_position[gid] = time.time() - song_start_times[gid]
-                del song_start_times[gid]
-            vc.pause()
-            is_playing_state[gid] = False
-            is_paused_state[gid] = True
+            from .player import pause_playback
+            pause_playback(gid, vc)
             await interaction.response.edit_message(content=panel_text(gid, paused=True), view=self)
         else:
             await interaction.response.send_message("沒有正在播放的歌曲", ephemeral=True)

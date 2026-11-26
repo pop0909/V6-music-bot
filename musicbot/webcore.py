@@ -27,7 +27,7 @@ from .state import play_notices, note_song_meta, known_durations, remember_durat
 from .state import change_version, duration_gen
 from .state import pending_seeks as _pending_seeks, sleep_timers
 from .utils import format_time, allowed_song_url, song_url_error, safe_title
-from .player import _update_panel, play_next, resume_playback, _spawn  # noqa: F401  _update_panel：測試會替換
+from .player import _update_panel, play_next, resume_playback, pause_playback, _spawn  # noqa: F401  _update_panel：測試會替換
 from . import actionlog
 
 
@@ -158,12 +158,7 @@ async def web_toggle_play(gid):
         await resume_playback(gid, vc)
         return {"status": "resumed", "title": now_playing.get(gid, "")}
     elif vc.is_playing():
-        if gid in song_start_times:
-            paused_position[gid] = time.time() - song_start_times[gid]
-            del song_start_times[gid]
-        vc.pause()
-        is_playing_state[gid] = False
-        is_paused_state[gid] = True
+        pause_playback(gid, vc)
         return {"status": "paused", "title": now_playing.get(gid, "")}
     elif queues.get(gid):
         guild = client.get_guild(gid)

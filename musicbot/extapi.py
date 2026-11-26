@@ -19,7 +19,7 @@ from .state import (
 )
 from .utils import clean_str
 from .webapi import flask_app
-from .webcore import run_async, web_add_to_queue, get_active_guild
+from .webcore import run_async, web_add_to_queue
 
 PREFIX = "/api/ext/"
 TITLE_MAX = 200       # 擴充功能送來的標題（不可信）上限，避免 Discord 訊息超過 2000 字而送不出去
