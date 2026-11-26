@@ -72,59 +72,9 @@ function fxFlip(list, mutate) {
                                                { duration: 420, easing: FX_EASE }));
 }
 function fxWrapList(fn, getList) {
+    // 清單更新立刻畫完：不再做 FLIP／錯開滑入（會對可見列做 getBoundingClientRect，長清單會頓一下）
     return function (...args) {
-        const list = getList(...args);
-        if (fxQuiet) {   // 開啟展開畫面 / 預先建立時：不做 FLIP（避免讀版面）也不播入場動畫
-            const r = fn.apply(this, args);
-            if (list) list.classList.add('fx-update');
-            return r;
-        }
-        const stagger = fxListStagger || !list || !list.querySelector('.list-item');
-        if (stagger || fxOff()) {
-            fxListStagger = false;
-            if (list) list.classList.remove('fx-update');
-            const r = fn.apply(this, args);
-            if (list) list.querySelectorAll(':scope > .list-item').forEach((it, i) => { if (i < 12) it.style.setProperty('--i', i); });
-            return r;
-        }
-        // 資料更新：保留舊項目位置做 FLIP；只有新項目播入場動畫
-        const before = fxSnapshot(list);
-        list.classList.add('fx-update');
-        const r = fn.apply(this, args);
-        const seen = {}, kept = new Set(), moves = [], enters = [];
-        const rendered = list.querySelectorAll(':scope > .list-item');
-        // 讀取階段（一次排版）
-        rendered.forEach(item => {
-            const key = fxItemKey(item, seen);
-            if (!before.has(key)) { if (enters.length < FX_MAX_ANIM) enters.push(item); return; }
-            kept.add(key);
-            const old = before.get(key);
-            if (!old || moves.length >= FX_MAX_ANIM) return;
-            const dy = old.r.top - item.getBoundingClientRect().top;
-            if (Math.abs(dy) > 1 && Math.abs(dy) < 1500) moves.push([item, dy]);
-        });
-        // 寫入階段
-        enters.forEach(item => item.classList.add('fx-enter'));
-        moves.forEach(([item, dy]) => item.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }],
-                                                   { duration: 440, easing: FX_EASE }));
-        // 被移除的項目：用複製的「殘影」原地縮小淡出（最多 4 個）。
-        // 分批渲染時後段尚未建立的項目不算被移除。
-        const renderedCount = rendered.length;
-        let ghosts = 0, idx = 0;
-        before.forEach((v, key) => {
-            const oldIdx = idx++;
-            if (oldIdx >= renderedCount) return;
-            if (kept.has(key) || !v || ghosts >= 4) return;
-            ghosts++;
-            const g = v.item.cloneNode(true);
-            g.classList.add('fx-ghost');
-            g.style.cssText += `;position:fixed;left:${v.r.left}px;top:${v.r.top}px;width:${v.r.width}px;height:${v.r.height}px;margin:0;pointer-events:none;z-index:50`;
-            document.body.appendChild(g);
-            const a = g.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateX(28px) scale(.96)' }],
-                                { duration: 320, easing: 'cubic-bezier(.4,0,.7,.2)', fill: 'forwards' });
-            a.onfinish = () => g.remove();
-        });
-        return r;
+        return fn.apply(this, args);
     };
 }
 renderQueueList = fxWrapList(renderQueueList, (q, v) => (v || QV.np).list);

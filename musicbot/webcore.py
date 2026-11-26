@@ -4,6 +4,7 @@ import asyncio
 import inspect
 import time
 import math
+import hashlib
 
 import discord
 
@@ -509,8 +510,22 @@ def get_guild_list():
     return result
 
 
-def get_guild_status(gid):
-    """取得指定伺服器的播放狀態（只讀取純 Python 狀態，不碰 VoiceClient）"""
+def _queue_rev(q, meta):
+    """佇列內容的短版本號（網址／標題／長度／點歌者）。不含播放進度，所以每秒 tick 不會變。"""
+    h = hashlib.sha1()
+    h.update(str(len(q)).encode())
+    for u, t in q:
+        who = (meta.get(u) or {}).get("requester") or ""
+        if who == "網頁":
+            who = ""
+        h.update(b"\0")
+        h.update(f"{u}\t{t}\t{known_durations.get(u, 0)}\t{who}".encode("utf-8", "replace"))
+    return h.hexdigest()[:16]
+
+
+def get_guild_status(gid, include_queue=True):
+    """取得指定伺服器的播放狀態（只讀取純 Python 狀態，不碰 VoiceClient）
+    include_queue=False：不算整份佇列（SSE 在佇列沒變時用來省流量）；仍附 queue_length 與 q_rev。"""
     gid = int(gid)
     with state_lock:
         is_play = is_playing_state.get(gid, False)
@@ -526,9 +541,11 @@ def get_guild_status(gid):
         else:
             elapsed = 0
 
+        q = queues.get(gid) or []
+        q_rev = _queue_rev(q, song_meta.get(gid) or {})
         queue_list = []
-        if gid in queues:
-            for i, (u, t) in enumerate(queues[gid]):
+        if include_queue:
+            for i, (u, t) in enumerate(q):
                 # duration：已知長度（0 = 未知），網頁佇列標頭算總長度用
                 item = {"index": i, "url": u, "title": t, "duration": known_durations.get(u, 0)}
                 who = (song_meta.get(gid) or {}).get(u, {}).get("requester")
@@ -536,15 +553,15 @@ def get_guild_status(gid):
                     item["by"] = who        # 誰點的（擴充功能成員 / Discord 使用者）
                 queue_list.append(item)
 
-        return {
+        out = {
             "is_connected": is_connected,
             "is_playing": is_play,
             "is_paused": is_paus,
             "current_title": now_playing.get(gid, ""),
             "current_url": now_playing_url.get(gid, ""),
             "thumbnail": now_playing_thumbnail.get(gid, ""),
-            "queue": queue_list,
-            "queue_length": len(queues.get(gid, [])),
+            "queue_length": len(q),
+            "q_rev": q_rev,
             "elapsed": elapsed,
             "duration": song_durations.get(gid, 0),
             "elapsed_str": format_time(elapsed),
@@ -563,17 +580,25 @@ def get_guild_status(gid):
             "last_voice_channel": _vc_json(current_voice_channel.get(gid)),
             "active_guild_id": str(_state.active_guild_id) if _state.active_guild_id is not None else None,
         }
+        if include_queue:
+            out["queue"] = queue_list
+        return out
 
 
 def get_full_app_state(gid, known=None):
     """
     統一的全狀態函式 — 一次打包所有前端需要的資料。
     取代前端所有輪詢，透過 SSE 每秒推送。
-    known：這條 SSE 連線上次送出的清單版本 {"pl": ...}；版本沒變就不附整份本地歌單
-    （前端沿用手上那份）。不給 = 全部都附（新連線 / 重連一定拿到完整資料）。
+    known：這條 SSE 連線上次送出的清單版本 {"pl": ..., "q": ...}；版本沒變就不附整份
+    本地歌單或佇列（前端沿用手上那份）。不給 = 全部都附（新連線 / 重連一定拿到完整資料）。
     """
     gid = int(gid)
-    state_data = get_guild_status(gid)
+    # 先算 q_rev（很便宜）再決定要不要組整份佇列：播放中每秒只變 elapsed，佇列本身沒變
+    with state_lock:
+        q_peek = queues.get(gid) or []
+        q_rev_peek = _queue_rev(q_peek, song_meta.get(gid) or {})
+    include_q = not known or known.get("q") != q_rev_peek
+    state_data = get_guild_status(gid, include_queue=include_q)
     from .storage import playlist_rev
     with state_lock:
         # 版本 + 長度：就算有地方改了清單卻沒走存檔，長度變了也會重送

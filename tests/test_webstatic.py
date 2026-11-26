@@ -117,7 +117,11 @@ class VersionTest(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(ROOT, "static", "js", "app.js")))   # 舊的單一檔不能留著
         html = read("templates/index.html").decode("utf-8")
         self.assertNotIn('type="module"', html)
-        self.assertNotRegex(html, r'<script src="/static/js/app/[^"]+"\s+(?:defer|async)')
+        self.assertNotRegex(html, r'<script[^>]+\basync\b')
+        # 放在 <head> 並加 defer：與 CSS 平行下載，仍依文件順序執行（不能改成 async，會亂序）
+        self.assertLess(html.index('01-core.js'), html.index('</head>'))
+        for n in files:
+            self.assertRegex(html, rf'<script src="/static/js/app/{re.escape(n)}\?v=[\w.-]+" defer></script>')
         for n in files:
             js = read("static/js/app/" + n).decode("utf-8")
             self.assertTrue(js.endswith("\n"), n)

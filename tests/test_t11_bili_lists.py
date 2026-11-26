@@ -360,7 +360,7 @@ class ResolveUrlApiAndUi(unittest.TestCase):
         self.assertIn("expand_season: true", body)
         self.assertIn("data.kind === 'favlist' ? '收藏夾'", body)
         self.assertIn("已加入前 ${batchResult.count} 首", body)
-        self.assertIn("20261126t11b", Path(ROOT, "templates", "index.html").read_text(encoding="utf-8"))
+        self.assertIn("20261126t12a", Path(ROOT, "templates", "index.html").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

@@ -973,6 +973,13 @@ html.fx-hidden *, html.fx-hidden *::before, html.fx-hidden *::after,
 .np-card.fx-offscreen .progress-fill::before, .np-card.fx-offscreen .np-cover-wrap::before { animation-play-state: paused !important; }
 
 /* 低效能模式 / 減少動態：關閉裝飾性特效 */
+/* 預設關閉持續性裝飾動畫（順暢優先）。封面、進度條流光、清單入場都不自動播；低效能模式本來就會關。 */
+.np-card.is-playing .np-cover-wrap::before,
+.np-card.is-playing .album-art img { animation: none; will-change: auto; }
+.np-card.is-playing .progress-fill::before,
+.player-bar.is-playing .progress-fill::before { animation: none; opacity: 0; }
+.list-item { animation: none; }
+
 html.low-power .fx-particles,
 html.low-power .np-card .progress-fill::before { display: none; }
 html.low-power .np-card.is-playing .album-art img,

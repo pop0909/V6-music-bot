@@ -234,7 +234,7 @@ class SseRevisions(unittest.TestCase):
         state.now_playing.pop(G, None)
         self.assertIn("playlist", a)
         self.assertNotIn("playlist", b)
-        self.assertEqual(fs.call_args_list[1][0][1], {"pl": a["pl_rev"]})
+        self.assertEqual(fs.call_args_list[1][0][1], {"pl": a["pl_rev"], "q": a["q_rev"]})
 
 
 class PanelAssets(unittest.TestCase):

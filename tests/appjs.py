@@ -5,7 +5,7 @@ import re
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 APP_DIR = os.path.join(ROOT, "static", "js", "app")
-SCRIPT_RE = re.compile(r'<script src="/static/js/app/([\w.-]+\.js)\?v=([\w.-]+)"></script>')
+SCRIPT_RE = re.compile(r'<script src="/static/js/app/([\w.-]+\.js)\?v=([\w.-]+)"(?:\s+defer)?>\s*</script>')
 
 
 def app_js_files():
