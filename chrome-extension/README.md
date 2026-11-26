@@ -1,6 +1,6 @@
 # 音樂機器人點歌（Chrome 擴充功能）
 
-在 YouTube / YouTube Music / Bilibili 一鍵把歌加入 https://musbot.kdns.fr/ 機器人的佇列。
+在 YouTube / YouTube Music / Bilibili 一鍵把歌加入音樂機器人的佇列。這個倉庫裡的擴充功能預設連到本專案已設定的面板網址；若你自己架設，請先改 `manifest.json` 的 `host_permissions` 與相關檔案。
 
 ## 安裝（載入未封裝擴充功能）
 1. Chrome 網址列輸入 `chrome://extensions`
@@ -19,7 +19,7 @@
 
 ## 注意
 - 金鑰不要轉給別人；外洩時請擁有者在「成員管理」停用或重設那把金鑰（立刻生效）
-- 擁有者的 `token.txt` 可以管理所有成員，絕對不要分享；外洩時改伺服器 `/root/v6/.env` 的 `EXT_TOKEN` 並重啟
+- 擁有者的 `token.txt` 可以管理所有成員，絕對不要分享；外洩時改伺服器 `.env` 的 `EXT_TOKEN` 並重啟
 - 點的歌會在佇列與播放紀錄顯示你的名字
 - 只接受單一影片網址（播放清單請用網頁面板的匯入）
 - 更新擴充功能檔案後，到 `chrome://extensions` 按重新載入，並重新整理 YouTube 分頁

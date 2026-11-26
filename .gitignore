@@ -25,3 +25,20 @@ chrome-extension/token.txt
 
 # UI 煙霧測試截圖
 smoke_out/
+
+# 本機 / 編輯器 / 測試產物
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+*.log
+
+# 可能含密鑰的本機複本；保留範本
+.env.*
+!.env.example

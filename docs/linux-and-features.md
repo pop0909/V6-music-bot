@@ -1,4 +1,9 @@
-# 自動推薦接歌 + Linux 部署（systemd）
+# 自動推薦、Linux 部署與其他說明
+
+> 專案總覽、安裝與設定變數請先看倉庫根目錄的 [README.md](../README.md)。本文是較細的部署與功能說明。
+>
+> 文中的網域與路徑都是範例，請改成你自己的面板網址與專案目錄。
+
 
 ## 自動推薦接歌（Autoplay）
 - 佇列播完、而且沒有「全部循環 / 單曲循環 / 隨機循環」會補歌時，從 YouTube Mix（`watch?v=<ID>&list=RD<ID>`）挑一首相關歌曲接著播，不需要 API key。
@@ -18,8 +23,8 @@
 
 ### 安裝（系統層級，預設；開機就啟動，不需登入）
 ```bash
-# 把整個資料夾傳到伺服器（.env 一起），例如：
-scp -r v5_improved 使用者@伺服器:/home/使用者/musicbot
+# 把專案傳到伺服器後，在伺服器上建立 .env（不要把已填密鑰的 .env 提交到 Git），例如：
+scp -r V6-music-bot 使用者@伺服器:/home/使用者/musicbot
 ssh 使用者@伺服器
 cd ~/musicbot
 chmod +x deploy/*.sh
@@ -42,7 +47,7 @@ sudo loginctl enable-linger $USER    # 沒登入（開機後）也要跑才需�
 |---|---|
 | 啟動前更新 | `ExecStartPre=-deploy/update-ytdlp.sh`：每次啟動先 `pip install -U yt-dlp`；離線/失敗也照樣啟動 |
 | 當機重啟 | `Restart=on-failure`、`RestartSec=30`；10 分鐘內失敗超過 10 次就停止（`systemctl reset-failed musicbot` 後再啟動） |
-| 每日更新 | `musicbot-update.timer` 每天**台北時間 05:00**（`OnCalendar=… Asia/Taipei`，伺服器時鐘是 UTC 也一樣；錯過會補跑）。先問本機面板 `/api/ext/status`（`.env` 的 `EXT_TOKEN`）有沒有人在聽：**機器人在任何語音頻道裡、或判斷不出來 → 今天整個跳過**；沒人在聽才更新，**版本有變而且還是沒人在聽才重啟 bot**。dcbot（`/root/v6`）用的 unit 檔在 `deploy/systemd/dcbot/` |
+| 每日更新 | `musicbot-update.timer` 每天**台北時間 05:00**（`OnCalendar=… Asia/Taipei`，伺服器時鐘是 UTC 也一樣；錯過會補跑）。先問本機面板 `/api/ext/status`（`.env` 的 `EXT_TOKEN`）有沒有人在聽：**機器人在任何語音頻道裡、或判斷不出來 → 今天整個跳過**；沒人在聽才更新，**版本有變而且還是沒人在聽才重啟 bot**。實際部署用的 unit 範例在 `deploy/systemd/dcbot/`（安裝腳本會依專案路徑產生） |
 | 日誌 | journald：`journalctl -u musicbot -f`、`journalctl -u musicbot-update` |
 | 檔案路徑 | `list.txt`、`favorites/` 以專案資料夾為準，不受工作目錄影響 |
 | 最愛歌曲（已拿掉） | 只留「我的歌單」。舊的 `favorites/<伺服器 id>.txt` 在第一次啟動時自動搬進擁有者的「我的歌單」（每個伺服器一份「最愛（伺服器名）」，超過 500 首接著放「…2」），記號在 `data/fav_migrated.json`，只搬一次；原檔保留不刪 |
@@ -54,17 +59,17 @@ FFMPEG_PATH=/usr/bin/ffmpeg
 WEB_HOST=127.0.0.1        # 只給本機 / Cloudflare Tunnel 連（預設 0.0.0.0）
 WEB_PORT=5000
 AUDIO_NORMALIZE=1        # 音量平衡預設開啟（0 = 預設關閉）
-YTDLP_COOKIES=/root/v6/cookies.txt   # YouTube 機器人驗證時用（見下方說明，chmod 600）
-HISTORY_DB=/root/v6/data/history.db  # 播放紀錄位置（預設 data/history.db）
+YTDLP_COOKIES=/path/to/musicbot/cookies.txt   # YouTube 機器人驗證時用（見下方說明，chmod 600）
+HISTORY_DB=/path/to/musicbot/data/history.db  # 播放紀錄位置（預設 data/history.db）
 OWNER_ID=123456789012345678   # 出事 / 自我檢查私訊的對象（不設就用 Discord 應用程式擁有者）
 SELFCHECK_HOUR=9              # 每日自我檢查時間（台北時間，0–23；off = 關閉）
 SELFCHECK_VIDEO=https://www.youtube.com/watch?v=jNQXAC9IVRw   # 每日解析測試用的影片
 DISCORD_CLIENT_SECRET=…       # 網頁用 Discord 帳號登入：開發者後台 OAuth2 頁的 Client Secret（沒設 = 只有金鑰登入）
-OAUTH_REDIRECT_URI=https://musbot.kdns.fr/auth/discord/callback   # 要跟開發者後台 OAuth2 → Redirects 填的一字不差
+OAUTH_REDIRECT_URI=https://你的面板網域/auth/discord/callback   # 要跟開發者後台 OAuth2 → Redirects 填的一字不差
 ```
 
 ### 網頁用 Discord 帳號登入（選用）
-1. Discord 開發者後台 → 這個機器人的應用程式 → OAuth2 → Redirects 加上 `https://musbot.kdns.fr/auth/discord/callback`，按儲存。
+1. Discord 開發者後台 → 這個機器人的應用程式 → OAuth2 → Redirects 加上 `https://你的面板網域/auth/discord/callback`，按儲存。
 2. 同一頁按 Client Secret 的「Reset Secret」，複製新密鑰，寫進 `.env` 的 `DISCORD_CLIENT_SECRET`，連同 `OAUTH_REDIRECT_URI` 一起，然後重啟。
 3. 只要 `identify` 權限；必須是機器人所在伺服器的成員才能登入。`OWNER_ID`（或應用程式擁有者、或在「成員管理」連結為「我的 Discord」的帳號）= 擁有者權限。
 4. 設定好之後網頁**只能**用 Discord 登入，原本用金鑰登入的瀏覽器會被要求重新登入；Chrome 擴充功能照舊用金鑰。
@@ -75,7 +80,7 @@ OAUTH_REDIRECT_URI=https://musbot.kdns.fr/auth/discord/callback   # 要跟開發
 7. 伺服器權限（`musicbot/guildscope.py`）：網頁和擴充功能都只看得到、只能操作**自己有加入**的伺服器。
    擁有者 = 擁有者 Discord 帳號所在的伺服器（查不到擁有者帳號時看得到全部）；成員金鑰 = 成員管理裡連結的 Discord 帳號所在的伺服器，
    **沒連結 Discord 的成員金鑰沒有任何伺服器可用**。「目前伺服器」每個人各一份：自己沒選過就跟擁有者選的，一般成員切換不會影響別人。
-8. 點歌網址只接受 YouTube（含 music.youtube.com、youtu.be）、Spotify、SoundCloud；其他網站會回「只支援 YouTube、Spotify、SoundCloud 的網址」。
+8. 點歌網址接受 YouTube（含 music.youtube.com、youtu.be）、Bilibili（含 b23.tv 等短網址）、Spotify、SoundCloud。
 
 ### 常用指令
 ```bash
@@ -108,13 +113,13 @@ sudo ./deploy/uninstall.sh                 # 加 --purge-venv 連 venv 一起刪
 2. 安裝瀏覽器擴充功能 **Get cookies.txt LOCALLY**（Chrome / Edge / Firefox 都有；認明「LOCALLY」版本，它不會把資料傳到外部）。
 3. 在 youtube.com 分頁點擴充功能 → Export（Netscape 格式）→ 存成 `cookies.txt`。
 4. （建議）匯出後用無痕視窗或直接關掉該分頁，不要再用這個瀏覽器設定檔操作 YouTube，避免 cookies 很快被輪替失效。
-5. 放到伺服器，例如 `/root/v6/cookies.txt`，並限制權限：
+5. 放到伺服器，例如 `/path/to/musicbot/cookies.txt`，並限制權限：
    ```bash
-   chmod 600 /root/v6/cookies.txt
+   chmod 600 /path/to/musicbot/cookies.txt
    ```
 6. 在 `.env` 加上：
    ```
-   YTDLP_COOKIES=/root/v6/cookies.txt
+   YTDLP_COOKIES=/path/to/musicbot/cookies.txt
    ```
 7. 重啟：`systemctl restart musicbot`（若只是覆寫主檔、程式已在跑，下一次解析就會改用新檔，不必重啟）。
 
