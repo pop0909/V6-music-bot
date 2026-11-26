@@ -1,7 +1,7 @@
 """Bilibili：網址正規化、公開 API 搜尋與解析音訊（DASH m4a）。
 
 B 站影片頁對機房 IP 常回 HTTP 412，yt-dlp 走網頁解析會失敗。改走公開 API：
-- 搜尋：/x/web-interface/search/type
+- 搜尋：/x/web-interface/wbi/search/type（WBI 簽名）；失敗或回 HTML 再試 search/all
 - 資訊：/x/web-interface/view（多 P 在 data.pages）
 - 音訊：/x/player/playurl（fnval=16 DASH）；失敗再試 WBI 簽名
 
@@ -238,6 +238,20 @@ def page_info(url):
 
 
 # ---------- 公開 API ----------
+class BiliApiFormatError(RuntimeError):
+    """API 回了非 JSON（例如舊搜尋端點的 HTML 錯誤頁）。"""
+
+
+def _looks_like_html(body, headers=None):
+    ctype = ""
+    if headers is not None:
+        ctype = (headers.get("Content-Type") or headers.get("content-type") or "").lower()
+    if "text/html" in ctype and "json" not in ctype:
+        return True
+    head = (body or b"").lstrip()[:64].lower()
+    return head.startswith(b"<!doctype") or head.startswith(b"<html") or head.startswith(b"<head")
+
+
 def _api_json(path_or_url, params=None, signed=False):
     url = path_or_url if path_or_url.startswith("http") else API + path_or_url
     params = dict(params or {})
@@ -245,13 +259,15 @@ def _api_json(path_or_url, params=None, signed=False):
         params = _wbi_sign(params)
     if params:
         url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
-    status, _hdrs, body, _final = _http(url)
+    status, hdrs, body, _final = _http(url)
     if status != 200:
         raise RuntimeError(f"B 站 API 回應 {status}")
+    if _looks_like_html(body, hdrs):
+        raise BiliApiFormatError("B 站 API 回傳的不是 JSON")
     try:
         data = json.loads(body.decode("utf-8", "replace"))
     except ValueError as e:
-        raise RuntimeError("B 站 API 回傳無法解析") from e
+        raise BiliApiFormatError("B 站 API 回傳無法解析") from e
     return data
 
 
@@ -339,19 +355,27 @@ def view(bvid=None, aid=None):
     return data["data"]
 
 
-def search(keyword, limit=5):
-    q = (keyword or "").strip()
-    if not q:
-        return []
-    data = _api_json("/x/web-interface/search/type", {
-        "search_type": "video",
-        "keyword": q,
-        "page": 1,
-    })
-    if data.get("code") != 0:
-        raise RuntimeError(data.get("message") or "B 站搜尋失敗")
+def _search_items(data):
+    """從 search/type 或 search/all（分組）的回應取出影片列。"""
+    block = (data or {}).get("data") or {}
+    result = block.get("result")
+    if result is None:
+        result = block.get("video") or []
+    items = []
+    for r in result or []:
+        if not isinstance(r, dict):
+            continue
+        if "result_type" in r and isinstance(r.get("data"), list):
+            if r.get("result_type") == "video":
+                items.extend(x for x in r["data"] if isinstance(x, dict))
+            continue
+        items.append(r)
+    return items
+
+
+def _search_rows(items, limit):
     out = []
-    for r in (data.get("data") or {}).get("result") or []:
+    for r in items:
         bvid = r.get("bvid") or ""
         if not bvid or not _BV_RE.fullmatch(bvid):
             # 有時結果會夾廣告 / 直播間，沒有 bvid
@@ -367,6 +391,36 @@ def search(keyword, limit=5):
         if len(out) >= limit:
             break
     return out
+
+
+# 搜尋端點：dcbot 上舊的 search/type 會回 HTML 錯誤頁；WBI 與 search/all 正常。
+_SEARCH_ENDPOINTS = (
+    ("/x/web-interface/wbi/search/type", {"search_type": "video", "page": 1}, True),
+    ("/x/web-interface/search/all/v2", {"page": 1}, False),
+    ("/x/web-interface/search/all", {"page": 1}, False),
+)
+
+
+def search(keyword, limit=5):
+    q = (keyword or "").strip()
+    if not q:
+        return []
+    last_err = None
+    for path, extra, signed in _SEARCH_ENDPOINTS:
+        params = dict(extra)
+        params["keyword"] = q
+        try:
+            data = _api_json(path, params, signed=signed)
+        except (BiliApiFormatError, RuntimeError) as e:
+            last_err = e
+            log.info(f"[Bilibili] 搜尋改試下一個端點（{path}：{e}）")
+            continue
+        if data.get("code") != 0:
+            last_err = RuntimeError(data.get("message") or "B 站搜尋失敗")
+            log.info(f"[Bilibili] 搜尋改試下一個端點（{path}：{last_err}）")
+            continue
+        return _search_rows(_search_items(data), limit)
+    raise last_err or RuntimeError("B 站搜尋失敗")
 
 
 def _playurl(bvid, cid, aid=None):

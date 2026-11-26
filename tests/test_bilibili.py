@@ -95,21 +95,100 @@ class ApiSearchAndView(unittest.TestCase):
     def tearDown(self):
         bilibili.reset_runtime()
 
+    def _nav(self):
+        return {"code": -101, "message": "账号未登录", "data": {
+            "isLogin": False,
+            "wbi_img": {
+                "img_url": "https://i0.hdslb.com/bfs/wbi/" + ("a" * 32) + ".png",
+                "sub_url": "https://i0.hdslb.com/bfs/wbi/" + ("b" * 32) + ".png",
+            },
+        }}
+
+    def _video_hit(self):
+        return {"bvid": BV, "title": "接下來會很瘋狂【<em class=\"keyword\">原神</em>】", "duration": "5:9",
+                "pic": "//i0.hdslb.com/bfs/cover/x.jpg", "author": "UP主"}
+
     def test_search_parses_results_and_strips_em(self):
         payload = {"code": 0, "message": "OK", "data": {"result": [
-            {"bvid": BV, "title": "接下來會很瘋狂【<em class=\"keyword\">原神</em>】", "duration": "5:9",
-             "pic": "//i0.hdslb.com/bfs/cover/x.jpg", "author": "UP主"},
+            self._video_hit(),
             {"bvid": "", "title": "廣告", "duration": "0:10"},
             {"bvid": "BV1INVALID", "title": "第二首", "duration": "1:02"},  # 不是合法 BV
         ]}}
-        with mock.patch.object(bilibili, "_http", return_value=_resp(payload)):
+        seen = []
+
+        def fake(url, headers=None, method="GET", max_bytes=2_000_000):
+            seen.append(url)
+            if "/x/web-interface/nav" in url:
+                return _resp(self._nav())
+            if "/wbi/search/type" in url:
+                self.assertIn("w_rid=", url)
+                self.assertIn("wts=", url)
+                self.assertIn("keyword=", url)
+                return _resp(payload)
+            raise AssertionError("unexpected " + url)
+
+        with mock.patch.object(bilibili, "_http", side_effect=fake):
             rows = bilibili.search("原神", 5)
+        self.assertTrue(any("/wbi/search/type" in u for u in seen))
+        self.assertFalse(any("/search/type?" in u and "/wbi/" not in u for u in seen))
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["url"], PAGE)
         self.assertEqual(rows[0]["title"], "接下來會很瘋狂【原神】")
         self.assertEqual(rows[0]["duration"], 5 * 60 + 9)
         self.assertEqual(rows[0]["thumbnail"], "https://i0.hdslb.com/bfs/cover/x.jpg")
         self.assertEqual(rows[0]["author"], "UP主")
+
+    def test_search_falls_back_when_type_returns_html(self):
+        html = b'<!DOCTYPE HTML><html lang="zh-cn"><title>\xe5\x87\xba\xe9\x94\x99\xe5\x95\x8a! - aba.bilibili.com</title></html>'
+        grouped = {"code": 0, "message": "OK", "data": {"result": [
+            {"result_type": "activity", "data": [{"title": "廣告"}]},
+            {"result_type": "video", "data": [self._video_hit()]},
+        ]}}
+        seen = []
+
+        def fake(url, headers=None, method="GET", max_bytes=2_000_000):
+            seen.append(url)
+            if "/x/web-interface/nav" in url:
+                return _resp(self._nav())
+            if "/wbi/search/type" in url:
+                return _resp(html, headers={"Content-Type": "text/html; charset=utf-8"})
+            if "/search/all/v2" in url:
+                return _resp(grouped)
+            raise AssertionError("unexpected " + url)
+
+        with mock.patch.object(bilibili, "_http", side_effect=fake):
+            rows = bilibili.search("原神", 5)
+        self.assertTrue(any("/wbi/search/type" in u for u in seen))
+        self.assertTrue(any("/search/all/v2" in u for u in seen))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["title"], "接下來會很瘋狂【原神】")
+
+    def test_search_falls_back_to_search_all_if_wbi_code_fails(self):
+        seen = []
+
+        def fake(url, headers=None, method="GET", max_bytes=2_000_000):
+            seen.append(url)
+            if "/x/web-interface/nav" in url:
+                return _resp(self._nav())
+            if "/wbi/search/type" in url:
+                return _resp({"code": -412, "message": "请求被拦截", "data": None})
+            if "/search/all/v2" in url:
+                return _resp({"code": -400, "message": "bad"}, headers={"Content-Type": "application/json"})
+            if url.rstrip("/").endswith("/search/all") or "/search/all?" in url:
+                return _resp({"code": 0, "data": {"result": [self._video_hit()]}})
+            raise AssertionError("unexpected " + url)
+
+        with mock.patch.object(bilibili, "_http", side_effect=fake):
+            rows = bilibili.search("原神", 3)
+        self.assertTrue(any(u.rstrip("/").endswith("/search/all") or "/search/all?" in u for u in seen))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["url"], PAGE)
+
+    def test_api_json_detects_html(self):
+        html = b"<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\"><html>sorry</html>"
+        with mock.patch.object(bilibili, "_http", return_value=_resp(html, headers={"Content-Type": "text/html"})):
+            with self.assertRaises(bilibili.BiliApiFormatError):
+                bilibili._api_json("/x/web-interface/search/type", {"keyword": "x"})
 
     def test_resolve_multi_part_all_or_one(self):
         view = {"code": 0, "data": {
