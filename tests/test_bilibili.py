@@ -301,7 +301,7 @@ class PanelAndExtension(unittest.TestCase):
         html = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
         self.assertIn('data-src="youtube"', html)
         self.assertIn('data-src="bilibili"', html)
-        self.assertIn("?v=20261126bili1", html)
+        self.assertIn("?v=20261126t11a", html)
         js = read_app_js()
         self.assertIn("API.search(query, searchSource)", js)
         self.assertIn("panel5bili", open(os.path.join(ROOT, "musicbot", "webapi_library.py"), encoding="utf-8").read()

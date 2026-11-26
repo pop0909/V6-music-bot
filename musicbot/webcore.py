@@ -612,6 +612,7 @@ async def web_import_songs(gid, songs, requester="網頁", stats=None, actor=Non
     actionlog.record_add(gid, actor, added, label)     # 匯入 / 整份歌單：只記一筆
     if stats is not None:
         stats["full_skipped"] = skipped
+        stats["added"] = count   # 在等待語音連線之前先記好，避免 run_async 逾時後前端顯示「加入 0 首」
     if gid in random_loop_guilds:
         random_loop_guilds[gid] = False
     _prefetch.ensure(gid)

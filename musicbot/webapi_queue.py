@@ -146,8 +146,9 @@ def api_import():
     """匯入 YouTube / Spotify 歌單（背景解析，前端用 /api/import/<id> 輪詢進度）"""
     data = request.get_json() or {}
     url = (data.get("url") or "").strip()
-    if not url.startswith("http") or not song_host_allowed(url):
-        return jsonify({"status": "error", "message": "請貼上 YouTube 或 Spotify 歌單網址"}), 400
+    err = song_url_error(url) if url else "網址格式不正確（需要 http/https 連結）"
+    if err:
+        return jsonify({"status": "error", "message": err}), 400
     gid = int(data.get("guild_id", 0) or 0)
     if gid == 0:
         gid = guildscope.default_guild()
@@ -157,6 +158,8 @@ def api_import():
     def _done(name, songs):
         stats = {}
         added = _w.run_async(web_import_songs(gid, songs, stats=stats, actor=actor, label=f"匯入：{name}" if name else "匯入歌單"))
+        if added is None:
+            added = stats.get("added", 0)   # 語音連線逾時時，歌可能已加入但回傳值丟失
         return added, stats.get("full_skipped", 0)
     jid = importer.start_job(url, _done)
     return jsonify({"status": "ok", "job": jid}), 202

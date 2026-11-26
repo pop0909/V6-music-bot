@@ -74,7 +74,8 @@ class Skeleton(unittest.TestCase):
         self.assertIn("if (stillLoading('_queueKey') && !(state.queue || []).length)", JS)
         self.assertEqual(JS.count("resetListCaches();"), 2)   # 手動換伺服器、自動跟隨
         self.assertIn("showSkeleton(el.shelfRow, 'card', 6)", JS)
-        self.assertIn("el.searchResults.innerHTML = skelHTML('result', 5)", JS)
+        self.assertIn("skelHTML('result', 5)", JS)
+        self.assertIn("搜尋中…", JS)
         self.assertIn(".skel-wrap { display: contents; }", CSS)
 
 

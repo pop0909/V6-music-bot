@@ -4,7 +4,7 @@ import random
 
 from flask import request, jsonify, g
 
-from .utils import song_host_allowed
+from .utils import song_host_allowed, song_url_error
 from . import userlists, extmembers, importer
 from .config import log
 from .state import queue_skip_message, queue_full_message
@@ -161,7 +161,10 @@ def import_into_new_list(k, url, name=None):
 def ul_import():
     d, k = _body(), user_key()
     url = d.get("url").strip() if isinstance(d.get("url"), str) else ""
-    if not url.startswith("http") or not song_host_allowed(url) or not (importer.is_spotify(url) or "list=" in url):
+    err = song_url_error(url) if url else "網址格式不正確（需要 http/https 連結）"
+    if err:
+        return jsonify({"status": "error", "message": err}), 400
+    if not (importer.is_spotify(url) or "list=" in url):
         return jsonify({"status": "error", "message": "請貼上 YouTube 播放清單（含 list=）或 Spotify 歌單／專輯網址"}), 400
     if len(userlists.list_playlists(k)) >= userlists.MAX_LISTS:
         return jsonify({"status": "error", "message": f"每人最多 {userlists.MAX_LISTS} 份歌單"}), 400

@@ -20,6 +20,7 @@ import threading
 import time
 
 from .config import log
+from .utils import URL_NOT_ALLOWED
 
 BOT_CHECK_HINT = (
     "YouTube 要求「確認你不是機器人」（伺服器 IP 被擋）。"
@@ -275,7 +276,7 @@ def friendly_error(err, context=""):
         pass
     if is_bot_check(err):
         return report_bot_check(context)
-    return plain_error(err)
+    return plain_error(err, playlist="歌單" in (context or ""))
 
 
 # yt-dlp 的英文錯誤 → 中文（依序比對，先中先用）；完整原文仍寫在日誌 / 擁有者通知
@@ -288,21 +289,31 @@ _PLAIN = (
     (("has been removed", "video unavailable", "no longer available", "account associated", "terminated", "does not exist"), "影片已被刪除或無法觀看"),
     (("http error 403", "403: forbidden"), "YouTube 暫時拒絕連線（403），請稍後再試"),
     (("http error 429", "too many requests"), "YouTube 暫時限制太多請求，請稍後再試"),
-    (("unsupported url", "is not a valid url", "incomplete youtube id"), "不支援這個網址"),
+    (("unsupported url", "is not a valid url", "incomplete youtube id"), URL_NOT_ALLOWED),
     (("timed out", "timeout"), "連線逾時，請稍後再試"),
     (("unable to download", "unable to extract", "network is unreachable", "connection"), "暫時讀不到這首歌，請稍後再試"),
 )
 
 
-def plain_error(err):
+def _as_playlist_error(text):
+    """把「這首歌 / 這部影片」的說法改成歌單，避免匯入失敗時講成單曲。"""
+    return (text.replace("請換一首", "請換一個")
+                .replace("這首歌", "這個歌單")
+                .replace("這部影片", "這個歌單"))
+
+
+def plain_error(err, *, playlist=False):
     """例外 → 使用者看得懂的一句中文；本來就是中文說明就照用；認不出來 → 通用說法（不丟英文原文）"""
     msg = str(err or "")
     if any("\u4e00" <= ch <= "\u9fff" for ch in msg) and "ERROR:" not in msg:
-        return msg[:200]
+        text = msg[:200]
+        return _as_playlist_error(text) if playlist else text
     low = msg.lower()
     for keys, text in _PLAIN:
         if any(k in low for k in keys):
-            return text
+            return _as_playlist_error(text) if playlist else text
+    if playlist:
+        return "無法讀取這個歌單，請換一個或稍後再試"
     return "無法讀取這首歌，請換一首或稍後再試"
 
 

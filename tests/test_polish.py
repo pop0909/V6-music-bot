@@ -37,7 +37,7 @@ class PlainError(unittest.TestCase):
         "ERROR: The uploader has not made this video available in your country": "地區",
         "ERROR: [youtube] abc: This live event will begin in 3 hours.": "還沒開始",
         "ERROR: [youtube] abc: Join this channel to get access to members-only content": "會員限定",
-        "ERROR: Unsupported URL: https://example.com/x": "不支援這個網址",
+        "ERROR: Unsupported URL: https://example.com/x": "只支援 YouTube、Bilibili、Spotify、SoundCloud 的網址",
         "ERROR: unable to download video data: HTTP Error 403: Forbidden": "403",
         "Read timed out.": "逾時",
     }
@@ -60,6 +60,16 @@ class PlainError(unittest.TestCase):
     def test_friendly_error_uses_mapping(self):
         with mock.patch.object(ytdl, "is_bot_check", return_value=False):
             self.assertEqual(ytdl.friendly_error("ERROR: Private video"), "這部影片是私人影片，無法播放")
+
+    def test_playlist_context_does_not_say_this_song(self):
+        with mock.patch.object(ytdl, "is_bot_check", return_value=False):
+            out = ytdl.friendly_error(RuntimeError("something weird happened xyz"), "匯入歌單時")
+        self.assertIn("歌單", out)
+        self.assertNotIn("這首歌", out)
+        self.assertNotIn("xyz", out)
+        mapped = ytdl.plain_error("ERROR: unable to extract", playlist=True)
+        self.assertIn("歌單", mapped)
+        self.assertNotIn("這首歌", mapped)
 
 
 class ApiErrors(unittest.TestCase):

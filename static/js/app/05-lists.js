@@ -169,15 +169,19 @@ function renderQueueList(q, view = QV.np) {
 
         div.querySelector('[data-action="play"]').addEventListener('click', (ev) => {
             const b = ev.currentTarget; if (b.disabled) return; b.disabled = true;   // 連點兩下不會連跳兩首
-            // 樂觀更新：先提示、進度歸零，伺服器在背景切歌（SSE 會立刻推送新歌）
-            showToast(`▶ 播放：${song.title}`, 'success');
+            // 先顯示「切換中」，等真正開始播放（SSE 更新 currentUrl）再確認，避免提示比換歌早 5–8 秒
+            showToast(`切換中… ${song.title}`, 'success', { key: 'queue-play', ms: 30000 });
             setProgress(0);
             setText(el.currentTime, '0:00');
             // 用目前位置（拖曳 / 鍵盤移動後會變）＋網址：位置過時（上一首剛播完佇列前移）時伺服器以網址為準
-            API.queuePlay(+div.dataset.index, null, song.url).then((r) => {
+            API.queuePlay(+div.dataset.index, null, song.url).then(async (r) => {
+                if (r && r.code === 'stale') { b.disabled = false; resyncSoon(150); return; }   // 這首已經在播 / 被刪：不必再提示
+                if (actionFailed(r)) { b.disabled = false; reportActionResult(r); return; }
+                const ok = await waitUntilCurrent(song.url, 25000);
                 b.disabled = false;
-                if (r && r.code === 'stale') { resyncSoon(150); return; }   // 這首已經在播 / 被刪：不必再提示
-                reportActionResult(r);
+                if (ok) showToast(`▶ 正在播放：${song.title}`, 'success', { key: 'queue-play' });
+                else showToast(`已送出切換：${song.title}`, 'warning', { key: 'queue-play', ms: 4000 });
+                resyncSoon();
             });
         });
         div.querySelector('[data-action="remove"]').addEventListener('click', async (ev) => {
@@ -223,13 +227,15 @@ $('modalConfirm').addEventListener('click', async (e) => {
     try { await saveModal(url, title); } finally { btn.disabled = false; }
 });
 async function saveModal(url, title) {
+    const urlErr = songUrlError(url);
+    if (urlErr) { showToast(urlErr, 'error'); return; }   // 出錯不關視窗，保留已輸入的內容
     if (modalMode === 'edit' && editingIndex >= 0) {
         const r = await API.playlistEdit(editingIndex, url, title, editingUrl);
-        if (r && r.status === 'error') { showToast(r.message || '更新失敗', 'error'); return; }
+        if (!r || r.status === 'error') { showToast((r && r.message) || '更新失敗', 'error'); return; }
         showToast('✅ 已更新', 'success');
     } else {
         const r = await API.playlistAdd(url, title);
-        if (r && r.status === 'error') { showToast(r.message || '新增失敗', 'error'); return; }
+        if (!r || r.status === 'error') { showToast((r && r.message) || '新增失敗', 'error'); return; }
         showToast(`✅ 已新增：${title}`, 'success');
     }
     $('editModal').classList.remove('active');
@@ -351,8 +357,10 @@ async function importPlaylist(url) {
             const j = await API.importStatus(r.job);
             if (!j || j.status === 'error') { showToast('❌ ' + ((j && j.message) || '匯入失敗'), 'error', { key: 'import', ms: 4000 }); return; }
             if (j.status === 'done') {
+                const n = Number(j.added);
+                const added = Number.isFinite(n) ? n : 0;
                 const extra = (j.skipped ? `（${j.skipped} 首找不到）` : '') + (j.full_skipped ? `（佇列已滿，另有 ${j.full_skipped} 首沒加入）` : '');
-                showToast(`✅ 已從「${j.name}」加入 ${j.added} 首${extra}`, 'success', { key: 'import', ms: 3500 });
+                showToast(`✅ 已從「${j.name}」加入 ${added} 首${extra}`, 'success', { key: 'import', ms: 3500 });
                 return;
             }
             if (j.total) showToast(`🔎 搜尋中 ${j.done}/${j.total}…`, 'success', { key: 'import', ms: 60000 });
@@ -369,19 +377,22 @@ async function addFromUrl(query) {
 
     const data = await API.resolveUrl(query);
     el.btnSearch.disabled = false;
-    el.searchResults.innerHTML = '';
 
-    if (data.status === 'error') {
-        showToast('❌ 解析失敗：' + (data.message || '未知錯誤'), 'error');
-        return;
+    if (!data || data.status === 'error') {
+        const msg = (data && data.message) || '無法解析這個網址';
+        el.searchResults.innerHTML = `<div style="padding:12px;text-align:center;color:var(--sub)">${escapeHtml(msg)}</div>`;
+        showToast(msg, 'error');
+        return;   // 保留輸入的網址，不關結果區
     }
 
     if (!data.songs || data.songs.length === 0) {
-        showToast('❌ 找不到歌曲', 'error');
+        el.searchResults.innerHTML = '<div style="padding:12px;text-align:center;color:var(--sub)">這個網址找不到歌曲</div>';
+        showToast('這個網址找不到歌曲', 'error');
         return;
     }
 
     // 將所有歌曲加入佇列（不自動播放）；guild 未選時後端自動 fallback
+    el.searchResults.innerHTML = '';
     const batchResult = await API.queueAddBatch(data.songs);
     if (!batchResult || batchResult.status !== 'ok') {
         showToast(batchResult && batchResult.message ? `❌ ${batchResult.message}` : '❌ 加入佇列失敗', 'error');
@@ -402,6 +413,10 @@ async function addFromUrl(query) {
 async function doSearch() {
     const query = el.searchInput.value.trim();
     if (!query) return;
+    if (!/^https?:\/\//i.test(query) && [...query].length > SEARCH_QUERY_MAX) {
+        showToast(`關鍵字最多 ${SEARCH_QUERY_MAX} 個字`, 'error');
+        return;
+    }
     closeNpView();   // 搜尋結果顯示在主畫面
 
     // === 匯入歌單：YouTube 播放清單 / Spotify 歌單或專輯（背景解析，toast 顯示進度） ===
@@ -420,7 +435,10 @@ async function doSearch() {
 
     // === 關鍵字搜尋 ===
     const seq = ++_searchSeq;
-    el.searchResults.innerHTML = skelHTML('result', 5).replace('aria-label="載入中"', 'aria-label="搜尋中"');
+    el.searchResults.innerHTML = '<div class="search-loading" role="status" aria-live="polite" aria-busy="true">'
+        + '<div class="search-loading-text"><i class="fas fa-spinner fa-pulse" aria-hidden="true"></i> 搜尋中…</div>'
+        + skelHTML('result', 5).replace('aria-label="載入中"', 'aria-label="搜尋中"')
+        + '</div>';
     el.btnSearch.disabled = true;
     const data = await API.search(query, searchSource);
     if (seq !== _searchSeq) return;   // 等結果時搜尋框被清空 / 按了 Esc / 又搜了別的
@@ -435,12 +453,19 @@ async function doSearch() {
     data.results.forEach(r => {
         const div = document.createElement('div');
         div.className = 'search-result-item';
+        const channel = r.channel || r.author || r.uploader || '';
         div.innerHTML = `
             <img alt="" loading="lazy" decoding="async" width="64" height="36">
-            <span class="result-title">${escapeHtml(r.title)}</span>
+            <span class="result-meta">
+                <span class="result-title">${escapeHtml(r.title)}</span>
+                ${channel ? `<span class="result-channel">${escapeHtml(channel)}</span>` : ''}
+            </span>
             <span class="result-duration">${r.duration ? formatTime(r.duration) : ''}</span>
             <span class="result-add"><i class="fas fa-plus-circle"></i></span>`;
-        div.querySelector('.result-title').title = r.title || '';
+        const titleEl = div.querySelector('.result-title');
+        titleEl.title = r.title || '';
+        const chEl = div.querySelector('.result-channel');
+        if (chEl) chEl.title = channel;
         // 64x36 的小圖：mqdefault（320x180、16:9）就夠，伺服器給的 hqdefault（480x360、4:3 有黑邊）太大
         const rimg = div.querySelector('img');
         loadThumb(rimg, thumbCandidates(r.url, r.thumbnail, thumbNeed(64)), () => { rimg.style.display = 'none'; });
@@ -454,9 +479,7 @@ async function doSearch() {
             div.classList.remove('is-adding'); div.removeAttribute('aria-busy');
             if (ic) ic.className = 'fas fa-plus-circle';
             toastAdded(res, r.title);
-            el.searchInput.value = '';
-            el.searchResults.innerHTML = '';
-            setTimeout(refreshAll, 500);
+            setTimeout(refreshAll, 500);   // 加歌後保留搜尋清單，方便繼續加下一首
         });
         el.searchResults.appendChild(div);
     });

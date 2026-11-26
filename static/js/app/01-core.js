@@ -214,6 +214,34 @@ function toastAdded(r, title) {
     else showToast(`✅ 已加入佇列：${title}`, 'success');
 }
 
+// 與後端 utils.SEARCH_QUERY_MAX / song_url_error 對齊
+const SEARCH_QUERY_MAX = 200;
+const URL_NOT_ALLOWED = '只支援 YouTube、Bilibili、Spotify、SoundCloud 的網址';
+const URL_BAD_FORMAT = '網址格式不正確（需要 http/https 連結）';
+const ALLOWED_SONG_HOSTS = ['youtube.com', 'youtu.be', 'spotify.com', 'soundcloud.com', 'bilibili.com', 'b23.tv', 'b23.wtf', 'bili2233.cn'];
+
+function songUrlError(url) {
+    const u = String(url || '').trim();
+    if (!/^https?:\/\//i.test(u)) return URL_BAD_FORMAT;
+    let host = '';
+    try { host = new URL(u).hostname.toLowerCase().replace(/\.$/, ''); }
+    catch (_) { return URL_BAD_FORMAT; }
+    if (!ALLOWED_SONG_HOSTS.some(h => host === h || host.endsWith('.' + h))) return URL_NOT_ALLOWED;
+    return '';
+}
+
+function waitUntilCurrent(url, ms) {
+    const until = Date.now() + (ms || 25000);
+    return new Promise((resolve) => {
+        const tick = () => {
+            if (url && state.currentUrl === url) { resolve(true); return; }
+            if (Date.now() >= until) { resolve(false); return; }
+            setTimeout(tick, 200);
+        };
+        tick();
+    });
+}
+
 // ==================== 控制鍵提示（data-tip 即時提示 + aria-label，有變才寫） ====================
 function setTip(node, tip, aria) {
     if (!node) return;

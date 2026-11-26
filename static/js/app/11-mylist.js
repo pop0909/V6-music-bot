@@ -21,12 +21,36 @@ const askDialog = (() => {
         err.textContent = t || '';
         if (t) input.setAttribute('aria-invalid', 'true'); else input.removeAttribute('aria-invalid');
     }
-    function submit() {
-        if (!opts) return;
-        if (!opts.input) { finish(true); return; }
+    async function submit() {
+        if (!opts || ok.disabled) return;
+        if (!opts.input) {
+            if (opts.submit) {
+                ok.disabled = true;
+                try {
+                    const err = await opts.submit(true);
+                    if (!opts) return;
+                    if (err) { setErr(String(err)); return; }
+                } catch (_) {
+                    if (opts) setErr('發生錯誤，請再試一次');
+                    return;
+                } finally { ok.disabled = false; }
+            }
+            finish(true); return;
+        }
         const v = input.value.trim();
         const e = !v ? (opts.input.required || '請輸入內容') : (opts.input.validate ? opts.input.validate(v) : '');
         if (e) { setErr(e); input.focus(); return; }
+        if (opts.submit) {
+            ok.disabled = true;
+            try {
+                const err = await opts.submit(v);
+                if (!opts) return;   // 送出途中按了取消
+                if (err) { setErr(String(err)); input.focus(); return; }
+            } catch (_) {
+                if (opts) { setErr('發生錯誤，請再試一次'); input.focus(); }
+                return;
+            } finally { ok.disabled = false; }
+        }
         finish(v);
     }
     function focusables() {
@@ -260,16 +284,25 @@ const ML = (() => {
             return;
         }
         if (a === 'addcur' || a === 'addurl') {
-            let body;
             if (a === 'addurl') {
-                const u = await askDialog({ title: `加入歌曲到「${pl.name}」`, input: { label: 'YouTube 網址', placeholder: 'https://www.youtube.com/watch?v=…', inputMode: 'url', required: '請貼上 YouTube 網址' }, okText: '加入' });
-                if (!u) return;
-                body = { action: 'add', url: u };
-            } else {
-                if (!state.currentUrl) { showToast('目前沒有正在播放的歌', 'warning'); return; }
-                body = { action: 'add', url: state.currentUrl, title: state.currentTitle };
+                await askDialog({
+                    title: `加入歌曲到「${pl.name}」`,
+                    input: { label: '歌曲網址', placeholder: 'https://www.youtube.com/watch?v=… 或 B 站網址', inputMode: 'url', required: '請貼上歌曲網址',
+                        validate: (u) => songUrlError(u) },
+                    okText: '加入',
+                    submit: async (u) => {
+                        const j = await call('POST', '/' + pl.id, { action: 'add', url: u });
+                        if (j.status === 'error') return j.message || '加入失敗';
+                        if (j.status === 'duplicate') { showToast('歌單裡已經有這首歌', 'info'); return ''; }
+                        showToast(`✅ 已加入「${pl.name}」`, 'success');
+                        refresh();
+                        return '';
+                    },
+                });
+                return;
             }
-            const j = await call('POST', '/' + pl.id, body);
+            if (!state.currentUrl) { showToast('目前沒有正在播放的歌', 'warning'); return; }
+            const j = await call('POST', '/' + pl.id, { action: 'add', url: state.currentUrl, title: state.currentTitle });
             if (j.status === 'error') showToast(j.message, 'error');
             else if (j.status === 'duplicate') showToast('歌單裡已經有這首歌', 'info');
             else { showToast(`✅ 已加入「${pl.name}」`, 'success'); refresh(); }
@@ -288,11 +321,19 @@ const ML = (() => {
         if (j.status === 'error') showToast(j.message, 'error'); else { showToast('✅ 已建立', 'success'); refresh(); }
     }
     async function importList() {
+        let jobId = null;
         const url = await askDialog({ title: '匯入歌單', message: '貼上 YouTube 播放清單（網址含 list=）或 Spotify 歌單／專輯網址，會建立一份新的個人歌單（不會加入佇列）。',
-            input: { label: '歌單網址', placeholder: 'https://www.youtube.com/playlist?list=…', inputMode: 'url', required: '請貼上歌單網址' }, okText: '匯入' });
-        if (!url) return;
-        const j = await call('POST', '/import', { url });
-        if (j.status === 'error') { showToast(j.message, 'error'); return; }
+            input: { label: '歌單網址', placeholder: 'https://www.youtube.com/playlist?list=…', inputMode: 'url', required: '請貼上歌單網址',
+                validate: (u) => songUrlError(u) },
+            okText: '匯入',
+            submit: async (u) => {
+                const j = await call('POST', '/import', { url: u });
+                if (j.status === 'error') return j.message || '匯入失敗';
+                jobId = j.job;
+                return '';
+            } });
+        if (!url || !jobId) return;
+        const j = { job: jobId };
         showToast('📥 匯入中…（不會加入佇列）', 'info');
         for (let i = 0; i < 300; i++) {
             await new Promise(r => setTimeout(r, 2000));

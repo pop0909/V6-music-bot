@@ -14,7 +14,9 @@ from musicbot import searchcache, webapi, webapi_library, player_voice, importer
 
 
 def entry(i):
-    return {"id": f"vid{i:07d}x", "title": f"歌 {i}", "duration": 200 + i, "url": f"https://www.youtube.com/watch?v=vid{i:07d}x"}
+    return {"id": f"vid{i:07d}x", "title": f"歌 {i}", "duration": 200 + i,
+            "url": f"https://www.youtube.com/watch?v=vid{i:07d}x",
+            "channel": f"頻道 {i}", "uploader": f"上傳者 {i}"}
 
 
 # 真實 yt-dlp「ytsearch5:tuki.」扁平結果的第一筆：頻道，不是影片
@@ -119,6 +121,14 @@ class PanelSearchTest(Base):
         self.assertEqual(r1["results"], r2["results"])
         self.assertTrue(r2.get("cached"))
         self.assertEqual(r2["count"], 2)
+        self.assertEqual(r1["results"][0]["channel"], "頻道 1")
+
+    def test_old_cache_without_channel_is_ignored(self):
+        searchcache.put("panel5v", "陳粒 走马", [{"url": "https://www.youtube.com/watch?v=vid0000001x", "title": "舊"}])
+        FakeYDL.result = {"entries": [entry(1)]}
+        r = self.search("陳粒 走马").get_json()
+        self.assertFalse(r.get("cached"))
+        self.assertEqual(r["results"][0]["channel"], "頻道 1")
 
     def test_channels_and_playlists_filtered_still_five(self):
         FakeYDL.result = {"entries": [CHANNEL, video(1), PLAYLIST, video(2), video(3), None, video(4), video(5), video(6)]}
@@ -126,7 +136,7 @@ class PanelSearchTest(Base):
         self.assertEqual(FakeYDL.calls, ["ytsearch8:tuki."])     # 多抓幾筆，濾掉後還有 5 首
         self.assertEqual([x["url"] for x in r["results"]], [entry(i)["url"] for i in range(1, 6)])
         self.assertTrue(all(x["duration"] for x in r["results"]))
-        self.assertNotIn("UCp74", str(searchcache.get("panel5v", "tuki.")))
+        self.assertNotIn("UCp74", str(searchcache.get("panel5ch", "tuki.")))
 
     def test_old_cache_kind_ignored(self):
         searchcache.put("panel5", "tuki.", [{"url": "https://www.youtube.com/watch?v=UCp74ruKv2sUiI2HqEhH8pRw", "title": "tuki.(17)"}])

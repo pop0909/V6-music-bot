@@ -57,6 +57,8 @@ def parse_time_str(text):
 # ==================== 使用者輸入的歌曲網址 / 標題 ====================
 MAX_URL_LEN = 2048
 MAX_TITLE_LEN = 200
+SEARCH_QUERY_MAX = 200
+SEARCH_QUERY_TOO_LONG = "關鍵字最多 200 個字"
 
 
 def valid_song_url(url):

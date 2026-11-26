@@ -560,8 +560,12 @@ html[data-theme="light"] .stroke-bg .s-cyan { opacity: .13; }
 }
 .search-result-item:hover { background: rgba(255,255,255,.07); }
 .search-result-item img { width: 64px; height: 36px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
-.result-title { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.result-duration { font-size: 12px; color: var(--sub); font-variant-numeric: tabular-nums; }
+.result-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.result-title { font-size: 13.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.result-channel { font-size: 12px; color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.result-duration { font-size: 12px; color: var(--sub); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.search-loading { display: flex; flex-direction: column; gap: 4px; }
+.search-loading-text { padding: 4px 8px 2px; font-size: 13px; color: var(--sub); }
 .result-add { color: var(--gold); font-size: 17px; transition: var(--transition); }
 .search-result-item:hover .result-add { color: var(--accent-2); transform: scale(1.15); }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } }

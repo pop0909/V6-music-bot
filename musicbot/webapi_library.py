@@ -12,7 +12,7 @@ from flask import request, jsonify
 
 from .config import log
 from .state import state_lock
-from .utils import clean_str, song_url_error, safe_title
+from .utils import clean_str, song_url_error, safe_title, SEARCH_QUERY_MAX, SEARCH_QUERY_TOO_LONG
 from . import ytdl
 from .state import queue_skip_message
 from .webcore import web_add_to_queue, web_play_all
@@ -205,11 +205,13 @@ def api_search():
     data = request.get_json() or {}
     query = data.get("query", "").strip()
     if not query: return jsonify({"status": "error", "message": "請輸入關鍵字"}), 400
+    if len(query) > SEARCH_QUERY_MAX:
+        return jsonify({"status": "error", "message": SEARCH_QUERY_TOO_LONG, "code": "query_too_long"}), 400
     source = (data.get("source") or "youtube").strip().lower()
     if source not in ("youtube", "bilibili"):
         source = "youtube"
     from . import searchcache, bilibili
-    cache_key = "panel5bili" if source == "bilibili" else "panel5v"     # v：只放影片的版本（舊的可能混到頻道）
+    cache_key = "panel5bili" if source == "bilibili" else "panel5ch"     # ch：含頻道／UP 主名稱；舊的 panel5v 不沿用
     # 同一個關鍵字一小時內重搜直接用暫存（只存文字結果；失敗 / 沒結果不存）
     cached = searchcache.get(cache_key, query)
     if cached:
@@ -239,9 +241,10 @@ def api_search():
                     "url": f"https://www.youtube.com/watch?v={entry['id']}",
                     "title": clean_str(entry.get("title") or "未知"),
                     "duration": entry.get("duration") or 0,
-                    "thumbnail": f"https://i.ytimg.com/vi/{entry['id']}/hqdefault.jpg"
+                    "thumbnail": f"https://i.ytimg.com/vi/{entry['id']}/hqdefault.jpg",
+                    "channel": clean_str(entry.get("channel") or entry.get("uploader") or ""),
                 })
-            searchcache.put("panel5v", query, results)
+            searchcache.put(cache_key, query, results)
             return jsonify({"status": "ok", "results": results, "count": len(results), "source": "youtube"})
     except Exception as e:
         log.error(f"搜尋錯誤: {str(e)[:300]}")
