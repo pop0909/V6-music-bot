@@ -7,6 +7,7 @@ import re
 import threading
 import time
 import uuid
+import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
@@ -101,8 +102,44 @@ def _youtube_list(url, cap):
     return clean_str(info.get("title") or "播放清單"), songs
 
 
+def _bili_collection(url, cap, progress=None):
+    """B 站合集／公開收藏夾：走官方 API。不是這類網址 → None（交給後面的 YouTube／Spotify）。"""
+    from . import bilibili
+    raw = (url or "").strip()
+    if not raw:
+        return None
+    try:
+        if "://" not in raw:
+            raw = "https://" + raw
+        host = (urllib.parse.urlparse(raw).hostname or "").lower().rstrip(".")
+    except Exception:
+        return None
+    if any(host == x or host.endswith("." + x) for x in ("b23.tv", "b23.wtf", "bili2233.cn")):
+        raw = bilibili.resolve_short(url) or raw
+    info = bilibili.parse_resource(raw) or bilibili.parse_resource(url)
+    if not info or info.get("kind") not in ("season", "favlist"):
+        return None
+    result = bilibili.resolve_list(raw, expand_season=True, cap=cap)
+    if not result or result.get("kind") in ("bangumi", "series"):
+        raise RuntimeError((result or {}).get("message") or "暫不支援這個合集或收藏夾")
+    songs = []
+    for s in result.get("songs") or []:
+        u = (s.get("url") or "").strip()
+        if not u:
+            continue
+        songs.append({"url": u, "title": clean_str(s.get("title") or u), "duration": s.get("duration") or 0})
+        if len(songs) >= cap:
+            break
+    if progress:
+        progress(len(songs), len(songs))
+    return (clean_str(result.get("title") or "合集"), songs, 0)
+
+
 def resolve(url, cap=IMPORT_CAP, progress=None):
     """回傳 (清單名稱, [ {url,title,duration} ], 略過數)。progress(done, total) 會被回呼。"""
+    bili = _bili_collection(url, cap, progress)
+    if bili is not None:
+        return bili
     if not is_spotify(url):
         name, songs = _youtube_list(url, cap)
         if progress:

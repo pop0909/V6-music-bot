@@ -1,16 +1,26 @@
 {
   "manifest_version": 3,
   "name": "音樂機器人點歌",
-  "version": "1.2.1",
-  "description": "在 YouTube / YouTube Music / Bilibili 一鍵把歌加入 Discord 音樂機器人（musbot.kdns.fr）的佇列。",
+  "version": "1.3.0",
+  "description": "在 YouTube / YouTube Music / Bilibili 一鍵把歌或整個清單加入 Discord 音樂機器人（musbot.kdns.fr）的佇列。",
   "permissions": ["storage", "contextMenus", "activeTab", "scripting"],
   "host_permissions": ["https://musbot.kdns.fr/*", "https://www.bilibili.com/*", "https://m.bilibili.com/*", "https://b23.tv/*"],
   "background": { "service_worker": "background.js" },
   "action": { "default_title": "音樂機器人", "default_popup": "popup.html", "default_icon": "icon128.png" },
   "icons": { "48": "icon128.png", "128": "icon128.png" },
   "options_page": "options.html",
+  "commands": {
+    "add-current": {
+      "suggested_key": { "default": "Alt+P" },
+      "description": "把目前分頁的歌加入佇列"
+    },
+    "skip-song": {
+      "suggested_key": { "default": "Alt+N" },
+      "description": "跳過目前正在播放的歌"
+    }
+  },
   "content_scripts": [{
-    "matches": ["https://www.youtube.com/*", "https://m.youtube.com/*", "https://music.youtube.com/*", "https://www.bilibili.com/*", "https://m.bilibili.com/*", "https://b23.tv/*"],
+    "matches": ["https://www.youtube.com/*", "https://m.youtube.com/*", "https://music.youtube.com/*", "https://www.bilibili.com/*", "https://m.bilibili.com/*", "https://b23.tv/*", "https://space.bilibili.com/*"],
     "js": ["content.js"],
     "css": ["content.css"],
     "run_at": "document_idle"

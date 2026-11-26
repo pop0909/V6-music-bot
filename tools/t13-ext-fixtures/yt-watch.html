@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-Hant" data-musbot-host="www.youtube.com" data-musbot-path="/watch" data-musbot-href="https://www.youtube.com/watch?v=dQw4w9WgXcQ">
+<head>
+<meta charset="utf-8"><title>示範歌曲 - YouTube</title>
+<link rel="stylesheet" href="/ext/content.css">
+<style>
+body{margin:0;background:#0f0f0f;color:#fff;font:14px/1.5 system-ui,sans-serif}
+.player{width:640px;height:360px;background:#c0392b;margin:16px;border-radius:12px}
+#above-the-fold{padding:0 16px 24px}
+#title{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+h1.ytd-watch-metadata{font-size:20px;margin:0}
+.hint{color:#aaa;padding:0 16px}
+</style>
+</head>
+<body>
+<div class="player"></div>
+<div id="above-the-fold"><div id="title"><h1 class="ytd-watch-metadata">示範歌曲（YouTube 影片頁）</h1></div></div>
+<p class="hint">離線模擬頁，封面用色塊代替。</p>
+<script>
+window.chrome = { runtime: { sendMessage: async () => ({status:'ok', message:'已加入佇列第 2 首：示範歌曲'}), onMessage: { addListener(){} } } };
+</script>
+<script src="/ext/content.js"></script>
+</body>
+</html>

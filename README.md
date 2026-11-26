@@ -10,7 +10,7 @@
 - **Bilibili**：支援 `bilibili.com/video/BV…`、av 號、`?p=` 指定分 P，以及 b23.tv 等短網址。多 P 影片沒指定分 P 時會整部加入，有指定就只加那一 P。面板搜尋可在 YouTube 與 Bilibili 之間切換，並會記住上次選項。
 - **其他來源**：YouTube / YouTube Music、Spotify（匯入歌單或專輯）、SoundCloud。
 - **自動推薦接歌**：佇列播完且沒有循環補歌時，可從 YouTube Mix 接著播相關歌曲（每個伺服器可開關，預設關閉）。
-- **個人歌單**：網頁、「我的歌單」與 Discord `/mylist` 共用；可用 Chrome 擴充功能在 YouTube、YouTube Music、Bilibili 影片頁一鍵加入佇列。
+- **個人歌單**：網頁、「我的歌單」與 Discord `/mylist` 共用；可用 Chrome 擴充功能在 YouTube、YouTube Music、Bilibili 影片頁一鍵加入佇列，也可暫停、跳過、加入整個播放清單。
 - **播放紀錄與排行**、操作紀錄、音量平衡、換歌預先解析與預熱。
 
 目前限制：B 站合集、收藏夾與番劇網址尚不支援；Discord `/play` 打關鍵字搜尋仍只走 YouTube（直接貼 B 站網址可以播）；需要登入或有地區限制的影片可能無法解析。
@@ -132,7 +132,7 @@ sudo ./deploy/uninstall.sh                     # 移除服務；加 --purge-venv
 
 ## Chrome 擴充功能
 
-資料夾在 [`chrome-extension/`](chrome-extension/)，目前版本 1.2.1。
+資料夾在 [`chrome-extension/`](chrome-extension/)，目前版本 1.3.0。
 
 1. 打開 `chrome://extensions`
 2. 開啟「開發人員模式」→「載入未封裝項目」→ 選 `chrome-extension` 資料夾

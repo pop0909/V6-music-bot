@@ -1,25 +1,31 @@
 """Chrome 擴充功能專用 API（/api/ext/*）：需要金鑰（X-Ext-Token 標頭）。
 擁有者 = .env 的 EXT_TOKEN；朋友 = 成員金鑰（extmembers.py，可在網頁「成員管理」建立 / 停用）。
 
-- GET  /api/ext/status            目前播放 + 佇列數量 + 語音頻道（擁有者金鑰另外回 voice_guilds：在幾個伺服器的語音中）
+- GET  /api/ext/status            目前播放 + 進度 / 音量 + 佇列數量 + 語音頻道（擁有者金鑰另外回 voice_guilds）
 - POST /api/ext/add {url, title?, next?}
-        加入佇列；next=true → 插到下一首（已在佇列裡的也會移到下一首）
+        加入佇列（YouTube 或 B 站單一影片）；next=true → 插到下一首
+- POST /api/ext/control {action: toggle|skip|volume, level?, guild_id?}
+        播放／暫停、跳過、調音量（0–200，100 為原音量）
+- POST /api/ext/import {url, guild_id?}   加入整個播放清單／B 站合集（背景工作）
+- GET  /api/ext/import/<id>               查匯入進度（只能查自己的工作）
 允許 chrome-extension:// 來源的 CORS；沒設 EXT_TOKEN 時整組停用（503）。
 """
 import re
+import time
 from urllib.parse import urlparse, parse_qs
 
 from flask import request, jsonify, g, render_template
 
-from .config import log
+from .config import log, DEFAULT_VOLUME
 from . import extmembers
 from .state import (
     state_lock, queues, now_playing, now_playing_url, voice_clients, guild_names,
-    current_voice_channel, notify_change,
+    current_voice_channel, notify_change, song_start_times, song_durations,
+    paused_position, now_playing_thumbnail, volumes, volume_transformers,
 )
-from .utils import clean_str
+from .utils import clean_str, format_time, song_url_error
 from .webapi import flask_app
-from .webcore import run_async, web_add_to_queue
+from .webcore import run_async, web_add_to_queue, web_toggle_play, web_skip, web_import_songs
 
 PREFIX = "/api/ext/"
 TITLE_MAX = 200       # 擴充功能送來的標題（不可信）上限，避免 Discord 訊息超過 2000 字而送不出去
@@ -87,6 +93,30 @@ def normalize_youtube(url):
     if vid and _ID_RE.match(vid):
         return f"https://www.youtube.com/watch?v={vid}"
     return None
+
+
+def normalize_media_url(url, *, resolve_short=True):
+    """單一影片網址 → 正規化的 YouTube 或 B 站網址；不是單一影片 → None。"""
+    yt = normalize_youtube(url)
+    if yt:
+        return yt
+    from . import bilibili
+    bili = bilibili.normalize(url)
+    if bili:
+        return bili
+    if not resolve_short or not url:
+        return None
+    raw = url.strip()
+    if "://" not in raw:
+        raw = "https://" + raw
+    try:
+        host = (urlparse(raw).hostname or "").lower().rstrip(".")
+    except Exception:
+        return None
+    if not any(host == x or host.endswith("." + x) for x in ("b23.tv", "b23.wtf", "bili2233.cn")):
+        return None
+    got = bilibili.resolve_short(url)
+    return normalize_media_url(got, resolve_short=False) if got else None
 
 
 def _lookup_title(url):
@@ -173,6 +203,19 @@ def ext_status():
     vc = voice_clients.get(gid)
     connected = bool(vc and vc.is_connected())
     ch = current_voice_channel.get(gid) if connected else None
+    elapsed = 0.0
+    duration = 0
+    thumb = ""
+    if connected and gid:
+        if gid in song_start_times:
+            elapsed = max(0.0, time.time() - song_start_times[gid])
+        else:
+            elapsed = float(paused_position.get(gid, 0) or 0)
+        elapsed = round(elapsed, 3)
+        duration = int(song_durations.get(gid) or 0)
+        thumb = now_playing_thumbnail.get(gid) or ""
+    vol = float(volumes.get(gid, DEFAULT_VOLUME) if gid else DEFAULT_VOLUME)
+    volume = int(round(max(0.0, min(2.0, vol)) * 100))
     return jsonify({
         "status": "ok",
         "guild_name": guild_names.get(gid, ""),
@@ -181,6 +224,12 @@ def ext_status():
         "is_paused": bool(connected and vc.is_paused()),
         "current_title": now_playing.get(gid, "") if connected else "",
         "current_url": now_playing_url.get(gid, "") if connected else "",
+        "thumbnail": thumb,
+        "elapsed": elapsed,
+        "elapsed_str": format_time(elapsed),
+        "duration": duration,
+        "duration_str": format_time(duration) if duration else "",
+        "volume": volume,
         "queue_length": len(queues.get(gid, [])),
         "voice_channel": (ch or {}).get("name"),
         "you": g.ext_user.get("name"),
@@ -208,9 +257,9 @@ def _voice_guild_count():
 @flask_app.route(PREFIX + "add", methods=["POST"])
 def ext_add():
     data = request.get_json(silent=True) or {}
-    url = normalize_youtube(data.get("url"))
+    url = normalize_media_url(data.get("url"))
     if not url:
-        return jsonify({"status": "error", "message": "不是 YouTube 影片網址"}), 400
+        return jsonify({"status": "error", "message": "不是 YouTube 或 B 站影片網址（播放清單請用「加入整個清單」）"}), 400
     gid = int(data.get("guild_id") or 0) or _pick_guild()
     if not gid:
         return jsonify({"status": "error", "message": "機器人尚未連線到伺服器"}), 400
@@ -238,6 +287,110 @@ def ext_add():
     msg = f"開始播放：{title}" if result.get("starts_now") else f"已加入佇列第 {result.get('position')} 首：{title}"
     return jsonify({"status": "added", "title": title, "position": result.get("position"),
                     "starts_now": bool(result.get("starts_now")), "message": msg})
+
+
+def _ext_gid(data=None):
+    data = data or {}
+    return int(data.get("guild_id") or 0) or _pick_guild()
+
+
+def _import_owner_key(ident=None):
+    ident = ident or g.ext_user or {}
+    if ident.get("owner"):
+        return "owner"
+    return ident.get("id") or ident.get("list_key") or ""
+
+
+def _is_importable_list(url):
+    from . import importer, bilibili
+    if importer.is_spotify(url) or "list=" in (url or "").lower() or "/playlist" in (url or "").lower():
+        return True
+    raw = (url or "").strip()
+    info = bilibili.parse_resource(raw)
+    if info is None:
+        host = ""
+        try:
+            u = raw if "://" in raw else "https://" + raw
+            host = (urlparse(u).hostname or "").lower().rstrip(".")
+        except Exception:
+            host = ""
+        if any(host == x or host.endswith("." + x) for x in ("b23.tv", "b23.wtf", "bili2233.cn")):
+            got = bilibili.resolve_short(url)
+            info = bilibili.parse_resource(got) if got else None
+    return bool(info and info.get("kind") in ("season", "favlist"))
+
+
+@flask_app.route(PREFIX + "control", methods=["POST"])
+def ext_control():
+    """播放／暫停、跳過、音量。權限與 /api/ext/add 相同（金鑰 + 自己能用的伺服器）。"""
+    data = request.get_json(silent=True) or {}
+    action = (data.get("action") or "").strip().lower()
+    gid = _ext_gid(data)
+    if not gid:
+        return jsonify({"status": "error", "message": "機器人尚未連線到伺服器"}), 400
+    if action in ("toggle", "play", "pause"):
+        result = run_async(web_toggle_play(gid))
+        return jsonify(result or {"status": "error", "message": "操作失敗"})
+    if action == "skip":
+        result = run_async(web_skip(gid, actor=ext_actor()))
+        return jsonify(result or {"status": "error", "message": "操作失敗"})
+    if action == "volume":
+        try:
+            level = int(data.get("level", 100))
+        except (TypeError, ValueError):
+            return jsonify({"status": "error", "message": "音量格式不正確"}), 400
+        vol = max(0, min(200, level)) / 100.0
+        with state_lock:
+            volumes[gid] = vol
+            if gid in volume_transformers:
+                try:
+                    volume_transformers[gid].volume = vol
+                except Exception:
+                    pass
+        notify_change()
+        return jsonify({"status": "ok", "volume": int(round(vol * 100))})
+    return jsonify({"status": "error", "message": "未知的操作"}), 400
+
+
+@flask_app.route(PREFIX + "import", methods=["POST"])
+def ext_import():
+    """把 YouTube／Spotify 播放清單或 B 站合集／公開收藏夾整份加入佇列（背景解析，用 /api/ext/import/<id> 查進度）。"""
+    from . import importer
+    data = request.get_json(silent=True) or {}
+    url = (data.get("url") or "").strip() if isinstance(data.get("url"), str) else ""
+    err = song_url_error(url) if url else "請提供播放清單或合集網址"
+    if err:
+        return jsonify({"status": "error", "message": err}), 400
+    if not _is_importable_list(url):
+        return jsonify({"status": "error", "message": "這不是播放清單或合集網址（單一影片請用「加入機器人」）"}), 400
+    gid = _ext_gid(data)
+    if not gid:
+        return jsonify({"status": "error", "message": "機器人尚未連線到伺服器"}), 400
+    actor = ext_actor()
+    who = g.ext_user.get("name")
+    key = _import_owner_key()
+
+    def _done(name, songs):
+        stats = {}
+        added = run_async(web_import_songs(
+            gid, songs, stats=stats, actor=actor, requester=who,
+            label=f"匯入：{name}" if name else "匯入歌單"))
+        if added is None:
+            added = stats.get("added", 0)
+        return added, stats.get("full_skipped", 0)
+
+    jid = importer.start_job(url, _done, meta={"owner_key": key, "kind": "ext-queue"})
+    return jsonify({"status": "ok", "job": jid}), 202
+
+
+@flask_app.route(PREFIX + "import/<jid>", methods=["GET"])
+def ext_import_status(jid):
+    from . import importer
+    job = importer.get_job(jid)
+    if not job or job.get("owner_key") != _import_owner_key():
+        return jsonify({"status": "error", "message": "找不到這個匯入工作"}), 404
+    job.pop("owner_key", None)
+    return jsonify({"status": "ok", "job": job})
 
 
 # ==================== 成員管理（只有擁有者金鑰可用；網頁 /members） ====================

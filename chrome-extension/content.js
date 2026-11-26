@@ -64,16 +64,81 @@
     return { url: `https://www.youtube.com/watch?v=${v}`, title };
   }
 
+  function currentList() {
+    const L = loc();
+    try {
+      const u = new URL(L.href);
+      const list = u.searchParams.get('list');
+      if (/(^|\.)youtube\.com$/.test(u.hostname) && u.pathname === '/playlist' && list) {
+        const base = u.hostname === 'music.youtube.com' ? 'https://music.youtube.com/playlist?list=' : 'https://www.youtube.com/playlist?list=';
+        return { url: base + list };
+      }
+      if (isBili) {
+        const p = u.pathname;
+        if (/channel\/collectiondetail/i.test(p) || /\/lists\/\d+/.test(p) || /\/medialist\//.test(p) || /\/favlist/.test(p) || /(?:^|\/)ml\d+/i.test(p) || /\/list\//.test(p)) {
+          return { url: u.href };
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   async function send(next, btn) {
     const v = currentVideo();
     if (!v) { toast('這頁沒有影片', false); return; }
     btn.disabled = true;
+    const orig = btn.textContent;
+    btn.textContent = '加入中…';
     try {
       const res = await chrome.runtime.sendMessage({ type: 'add', url: v.url, title: v.title, next });
-      toast(res && res.message ? res.message : '已送出', !res || res.status !== 'error');
+      const ok = !res || res.status !== 'error';
+      toast(res && res.message ? res.message : '已送出', ok);
+      if (ok) {
+        btn.textContent = next ? '已設為下一首' : '已加入';
+        setTimeout(() => { if (btn.textContent === '已加入' || btn.textContent === '已設為下一首') btn.textContent = orig; }, 2000);
+      } else btn.textContent = orig;
     } catch (e) {
       toast('擴充功能已更新，請重新整理頁面', false);
+      btn.textContent = orig;
     } finally { btn.disabled = false; }
+  }
+
+  async function sendList(btn) {
+    const lst = currentList();
+    if (!lst) { toast('這頁沒有播放清單', false); return; }
+    btn.disabled = true;
+    const orig = btn.textContent;
+    btn.textContent = '讀取中…';
+    try {
+      const res = await chrome.runtime.sendMessage({ type: 'import', url: lst.url });
+      if (!res || res.status === 'error' || !res.job) {
+        toast((res && res.message) || '匯入失敗', false);
+        return;
+      }
+      toast('正在讀取清單…', true);
+      for (let i = 0; i < 90; i++) {
+        await new Promise((r) => setTimeout(r, 1000));
+        const s = await chrome.runtime.sendMessage({ type: 'importStatus', id: res.job });
+        const job = (s && s.job) || {};
+        if (!s || s.status === 'error' || job.status === 'error') {
+          toast((s && s.message) || job.message || '匯入失敗', false);
+          return;
+        }
+        if (job.status === 'done') {
+          const extra = job.full_skipped ? `（${job.full_skipped} 首佇列已滿沒加進去）` : '';
+          toast(`已加入 ${job.added || 0} 首${job.name ? '：「' + job.name + '」' : ''}${extra}`, true);
+          btn.textContent = '已加入清單';
+          setTimeout(() => { if (btn.textContent === '已加入清單') btn.textContent = orig; }, 2000);
+          return;
+        }
+      }
+      toast('讀取清單逾時，請到網頁面板查看佇列', false);
+    } catch (e) {
+      toast('擴充功能已更新，請重新整理頁面', false);
+    } finally {
+      if (btn.textContent === '讀取中…') btn.textContent = orig;
+      btn.disabled = false;
+    }
   }
 
   function anchor() {
@@ -125,10 +190,33 @@
     }
   }
 
+  function mountListButton(old) {
+    const mobile = isBiliMobile || loc().hostname === 'm.youtube.com';
+    const a = mobile ? document.body : (
+      document.querySelector('ytd-playlist-header-renderer #title, ytmusic-detail-header-renderer, .playlist-info, .favlist-info, h1') || document.body
+    );
+    if (!a) return;
+    const floating = a === document.body;
+    if (old && a.contains(old) && old.classList.contains('musbot-list-only') && old.classList.contains('floating') === floating) return;
+    if (old) old.remove();
+    const wrap = document.createElement('span');
+    wrap.id = BTN_ID;
+    wrap.className = 'musbot-wrap musbot-list-only' + (floating ? ' floating' : '') + (isMusic ? ' music' : '');
+    const add = document.createElement('button');
+    add.type = 'button'; add.className = 'musbot-btn'; add.textContent = '📋 加入整個清單';
+    add.title = '把這份播放清單或合集全部加入 Discord 音樂機器人的佇列';
+    add.addEventListener('click', (e) => { e.stopPropagation(); sendList(add); });
+    wrap.append(add);
+    if (a !== document.body && a.parentNode && a.tagName === 'H1') a.insertAdjacentElement('afterend', wrap);
+    else a.appendChild(wrap);
+  }
+
   function ensureButton() {
     const onWatch = !!videoId();
+    const lst = currentList();
     const old = document.getElementById(BTN_ID);
-    if (!onWatch) { if (old) old.remove(); return; }
+    if (!onWatch && !lst) { if (old) old.remove(); return; }
+    if (!onWatch && lst) { mountListButton(old); return; }
     const biliDesk = isBili && !isBiliMobile;
     const mount = biliDesk ? biliDesktopMount() : null;
     const a = biliDesk ? mount.host : anchor();
@@ -213,5 +301,5 @@
     setTimeout(() => { pending = false; ensureButton(); }, 800);
   }).observe(document.documentElement, { childList: true, subtree: true });
   ensureButton();
-  if (typeof module !== 'undefined') module.exports = { videoId, currentVideo, ensureButton, togglePicker, closePicker };
+  if (typeof module !== 'undefined') module.exports = { videoId, currentVideo, currentList, ensureButton, togglePicker, closePicker, send, sendList };
 })();

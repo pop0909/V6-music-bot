@@ -313,7 +313,7 @@ class PanelAndExtension(unittest.TestCase):
 
     def test_extension_manifest_and_scripts(self):
         man = json.loads(open(os.path.join(ROOT, "chrome-extension", "manifest.json"), encoding="utf-8").read())
-        self.assertEqual(man["version"], "1.2.1")
+        self.assertEqual(man["version"], "1.3.0")
         joined = " ".join(man.get("host_permissions") or [])
         self.assertIn("bilibili.com", joined)
         self.assertIn("b23.tv", joined)
@@ -325,7 +325,8 @@ class PanelAndExtension(unittest.TestCase):
         bg = open(os.path.join(ROOT, "chrome-extension", "background.js"), encoding="utf-8").read()
         self.assertIn("BILI_LINKS", bg)
         pop = open(os.path.join(ROOT, "chrome-extension", "popup.js"), encoding="utf-8").read()
-        self.assertIn("bilibili", pop)
+        api = open(os.path.join(ROOT, "chrome-extension", "api.js"), encoding="utf-8").read()
+        self.assertTrue("bilibili" in pop.lower() or "bilibili" in api)
 
     def test_prefetch_dispatches_to_bilibili(self):
         src = open(os.path.join(ROOT, "musicbot", "prefetch.py"), encoding="utf-8").read()

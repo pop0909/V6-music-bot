@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-Hant" data-musbot-host="www.youtube.com" data-musbot-path="/playlist" data-musbot-href="https://www.youtube.com/playlist?list=PLtest123">
+<head>
+<meta charset="utf-8"><title>週末歌單 - YouTube</title>
+<link rel="stylesheet" href="/ext/content.css">
+<style>
+body{margin:0;background:#0f0f0f;color:#fff;font:14px/1.5 system-ui,sans-serif;padding:24px}
+h1{font-size:24px;margin:0 0 8px}
+.meta{color:#aaa;margin-bottom:16px}
+</style>
+</head>
+<body>
+<h1>週末歌單</h1>
+<div class="meta">12 首 · 離線模擬頁</div>
+<script>
+window.chrome = { runtime: { sendMessage: async () => ({status:'ok', job:'abc123def456'}), onMessage: { addListener(){} } } };
+</script>
+<script src="/ext/content.js"></script>
+</body>
+</html>

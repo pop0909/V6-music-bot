@@ -28,3 +28,5 @@
 /* B 站桌面：放在工具列或標題下方獨立一列，不要折進標題裡被播放器蓋住 */
 .musbot-wrap.bili-bar { margin: 0 12px 0 0; align-items: center; flex-shrink: 0; position: relative; z-index: 2147483646; }
 .musbot-wrap.bili-row { display: flex; margin: 8px 0; width: 100%; position: relative; z-index: 2147483646; }
+
+.musbot-wrap.musbot-list-only { margin: 8px 0; }

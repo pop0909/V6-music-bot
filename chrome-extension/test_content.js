@@ -97,6 +97,19 @@ assert.strictEqual(r.api.currentVideo().url, 'https://www.bilibili.com/video/av1
 r = run('https://www.bilibili.com/', { h1: '首頁', toolbar: true });
 assert.strictEqual(r.btn, null); assert.strictEqual(r.api.currentVideo(), null);
 
+// YouTube 播放清單頁：只顯示「加入整個清單」，不是單曲按鈕
+r = run('https://www.youtube.com/playlist?list=PLtest123', { h1: '我的歌單' });
+assert.ok(r.btn && r.btn.classList.contains('musbot-list-only'), '清單頁要有清單按鈕');
+assert.ok(r.btn.children.some(c => c.textContent.includes('加入整個清單')));
+assert.strictEqual(r.api.currentList().url, 'https://www.youtube.com/playlist?list=PLtest123');
+assert.strictEqual(r.api.currentVideo(), null);
+r = run('https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLtest123', { titleRow: true, h1: 'Song' });
+assert.ok(r.btn && !r.btn.classList.contains('musbot-list-only'), '影片頁即使帶 list= 仍是單曲按鈕');
+assert.strictEqual(r.api.currentList(), null);
+r = run('https://space.bilibili.com/123/channel/collectiondetail?sid=9', { h1: '合集' });
+assert.ok(r.btn && r.btn.classList.contains('musbot-list-only'), 'B 站合集頁要有清單按鈕');
+assert.ok(r.api.currentList() && r.api.currentList().url.includes('collectiondetail'));
+
 (async () => {
   const sent = [];
   const send = async (m) => { sent.push(m); if (m.type === 'lists') return { status: 'ok', lists: [{ id: 'abc123def0', name: 'Chill', count: 3 }] };

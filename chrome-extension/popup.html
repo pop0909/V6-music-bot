@@ -1,23 +1,49 @@
 <!doctype html>
 <html lang="zh-Hant"><head><meta charset="utf-8">
 <style>
-body { width: 300px; margin: 0; padding: 12px; font: 13px/1.5 system-ui, "Microsoft JhengHei", sans-serif; background: #1e1b2e; color: #eee; }
+body { width: 320px; margin: 0; padding: 12px; font: 13px/1.5 system-ui, "Microsoft JhengHei", sans-serif; background: #1e1b2e; color: #eee; }
 h1 { font-size: 14px; margin: 0 0 8px; color: #a29bfe; }
 .np { font-weight: 600; word-break: break-word; } .muted { color: #999; }
-.row { display: flex; gap: 6px; margin-top: 10px; }
+.row { display: flex; gap: 6px; margin-top: 10px; align-items: center; }
 button { flex: 1; padding: 7px; border: 0; border-radius: 8px; background: #6c5ce7; color: #fff; cursor: pointer; font: inherit; }
 button.ghost { background: transparent; border: 1px solid #6c5ce7; color: #a29bfe; }
 button:disabled { opacity: .45; cursor: default; }
+button.icon { flex: 0 0 36px; font-size: 16px; padding: 6px 0; }
 #msg { margin-top: 8px; min-height: 1em; } .err { color: #ff7675; } .ok { color: #55efc4; }
 a { color: #a29bfe; }
+.now { display: flex; gap: 10px; align-items: center; }
+#art { width: 56px; height: 56px; border-radius: 8px; object-fit: cover; background: #2a2640; flex: 0 0 56px; display: none; }
+.now-text { min-width: 0; flex: 1; }
+.times { display: flex; justify-content: space-between; font-size: 11px; color: #999; margin-top: 6px; }
+.bar { height: 4px; background: #3d3560; border-radius: 2px; margin-top: 6px; overflow: hidden; }
+#barFill { height: 100%; width: 0; background: #a29bfe; border-radius: 2px; }
+#vol { flex: 1; accent-color: #a29bfe; }
+.hint { font-size: 11px; }
 </style></head>
 <body>
 <h1>🎵 音樂機器人</h1>
-<div id="np" class="np muted">讀取中…</div>
-<div id="meta" class="muted"></div>
+<div class="now">
+  <img id="art" alt="">
+  <div class="now-text">
+    <div id="np" class="np muted">讀取中…</div>
+    <div id="meta" class="muted"></div>
+  </div>
+</div>
+<div class="bar" id="barWrap"><div id="barFill"></div></div>
+<div class="times"><span id="elapsed">0:00</span><span id="duration"></span></div>
+<div class="row">
+  <button id="toggle" class="icon" disabled title="播放／暫停">▶️</button>
+  <button id="skip" class="icon ghost" disabled title="跳過">⏭️</button>
+  <input id="vol" type="range" min="0" max="200" value="100" disabled title="音量">
+</div>
 <div class="row"><button id="add" disabled>加入目前分頁</button><button id="next" class="ghost" disabled>下一首播</button></div>
+<div class="row" id="listRow" style="display:none"><button id="addList" class="ghost">加入整個清單</button></div>
 <div id="msg"></div>
-<div class="row muted" style="justify-content:space-between"><a href="https://musbot.kdns.fr/" target="_blank">開啟網頁面板</a><a href="#" id="opt">設定金鑰</a></div>
+<div class="row muted hint" style="justify-content:space-between;flex-wrap:wrap;gap:4px 8px">
+  <a href="https://musbot.kdns.fr/" target="_blank">開啟網頁面板</a>
+  <span>Alt+P 加入 · Alt+N 跳過</span>
+  <a href="#" id="opt">設定金鑰</a>
+</div>
 <script src="api.js"></script>
 <script src="popup.js"></script>
 </body></html>
