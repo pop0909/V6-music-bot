@@ -173,6 +173,23 @@ html[data-theme="light"] .stroke-bg .s-cyan { opacity: .13; }
 }
 .btn-search:hover { transform: scale(1.08); box-shadow: none; }
 .btn-search:disabled { opacity: 0.45; cursor: wait; transform: none; }
+.search-src {
+    display: flex; flex-shrink: 0; margin-left: 4px; padding: 2px;
+    border-radius: 999px; background: color-mix(in srgb, var(--text) 8%, transparent);
+    gap: 0;
+}
+.search-src-btn {
+    border: 0; background: transparent; color: var(--sub); cursor: pointer;
+    font-size: 11px; font-weight: 600; letter-spacing: .02em; line-height: 1;
+    padding: 0 10px; border-radius: 999px; white-space: nowrap;
+    min-width: 36px; min-height: 36px;
+}
+.search-src-btn:hover { color: var(--text); }
+.search-src-btn.is-on { background: var(--accent); color: var(--on-accent); }
+.search-src-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+@media (max-width: 400px) {
+    .search-src-btn { padding: 0 8px; font-size: 10px; }
+}
 
 .header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 

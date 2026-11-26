@@ -1,7 +1,9 @@
-// YouTube / YouTube Music：在標題旁放「加入機器人」按鈕（YouTube 是單頁應用，換影片時重新放）
+// YouTube / YouTube Music / Bilibili：在標題旁放「加入機器人」按鈕（這些站都是單頁應用，換影片時重新放）
 (() => {
   const BTN_ID = 'musbot-add-btn';
   const isMusic = location.hostname === 'music.youtube.com';
+  const isBili = /(^|\.)(bilibili\.com|b23\.tv)$/.test(location.hostname);
+  const isBiliMobile = location.hostname === 'm.bilibili.com';
 
   function toast(text, ok = true) {
     const d = document.createElement('div');
@@ -12,8 +14,12 @@
     setTimeout(() => { d.classList.remove('show'); setTimeout(() => d.remove(), 300); }, 3200);
   }
 
-  // /watch?v=ID 或 /shorts/ID（Shorts 換影片也是 SPA 導覽，只改網址）
+  // YouTube：/watch?v=ID 或 /shorts/ID；B 站：/video/BVxxx 或 /video/av123（含 ?p=）
   function videoId() {
+    if (isBili) {
+      const m = location.pathname.match(/\/video\/(BV[1-9A-HJ-NP-Za-km-z]{10}|av\d+)/i);
+      return m ? m[1] : null;
+    }
     if (location.pathname === '/watch') return new URL(location.href).searchParams.get('v');
     const m = location.pathname.match(/^\/shorts\/([A-Za-z0-9_-]{11})/);
     return m ? m[1] : null;
@@ -24,6 +30,16 @@
     const v = videoId();
     if (!v) return null;
     let title = '';
+    let url;
+    if (isBili) {
+      const h = document.querySelector('h1.video-title, .video-title, h1[class*="video-title"], .video-info-title-inner h1');
+      title = (h && h.textContent.trim()) || '';
+      if (!title) title = document.title.replace(/[\s_]*哔哩哔哩.*$/, '').replace(/\s*-\s*bilibili$/i, '').trim();
+      url = 'https://www.bilibili.com/video/' + v;
+      const part = new URL(location.href).searchParams.get('p');
+      if (part && part !== '1') url += '?p=' + part;
+      return { url, title };
+    }
     if (isMusic) {
       const t = document.querySelector('ytmusic-player-bar .title');
       const a = document.querySelector('ytmusic-player-bar .byline a');
@@ -51,6 +67,10 @@
 
   function anchor() {
     // Shorts / 行動版沒有桌面版標題列 → 用右下角浮動按鈕
+    if (isBili) {
+      if (isBiliMobile) return document.body;
+      return document.querySelector('h1.video-title, .video-title, .video-info-title, #viewbox_report') || document.body;
+    }
     if (isShorts() || location.hostname === 'm.youtube.com') return document.body;
     if (isMusic) return document.querySelector('ytmusic-player-bar .middle-controls .content-info-wrapper');
     return document.querySelector('ytd-watch-metadata #title, #above-the-fold #title');

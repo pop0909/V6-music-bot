@@ -1,6 +1,6 @@
 # 音樂機器人點歌（Chrome 擴充功能）
 
-在 YouTube / YouTube Music 一鍵把歌加入 https://musbot.kdns.fr/ 機器人的佇列。
+在 YouTube / YouTube Music / Bilibili 一鍵把歌加入 https://musbot.kdns.fr/ 機器人的佇列。
 
 ## 安裝（載入未封裝擴充功能）
 1. Chrome 網址列輸入 `chrome://extensions`
@@ -13,7 +13,7 @@
 
 ## 使用
 - **影片頁按鈕**：youtube.com/watch 或 music.youtube.com 播放中時，標題旁會出現「🎵 加入機器人」與「下一首播」（Shift+點加入 = 下一首播）
-- **右鍵選單**：在任何 YouTube 影片連結（或 YouTube 影片頁空白處）按右鍵 →「加入音樂機器人」/「下一首播」
+- **右鍵選單**：在任何 YouTube 或 Bilibili 影片連結（或影片頁空白處）按右鍵 →「加入音樂機器人」/「下一首播」
 - **工具列彈出視窗**：顯示正在播放、佇列數量、語音頻道；可把目前分頁的影片加入或設成下一首
 - 機器人休眠中時加歌會自動叫醒並加入你上次的語音頻道開播
 

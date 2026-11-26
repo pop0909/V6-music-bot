@@ -1,12 +1,14 @@
 importScripts('api.js');
 
 const YT_LINKS = ['*://*.youtube.com/watch*', '*://youtu.be/*', '*://*.youtube.com/shorts/*'];
+const BILI_LINKS = ['*://*.bilibili.com/video/*', '*://m.bilibili.com/video/*', '*://b23.tv/*', '*://www.b23.tv/*'];
+const PAGE_LINKS = YT_LINKS.concat(BILI_LINKS);
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
     for (const [id, title] of [['add', '加入音樂機器人'], ['next', '下一首播']]) {
-      chrome.contextMenus.create({ id: 'link-' + id, title, contexts: ['link'], targetUrlPatterns: YT_LINKS });
-      chrome.contextMenus.create({ id: 'page-' + id, title, contexts: ['page', 'video'], documentUrlPatterns: YT_LINKS });
+      chrome.contextMenus.create({ id: 'link-' + id, title, contexts: ['link'], targetUrlPatterns: PAGE_LINKS });
+      chrome.contextMenus.create({ id: 'page-' + id, title, contexts: ['page', 'video'], documentUrlPatterns: PAGE_LINKS });
     }
   });
   chrome.storage.local.get('extToken').then(({ extToken }) => { if (!extToken) chrome.runtime.openOptionsPage(); });

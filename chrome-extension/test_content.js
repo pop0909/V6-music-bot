@@ -13,6 +13,7 @@ function run(href, opts = {}, send = async () => ({})) {
   const body = el('body'), root = el('html'); root.append(body);
   const h1 = el('h1'); h1.textContent = opts.h1 || ''; const title = el('div');
   const all = () => { const out=[]; (function w(n){ out.push(n); n.children.forEach(w) })(root); return out };
+  if (opts.h1) body.append(h1);
   if (opts.titleRow) body.append(title);
   const document = { documentElement: root, body, title: opts.docTitle || '',
     getElementById: id => all().find(n => n.id === id) || null,
@@ -32,6 +33,19 @@ assert.strictEqual(JSON.stringify(r.api.currentVideo()), JSON.stringify({ url: '
 r = run('https://m.youtube.com/watch?v=dQw4w9WgXcQ', { docTitle: 'X - YouTube' });
 assert.ok(r.btn && r.btn.classList.contains('floating'), '行動版要有浮動按鈕');
 r = run('https://www.youtube.com/results?search_query=a', { titleRow: true });
+assert.strictEqual(r.btn, null); assert.strictEqual(r.api.currentVideo(), null);
+
+// Bilibili 影片頁：標題旁放按鈕，網址含 BV 與指定分 P
+r = run('https://www.bilibili.com/video/BV1rTy2zFE7f?spm_id_from=x', { h1: '洛天依' });
+assert.ok(r.btn, 'B 站影片頁要有加入按鈕');
+assert.strictEqual(JSON.stringify(r.api.currentVideo()), JSON.stringify({ url: 'https://www.bilibili.com/video/BV1rTy2zFE7f', title: '洛天依' }));
+r = run('https://www.bilibili.com/video/BV1rTy2zFE7f?p=3', { h1: '第三集' });
+assert.strictEqual(r.api.currentVideo().url, 'https://www.bilibili.com/video/BV1rTy2zFE7f?p=3');
+r = run('https://m.bilibili.com/video/BV1rTy2zFE7f', { h1: '行動版', docTitle: '行動版_哔哩哔哩_bilibili' });
+assert.ok(r.btn && r.btn.classList.contains('floating'), 'B 站行動版要有浮動按鈕');
+r = run('https://www.bilibili.com/video/av170001', { h1: '舊版av' });
+assert.strictEqual(r.api.currentVideo().url, 'https://www.bilibili.com/video/av170001');
+r = run('https://www.bilibili.com/', { h1: '首頁' });
 assert.strictEqual(r.btn, null); assert.strictEqual(r.api.currentVideo(), null);
 
 (async () => {

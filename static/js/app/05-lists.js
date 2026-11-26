@@ -295,6 +295,30 @@ function renderPlaylistList(pl) {
 }
 
 // ==================== 搜尋 ====================
+const SEARCH_PLACEHOLDER = {
+    youtube: '搜尋 YouTube，或貼上 YouTube／B 站／Spotify 網址…',
+    bilibili: '搜尋 B 站，或貼上 B 站／YouTube／Spotify 網址…',
+};
+let searchSource = 'youtube';
+try { const s = localStorage.getItem('mb_search_src'); if (s === 'bilibili' || s === 'youtube') searchSource = s; } catch (e) {}
+function syncSearchSource() {
+    document.querySelectorAll('.search-src-btn').forEach((b) => {
+        const on = b.dataset.src === searchSource;
+        b.classList.toggle('is-on', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    if (el.searchInput) el.searchInput.placeholder = SEARCH_PLACEHOLDER[searchSource] || SEARCH_PLACEHOLDER.youtube;
+}
+document.querySelectorAll('.search-src-btn').forEach((b) => {
+    b.addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        searchSource = b.dataset.src === 'bilibili' ? 'bilibili' : 'youtube';
+        try { localStorage.setItem('mb_search_src', searchSource); } catch (err) {}
+        syncSearchSource();
+        if (el.searchInput && el.searchInput.value.trim() && !/^https?:\/\//.test(el.searchInput.value.trim())) doSearch();
+    });
+});
+syncSearchSource();
 el.btnSearch.addEventListener('click', doSearch);
 el.searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
 // 點到搜尋框外框的空白（圖示旁、上下邊）也能開始打字
@@ -398,7 +422,7 @@ async function doSearch() {
     const seq = ++_searchSeq;
     el.searchResults.innerHTML = skelHTML('result', 5).replace('aria-label="載入中"', 'aria-label="搜尋中"');
     el.btnSearch.disabled = true;
-    const data = await API.search(query);
+    const data = await API.search(query, searchSource);
     if (seq !== _searchSeq) return;   // 等結果時搜尋框被清空 / 按了 Esc / 又搜了別的
     el.btnSearch.disabled = false;
     el.searchResults.innerHTML = '';

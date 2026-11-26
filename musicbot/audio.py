@@ -15,6 +15,7 @@ import asyncio
 import os
 import threading
 
+import shlex
 import discord
 
 from .state import volume_transformers
@@ -87,11 +88,19 @@ def ffmpeg_options(gid, fade_in=FADE_IN_SECONDS):
     return f"-vn -af {chain}" if chain else "-vn"
 
 
-def before_options(seek=0):
-    """傳給 FFmpegPCMAudio 的 before_options：-ss 放在 -i 之前 = 輸入端跳轉（HTTP Range，幾乎立即）"""
+def before_options(seek=0, headers=None):
+    """傳給 FFmpegPCMAudio 的 before_options：-ss 放在 -i 之前 = 輸入端跳轉（HTTP Range，幾乎立即）。
+    直連 B 站等 CDN 時要帶 Referer（走本機分段代理則不必，代理會自己加）。"""
+    parts = []
     if seek and seek > 0:
-        return f"-ss {seek:.3f} {RECONNECT_OPTIONS}"
-    return RECONNECT_OPTIONS
+        parts.append(f"-ss {seek:.3f}")
+    if headers:
+        crlf = chr(13) + chr(10)
+        lines = "".join("%s: %s%s" % (k, v, crlf) for k, v in headers.items() if k and v and k.lower() != "range")
+        if lines:
+            parts.append("-headers " + shlex.quote(lines))
+    parts.append(RECONNECT_OPTIONS)
+    return " ".join(parts)
 
 
 class PrimedSource(discord.AudioSource):

@@ -135,15 +135,23 @@ def _drop_stale(gid, url):
         log.info(f"[預熱] {gid} 下一首變了，收掉預熱的：{w['url']}")
 
 
-def open_source(gid, page_url, stream_url):
+def open_source(gid, page_url, stream_url, headers=None, size=None, mime=None):
     """建立跟 play_next 一樣的 FFmpeg 來源（還沒預熱）"""
     import discord
-    from . import audio, rangeproxy
+    from . import audio, prefetch, rangeproxy
     from .config import FFMPEG_PATH
+    cached = prefetch.get_cached(gid, page_url) or {}
+    headers = headers or cached.get("headers") or None
+    if size is None:
+        size = cached.get("filesize") or 0
+    mime = mime or cached.get("mime")
+    proxied = rangeproxy.input_url(stream_url, page=page_url, headers=headers, size=size, mime=mime)
+    # 走本機代理時 FFmpeg 只連 127.0.0.1，標頭由代理轉給 CDN；直連時要把 Referer 給 FFmpeg
+    use_headers = None if proxied != stream_url else headers
     return discord.FFmpegPCMAudio(
-        rangeproxy.input_url(stream_url, page=page_url),
+        proxied,
         executable=FFMPEG_PATH,
-        before_options=audio.before_options(),
+        before_options=audio.before_options(headers=use_headers),
         options=audio.ffmpeg_options(gid),
     )
 

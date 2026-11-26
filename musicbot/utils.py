@@ -71,8 +71,8 @@ def valid_song_url(url):
 
 
 # 能加進佇列 / 歌單的網址只限這幾個網站（含子網域，例如 music.youtube.com、m.youtube.com、on.soundcloud.com）
-ALLOWED_SONG_HOSTS = ("youtube.com", "youtu.be", "spotify.com", "soundcloud.com")
-URL_NOT_ALLOWED = "只支援 YouTube、Spotify、SoundCloud 的網址"
+ALLOWED_SONG_HOSTS = ("youtube.com", "youtu.be", "spotify.com", "soundcloud.com", "bilibili.com", "b23.tv", "b23.wtf", "bili2233.cn")
+URL_NOT_ALLOWED = "只支援 YouTube、Bilibili、Spotify、SoundCloud 的網址"
 
 
 def song_host_allowed(url):

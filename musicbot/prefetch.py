@@ -43,17 +43,28 @@ FAIL_RETRY_AFTER = 300
 
 # ---------------- 解析 ----------------
 def extract_stream(page_url):
-    """同步（請放在 executor）：解析單曲的串流網址 + 長度 + 縮圖"""
+    """同步（請放在 executor）：解析單曲的串流網址 + 長度 + 縮圖（B 站另帶 headers / filesize）"""
+    from . import bilibili
+    if bilibili.is_page(page_url):
+        return bilibili.extract_stream(page_url)
     with yt_dlp.YoutubeDL(ytdl.build_opts(ydl_opts_single)) as ydl:
         info = ydl.extract_info(page_url, download=False)
     thumb = info.get("thumbnail", "")
     if not thumb and info.get("id"):
         thumb = f"https://i.ytimg.com/vi/{info['id']}/hqdefault.jpg"
+    headers = dict(info.get("http_headers") or {})
+    size = info.get("filesize") or info.get("filesize_approx") or 0
+    try:
+        size = int(size or 0)
+    except (TypeError, ValueError):
+        size = 0
     return {
         "url": info["url"],
         "duration": info.get("duration", 0) or 0,
         "thumbnail": thumb,
         "title": info.get("title", ""),
+        "headers": headers,
+        "filesize": size,
     }
 
 
@@ -64,6 +75,8 @@ def compute_expiry(stream_url, now=None):
         q = parse_qs(urlparse(stream_url).query)
         if "expire" in q:
             exp = min(exp, int(q["expire"][0]) - EXPIRE_MARGIN)
+        if "deadline" in q:
+            exp = min(exp, int(q["deadline"][0]) - EXPIRE_MARGIN)
     except (ValueError, TypeError):
         pass
     return exp
@@ -76,6 +89,8 @@ def stream_expiry(stream_url, now=None, margin=120):
         q = parse_qs(urlparse(stream_url).query)
         if "expire" in q:
             return int(q["expire"][0]) - margin
+        if "deadline" in q:
+            return int(q["deadline"][0]) - margin
     except (ValueError, TypeError):
         pass
     return now + MAX_AGE

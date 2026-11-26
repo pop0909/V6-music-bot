@@ -120,10 +120,17 @@ async def _restart_at(gid, vc, page_url, pos, version, resume=False, catch=None)
 
 
 async def _primed_at(gid, stream_url, pos):
+    page = now_playing_url.get(gid)
+    from . import prefetch
+    cached = prefetch.get_cached(gid, page) or {}
+    headers = cached.get("headers") or None
+    proxied = rangeproxy.input_url(stream_url, page=now_playing_url.get(gid), headers=headers,
+                                   size=cached.get("filesize") or 0, mime=cached.get("mime"))
+    use_headers = None if proxied != stream_url else headers
     source = discord.FFmpegPCMAudio(
-        rangeproxy.input_url(stream_url, page=now_playing_url.get(gid)),   # 網址失效時代理會用歌曲網址重新解析
+        proxied,   # 網址失效時代理會用歌曲網址重新解析
         executable=FFMPEG_PATH,
-        before_options=audio.before_options(pos),
+        before_options=audio.before_options(pos, headers=use_headers),
         options=audio.ffmpeg_options(gid, fade_in=audio.SEEK_FADE_IN_SECONDS),
     )
     return await audio.prime_source(source)

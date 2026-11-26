@@ -31,9 +31,10 @@ class Allowlist(unittest.TestCase):
         ok = ["https://www.youtube.com/watch?v=abcdefghijk", "https://music.youtube.com/watch?v=abcdefghijk",
               "https://m.youtube.com/watch?v=x", "https://youtube.com/playlist?list=PL1", "https://youtu.be/abcdefghijk",
               "http://YOUTU.BE/abc", "https://open.spotify.com/track/1", "https://spotify.com/album/1",
-              "https://soundcloud.com/a/b", "https://on.soundcloud.com/xyz", "https://m.soundcloud.com/a/b"]
+              "https://soundcloud.com/a/b", "https://on.soundcloud.com/xyz", "https://m.soundcloud.com/a/b",
+              "https://www.bilibili.com/video/BV1xx411c7mD", "https://b23.tv/abcdef"]
         bad = ["https://evil.com/x", "https://youtube.com.evil.com/x", "https://evilyoutube.com/x",
-               "https://youtube.com@evil.com/x", "https://bilibili.com/video/1", "javascript:alert(1)",
+               "https://youtube.com@evil.com/x", "https://bilibili.com.evil.com/video/BV1xx411c7mD", "javascript:alert(1)",
                "ftp://youtube.com/x", "https://notspotify.com/x", "", None]
         for u in ok:
             self.assertTrue(utils.allowed_song_url(u), u)

@@ -35,7 +35,7 @@ from . import audio, history, ytdl, prewarm
 from . import discord_ux as _ux
 
 # 分段代理遇到 403/410（串流網址失效）時，用 yt-dlp 重新解析同一首歌的網址續傳（在代理執行緒裡同步跑）
-rangeproxy.set_resolver(lambda page: prefetch.extract_stream(page)["url"])
+rangeproxy.set_resolver(lambda page: prefetch.extract_stream(page))
 
 
 async def _get_output_channel(guild_id):

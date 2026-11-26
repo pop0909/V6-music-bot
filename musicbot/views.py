@@ -228,7 +228,7 @@ class StopConfirmView(discord.ui.View):
 
 class MusicLinkModal(discord.ui.Modal, title="點歌"):
     # 跟 /play 一樣：關鍵字、YouTube 網址、播放清單都可以（舊版標題寫「連結」，看起來只能貼網址）
-    link = discord.ui.TextInput(label="歌名或 YouTube 網址", placeholder="輸入歌名關鍵字，或貼上 YouTube 網址",
+    link = discord.ui.TextInput(label="歌名或網址", placeholder="輸入歌名關鍵字，或貼上 YouTube / B 站網址",
                                 style=discord.TextStyle.short, required=True, max_length=400)
 
     async def on_error(self, interaction, error):

@@ -173,7 +173,10 @@ async def _lookup(query):
     """/play 的查詢：打字搜尋先看暫存（searchcache），貼網址照常每次解析。
     打字搜尋只取第一首「影片」：YouTube 有時把頻道 / 播放清單排在第一筆（例如「tuki.」→ 頻道 tuki.(17)），
     以前用 default_search 的 ytsearch1 會把頻道網址塞進隊列、播不出來。"""
-    from . import searchcache
+    from . import searchcache, bilibili
+    if searchcache.is_url(query) and bilibili.is_page(query):
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, bilibili.lookup_ytdl_shape, query)
     cacheable = not searchcache.is_url(query)
     if cacheable:
         hit = searchcache.get("play1v", query)

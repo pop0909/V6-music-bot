@@ -80,7 +80,9 @@ def ul_update(lid):
         else:
             from .extapi import normalize_youtube, _lookup_title
             url = d.get("url").strip() if isinstance(d.get("url"), str) else ""
-            url = normalize_youtube(url) or url          # 各種 YouTube 網址統一成 watch?v=（去重才準）
+            url = normalize_youtube(url) or url
+            from . import bilibili
+            url = bilibili.normalize(url) or url          # YouTube watch?v= / B 站 BV（去重才準）
             title = d.get("title") if isinstance(d.get("title"), str) and d.get("title").strip() else None
             if not title and url.startswith("http"):
                 title = _lookup_title(url)               # 只貼網址 → 查歌名（查不到就用網址）

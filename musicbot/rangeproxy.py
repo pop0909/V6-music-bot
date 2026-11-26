@@ -73,18 +73,28 @@ def eligible(url):
         u = urlparse(url)
     except Exception:
         return None
-    if u.scheme not in ("http", "https") or not (u.hostname or "").endswith("googlevideo.com"):
+    if u.scheme not in ("http", "https"):
         return None
+    host = (u.hostname or "").lower()
     if "manifest" in u.path or ".m3u8" in u.path:
         return None
     q = parse_qs(u.query)
-    if "live" in q or q.get("source") == ["yt_live_broadcast"]:
-        return None
-    try:
-        size = int(q.get("clen", [""])[0])
-    except ValueError:
-        return None
-    return size if size > 0 else None
+    if host.endswith("googlevideo.com"):
+        if "live" in q or q.get("source") == ["yt_live_broadcast"]:
+            return None
+        try:
+            size = int(q.get("clen", [""])[0])
+        except ValueError:
+            return None
+        return size if size > 0 else None
+    # B 站 DASH：大小多半不在 query，由 input_url(size=) 傳入；這裡只認得出 CDN 主機
+    if host.endswith("bilivideo.com") or host.endswith("bilivideo.cn"):
+        try:
+            size = int((q.get("contentlength") or q.get("clen") or [""])[0] or 0)
+        except ValueError:
+            size = 0
+        return size if size > 0 else None
+    return None
 
 
 def _parse_range(h, size):
@@ -139,7 +149,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Length", "0"); self.end_headers(); return
         start, end = r if r else (0, size - 1)
         self.send_response(206 if r else 200)
-        self.send_header("Content-Type", "audio/webm")
+        self.send_header("Content-Type", e.get("mime") or "audio/webm")
         self.send_header("Accept-Ranges", "bytes")
         self.send_header("Content-Length", str(end - start + 1))
         if r:
@@ -189,18 +199,30 @@ def _refresh(e, why, force=False):
             return e.get("refresh_ok", False)    # 剛換過（可能是別條連線換的）→ 直接用目前的網址
         e["refreshed_at"] = time.time()
         try:
-            new = _resolver(page)
+            raw = _resolver(page)
         except Exception as ex:
             e["refresh_ok"] = False
             log.warning(f"[分段代理] 重新解析網址失敗（{why}）：{page}：{ex!r}"[:300])
             return False
-        size = eligible(new) if new else None
-        if size != e["size"]:
+        headers = None
+        given_size = None
+        if isinstance(raw, dict):
+            new = raw.get("url")
+            headers = raw.get("headers")
+            given_size = raw.get("filesize") or raw.get("size")
+            if raw.get("mime"):
+                e["mime"] = raw["mime"]
+        else:
+            new = raw
+        size = int(given_size) if given_size else (eligible(new) if new else None)
+        if not size or size != e["size"]:
             e["refresh_ok"] = False
             log.warning(f"[分段代理] 重新解析後檔案大小不同（{e['size']} → {size}），不能續傳：{page}"[:300])
             return False
         e["url"] = new
         e["url_ts"] = time.time()
+        if headers:
+            e["headers"] = dict(headers)
         e["refresh_ok"] = True
         log.info(f"[分段代理] 已重新解析並換上新網址（{why}）：{page}"[:300])
         return True
@@ -218,7 +240,11 @@ def _fetch_into(e, a, b, out):
         attempt += 1
         rng = f"{a + written}-{b}"
         url = e["url"]
-        req = urllib.request.Request(url, headers={"Range": f"bytes={rng}", "User-Agent": UA})
+        hdrs = {"User-Agent": UA}
+        extra = e.get("headers") or {}
+        hdrs.update(extra)
+        hdrs["Range"] = f"bytes={rng}"
+        req = urllib.request.Request(url, headers=hdrs)
         waited = 0.0             # 只累計等上游 read 的時間
         try:
             with urllib.request.urlopen(req, timeout=READ_TIMEOUT) as resp:
@@ -329,10 +355,16 @@ def _gc(now):
         _streams.pop(k, None)
 
 
-def input_url(url, page=None):
+def input_url(url, page=None, headers=None, size=None, mime=None):
     """給 FFmpeg 的輸入網址：適用就換成本地分段代理，否則原樣回傳。
-    page = 歌曲網頁網址（網址失效時用來重新解析）"""
-    size = eligible(url)
+    page = 歌曲網頁網址（網址失效時用來重新解析）
+    headers / size：B 站等來源的 Referer 與檔案大小（大小不在 query 時由呼叫端傳入）"""
+    try:
+        given = int(size) if size else 0
+    except (TypeError, ValueError):
+        given = 0
+    auto = eligible(url)
+    size = given or auto
     if not size:
         return url
     try:
@@ -345,5 +377,7 @@ def input_url(url, page=None):
     with _lock:
         _gc(now)
         _streams[tok] = {"url": url, "size": size, "ts": now, "page": page, "dead": False,
-                         "refreshed_at": 0, "url_ts": now, "rlock": threading.Lock()}
+                         "refreshed_at": 0, "url_ts": now, "rlock": threading.Lock(),
+                         "headers": dict(headers) if headers else {},
+                         "mime": mime or ("audio/mp4" if (headers or {}) else "audio/webm")}
     return f"http://127.0.0.1:{port}/s/{tok}"

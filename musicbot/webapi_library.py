@@ -132,6 +132,23 @@ def api_resolve_url():
         return jsonify({"status": "error", "message": "請提供網址"}), 400
     if song_url_error(url):
         return jsonify({"status": "error", "message": song_url_error(url)}), 400
+    from . import bilibili
+    if bilibili.is_page(url):
+        try:
+            songs = bilibili.resolve_for_queue(url)
+        except Exception as e:
+            log.error(f"Resolve URL error: {str(e)[:300]}")
+            return jsonify({"status": "error", "message": str(e)[:200] or "無法解析 B 站網址"}), 400
+        if not songs:
+            return jsonify({"status": "error", "message": "無法解析網址"}), 400
+        is_pl = len(songs) > 1
+        return jsonify({
+            "status": "ok",
+            "is_playlist": is_pl,
+            "playlist_title": songs[0]["title"].split("（P")[0] if is_pl else "",
+            "songs": songs,
+            "count": len(songs),
+        })
     try:
         with yt_dlp.YoutubeDL(ytdl.build_opts({
             "format": "bestaudio/best",
@@ -188,11 +205,24 @@ def api_search():
     data = request.get_json() or {}
     query = data.get("query", "").strip()
     if not query: return jsonify({"status": "error", "message": "請輸入關鍵字"}), 400
-    from . import searchcache
+    source = (data.get("source") or "youtube").strip().lower()
+    if source not in ("youtube", "bilibili"):
+        source = "youtube"
+    from . import searchcache, bilibili
+    cache_key = "panel5bili" if source == "bilibili" else "panel5v"     # v：只放影片的版本（舊的可能混到頻道）
     # 同一個關鍵字一小時內重搜直接用暫存（只存文字結果；失敗 / 沒結果不存）
-    cached = searchcache.get("panel5v", query)     # v：只放影片的版本（舊的可能混到頻道）
+    cached = searchcache.get(cache_key, query)
     if cached:
-        return jsonify({"status": "ok", "results": cached, "count": len(cached), "cached": True})
+        return jsonify({"status": "ok", "results": cached, "count": len(cached), "cached": True, "source": source})
+    if source == "bilibili":
+        try:
+            results = bilibili.search(query, 5)
+            if results:
+                searchcache.put(cache_key, query, results)
+            return jsonify({"status": "ok", "results": results, "count": len(results), "source": source})
+        except Exception as e:
+            log.error(f"搜尋錯誤: {str(e)[:300]}")
+            return jsonify({"status": "error", "message": str(e)[:200] or "B 站搜尋失敗", "source": source}), 500
     try:
         with yt_dlp.YoutubeDL(ytdl.build_opts({
             "format": "bestaudio/best",
@@ -212,7 +242,7 @@ def api_search():
                     "thumbnail": f"https://i.ytimg.com/vi/{entry['id']}/hqdefault.jpg"
                 })
             searchcache.put("panel5v", query, results)
-            return jsonify({"status": "ok", "results": results, "count": len(results)})
+            return jsonify({"status": "ok", "results": results, "count": len(results), "source": "youtube"})
     except Exception as e:
         log.error(f"搜尋錯誤: {str(e)[:300]}")
         return jsonify({"status": "error", "message": ytdl.friendly_error(e, "搜尋時"),
